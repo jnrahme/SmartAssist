@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  <a href="https://jnrahme.github.io/SmartAssist/">Interactive Documentation</a> ·
-  <a href="https://jnrahme.github.io/SmartAssist/dashboard.html">Live Dashboard</a> ·
+  <a href="https://smartassist-ai.netlify.app/">Interactive Documentation</a> ·
+  <a href="https://smartassist-ai.netlify.app/dashboard.html">Live Dashboard</a> ·
   <a href="https://github.com/jnrahme/SmartAssist/wiki">Wiki</a>
 </p>
 
@@ -268,7 +268,7 @@ smartassist seed          # Seed lessons from CLAUDE.md
 
 SmartAssist generates a **real-time interactive dashboard** with searchable lessons, reliability scores, category breakdowns, and system health — all in a dark-themed HTML page.
 
-> **[View the Live Dashboard](https://jnrahme.github.io/SmartAssist/dashboard.html)**
+> **[View the Live Dashboard](https://smartassist-ai.netlify.app/dashboard.html)**
 
 Generate your own anytime:
 
@@ -400,5 +400,5 @@ MIT
 
 <p align="center">
   <strong>Built by Joey Rahme</strong><br>
-  <a href="https://jnrahme.github.io/SmartAssist/">Interactive Docs</a> · <a href="https://jnrahme.github.io/SmartAssist/dashboard.html">Live Dashboard</a> · <a href="https://github.com/jnrahme/SmartAssist/wiki">Wiki</a>
+  <a href="https://smartassist-ai.netlify.app/">Interactive Docs</a> · <a href="https://smartassist-ai.netlify.app/dashboard.html">Live Dashboard</a> · <a href="https://github.com/jnrahme/SmartAssist/wiki">Wiki</a>
 </p>
