@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartAssist — Portable RLHF + RAG + MCP Learning System</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --bg-card: #131a27;
+    --bg-card-alt: #162032;
+    --border: #1e2d44;
+    --text: #e6edf3;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+    --blue: #38bdf8;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --cyan: #22d3ee;
+    --yellow: #fbbf24;
+    --gradient-1: linear-gradient(135deg, #38bdf8 0%, #a78bfa 100%);
+    --gradient-2: linear-gradient(135deg, #34d399 0%, #38bdf8 100%);
+    --gradient-3: linear-gradient(135deg, #fb923c 0%, #f87171 100%);
+    --gradient-4: linear-gradient(135deg, #a78bfa 0%, #f472b6 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 48px 24px 100px;
+  }
+
+  /* Hero */
+  .hero { text-align: center; margin-bottom: 48px; }
+  .hero h1 {
+    font-size: 36px; font-weight: 800;
+    background: var(--gradient-1);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin-bottom: 8px;
+  }
+  .hero .subtitle { color: var(--text-dim); font-size: 17px; margin-bottom: 6px; }
+  .hero .author { color: var(--text-muted); font-size: 14px; }
+
+  /* Nav pills */
+  .nav-pills {
+    display: flex; gap: 10px; justify-content: center;
+    margin: 32px 0 48px; flex-wrap: wrap;
+  }
+  .nav-pill {
+    padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    text-decoration: none; color: var(--text-dim); background: var(--bg-card);
+    border: 1px solid var(--border); transition: all 0.2s; cursor: pointer;
+  }
+  .nav-pill:hover { border-color: var(--blue); color: var(--text); }
+  .nav-pill.active { border-color: var(--blue); color: var(--blue); background: rgba(56,189,248,0.08); }
+
+  /* Section */
+  .section { display: none; margin: 0 0 80px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .section.active { display: block; }
+
+  /* Section header */
+  .section-header { margin-bottom: 32px; }
+  .section-num { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+  .section-title { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+  .section-tagline { color: var(--text-dim); font-size: 16px; font-style: italic; }
+
+  h2 { font-size: 20px; font-weight: 700; margin: 40px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; color: var(--blue); }
+  p { margin-bottom: 12px; }
+  ul { padding-left: 20px; margin: 8px 0 12px; }
+  li { margin: 6px 0; font-size: 14px; color: var(--text-dim); }
+  li strong { color: var(--text); }
+
+  /* Cards */
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin: 16px 0;
+    position: relative; overflow: hidden;
+  }
+  .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .card-blue::before { background: var(--gradient-1); }
+  .card-green::before { background: var(--gradient-2); }
+  .card-pink::before { background: var(--gradient-4); }
+  .card-orange::before { background: linear-gradient(135deg, #fb923c, #fbbf24); }
+  .card-cyan::before { background: linear-gradient(135deg, #22d3ee, #34d399); }
+
+  /* Diagram */
+  .diagram-wrap {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px; margin: 20px 0; overflow-x: auto;
+  }
+  .diagram-wrap .mermaid { display: flex; justify-content: center; }
+  .diagram-label {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-muted); margin-bottom: 16px;
+  }
+
+  /* Tags */
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+  .tag {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
+  }
+  .tag-blue   { background: rgba(56,189,248,0.12); color: var(--blue); }
+  .tag-green  { background: rgba(52,211,153,0.12); color: var(--green); }
+  .tag-orange { background: rgba(251,146,60,0.12); color: var(--orange); }
+  .tag-red    { background: rgba(248,113,113,0.12); color: var(--red); }
+  .tag-purple { background: rgba(167,139,250,0.12); color: var(--purple); }
+  .tag-cyan   { background: rgba(34,211,238,0.12); color: var(--cyan); }
+  .tag-yellow { background: rgba(251,191,36,0.12); color: var(--yellow); }
+
+  /* Grids */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 16px 0; }
+
+  /* Mini card */
+  .mini-card { background: var(--bg-card-alt); border-radius: 10px; padding: 16px; }
+  .mini-card .mc-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .mini-card .mc-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+  /* Metrics */
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+  .metric { background: var(--bg-card-alt); border-radius: 8px; padding: 14px; text-align: center; }
+  .metric-value { font-size: 20px; font-weight: 800; margin-bottom: 2px; }
+  .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
+
+  /* Code */
+  .code-block {
+    background: #0d1117; border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 22px; margin: 14px 0; overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.6;
+    color: #c9d1d9; white-space: pre; word-wrap: normal;
+  }
+  code { background: rgba(56,189,248,0.1); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--blue); font-family: 'SF Mono', 'Fira Code', monospace; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; }
+  th, td { padding: 10px 14px; text-align: left; border: 1px solid var(--border); font-size: 13px; }
+  th { background: var(--bg-card); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; font-size: 11px; color: var(--text-dim); }
+  td { color: var(--text-dim); }
+  td strong { color: var(--text); }
+
+  /* Callout */
+  .callout { border-radius: 8px; padding: 14px 18px; margin: 16px 0; font-size: 14px; }
+  .callout-blue   { background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); color: var(--blue); }
+  .callout-green  { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.25); color: var(--green); }
+  .callout-orange { background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.25); color: var(--orange); }
+  .callout-purple { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.25); color: var(--purple); }
+  .callout-red    { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25); color: var(--red); }
+  .callout strong { color: inherit; }
+
+  /* Score bar */
+  .score-row { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+  .score-label { width: 120px; font-size: 13px; font-weight: 600; }
+  .score-bar { flex: 1; height: 10px; background: var(--bg-card-alt); border-radius: 5px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 5px; }
+  .score-val { width: 50px; text-align: right; font-size: 13px; font-weight: 700; }
+
+  .sep { border: 0; border-top: 2px solid var(--border); margin: 60px 0 40px; }
+  .footer { margin-top: 48px; text-align: center; color: var(--text-muted); font-size: 13px; padding-top: 24px; border-top: 1px solid var(--border); }
+
+  @media (max-width: 768px) {
+    .hero h1 { font-size: 26px; }
+    .grid-2, .grid-3, .metrics { grid-template-columns: 1fr; }
+    .nav-pills { flex-direction: column; align-items: center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== HERO ===== -->
+<div class="hero">
+  <h1>SmartAssist</h1>
+  <p class="subtitle">Portable RLHF + RAG + MCP &mdash; An AI That Gets Smarter Every Project</p>
+  <p class="author">Joey Rahme &mdash; Version 4.0 &bull; February 2026</p>
+</div>
+
+<div class="nav-pills">
+  <span class="nav-pill active" onclick="show('overview')" id="pill-overview" style="border-color:var(--blue);color:var(--blue);">Overview</span>
+  <span class="nav-pill" onclick="show('diagrams')" id="pill-diagrams" style="border-color:var(--purple);color:var(--purple);">Architecture</span>
+  <span class="nav-pill" onclick="show('mcp')" id="pill-mcp" style="border-color:var(--green);color:var(--green);">MCP Server</span>
+  <span class="nav-pill" onclick="show('metrics')" id="pill-metrics" style="border-color:var(--orange);color:var(--orange);">Live Metrics</span>
+  <span class="nav-pill" onclick="show('technical')" id="pill-technical" style="border-color:var(--cyan);color:var(--cyan);">Deep Dive</span>
+  <span class="nav-pill" onclick="show('operations')" id="pill-operations" style="border-color:var(--yellow);color:var(--yellow);">Operations</span>
+  <span class="nav-pill" onclick="show('evidence')" id="pill-evidence" style="border-color:var(--red);color:var(--red);">Evidence</span>
+  <span class="nav-pill" onclick="show('comparison')" id="pill-comparison" style="border-color:var(--pink);color:var(--pink);">Comparisons</span>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- OVERVIEW                                                               -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section active" id="overview">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--blue);">Section 01</div>
+    <div class="section-title">How It Works</div>
+    <div class="section-tagline">A portable AI learning system that remembers every mistake and never repeats them &mdash; on any codebase.</div>
+    <div class="tags" style="margin-top:12px;">
+      <span class="tag tag-blue">RLHF</span>
+      <span class="tag tag-green">RAG</span>
+      <span class="tag tag-purple">MCP Server</span>
+      <span class="tag tag-orange">Thompson Sampling</span>
+      <span class="tag tag-cyan">LanceDB</span>
+      <span class="tag tag-yellow">BAAI/bge-m3</span>
+      <span class="tag tag-red">Cross-Encoder Reranking</span>
+    </div>
+  </div>
+
+  <div class="callout callout-purple"><strong>New in v4.0:</strong> SmartAssist is now a <strong>portable, pip-installable Python package</strong>. Install once globally, run on any codebase. Per-project data lives in <code>.claude/smartassist/</code>. No more hardcoded paths or virtual environment activation.</div>
+
+  <h2>Three Technologies Combined</h2>
+  <div class="grid-3">
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--blue);">RLHF</div>
+      <div class="mc-desc">Learns from your feedback &mdash; thumbs up/down, corrections, angry signals. Updates reliability scores per category using Bayesian statistics.</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--green);">RAG</div>
+      <div class="mc-desc">Hybrid semantic search over 100 curated lessons. Converts text to 1024-dim vectors with BAAI/bge-m3, combines vector + BM25 keyword search, then cross-encoder reranks results.</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--purple);">MCP Server</div>
+      <div class="mc-desc">On-demand knowledge retrieval via 3 tools: <code>rag_search</code>, <code>rag_dashboard</code>, and <code>rag_feedback</code>. Claude calls them mid-conversation when relevant. Zero latency on simple prompts.</div>
+    </div>
+  </div>
+
+  <h2>The Learning Loop</h2>
+  <div class="diagram-wrap">
+    <div class="diagram-label">End-to-End Learning Cycle</div>
+    <div class="mermaid">
+flowchart LR
+    A["You give feedback\nor commit code"] --> B["System stores &\nupdates scores"]
+    B --> C["Knowledge Base\n100 curated lessons"]
+    C --> D["Claude searches\nwhen relevant"]
+    D --> E["Better responses"]
+    E -.->|"Cycle repeats"| A
+
+    style A fill:#131a27,stroke:#38bdf8,color:#e6edf3
+    style B fill:#131a27,stroke:#fb923c,color:#e6edf3
+    style C fill:#131a27,stroke:#f87171,color:#e6edf3
+    style D fill:#131a27,stroke:#34d399,color:#e6edf3
+    style E fill:#131a27,stroke:#a78bfa,color:#e6edf3
+    </div>
+  </div>
+
+  <h2>Step-by-Step Flow</h2>
+  <table>
+    <tr><th>Step</th><th>What happens</th></tr>
+    <tr><td><strong>1. Capture</strong></td><td>You give feedback (thumbs up/down) or the system auto-detects anti-patterns in commits and PR reviews</td></tr>
+    <tr><td><strong>2. Score</strong></td><td>Thompson Sampling updates reliability scores (0-100%) for the relevant category</td></tr>
+    <tr><td><strong>3. Clean &amp; Deduplicate</strong></td><td>Cleanup pipeline filters junk (short text, "LGTM", "done"), normalizes text, and deduplicates by MD5 hash</td></tr>
+    <tr><td><strong>4. Vectorize</strong></td><td>Clean corrections are embedded into 1024-dim vectors with BAAI/bge-m3, stored in LanceDB with category metadata</td></tr>
+    <tr><td><strong>5. Session Start</strong></td><td>Weak categories (&lt;70%) get lessons injected automatically into Claude's context</td></tr>
+    <tr><td><strong>6. MCP On-Demand</strong></td><td>During conversations, Claude calls <code>rag_search</code> with hybrid search (vector + BM25) and cross-encoder reranking</td></tr>
+    <tr><td><strong>7. Log Evidence</strong></td><td>Every tool call is logged to <code>usage_log.jsonl</code> with timestamp, query, decision funnel, returned lessons, and latency</td></tr>
+    <tr><td><strong>8. Health Check</strong></td><td>Run <code>smartassist health</code> anytime to verify DB, data quality, scores, sync status, and usage evidence</td></tr>
+  </table>
+
+  <h2>Portable Design</h2>
+  <div class="grid-2">
+    <div class="card card-green">
+      <h3 style="margin-top:0;">Code (installed once globally)</h3>
+      <ul>
+        <li><code>pip install -e ~/Github/SmartAssist</code></li>
+        <li>Makes <code>smartassist</code> CLI + <code>python3 -m smartassist.*</code> available</li>
+        <li>29 source files, 59 automated tests</li>
+        <li>Pushed to <code>github.com/jnrahme/SmartAssist</code></li>
+      </ul>
+    </div>
+    <div class="card card-blue">
+      <h3 style="margin-top:0;">Data (per-project)</h3>
+      <ul>
+        <li><code>smartassist init</code> creates <code>.claude/smartassist/</code></li>
+        <li>Feedback logs, reliability scores, LanceDB vectors</li>
+        <li>Automatically detected by walking up from <code>cwd</code></li>
+        <li>Gitignored &mdash; never committed to project repos</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>How to Use It</h2>
+  <div class="callout callout-green"><strong>Just talk naturally.</strong> Say "thumbs up for git", "thumbs down testing", "correction: use semantic colors", or "angry feedback - wrong file modified". The system captures everything automatically.</div>
+
+  <h3>Quick Start on a New Project</h3>
+  <div class="code-block">cd ~/your-project
+smartassist init        # Creates .claude/smartassist/{data,lancedb}/
+# That's it! MCP server and hooks auto-detect the data directory.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ARCHITECTURE DIAGRAMS                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="diagrams">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--purple);">Section 02</div>
+    <div class="section-title">Architecture Diagrams</div>
+    <div class="section-tagline">Visual breakdown of how every component connects.</div>
+  </div>
+
+  <h2>Code vs Data Separation</h2>
+  <p style="color:var(--text-dim);font-size:14px;">SmartAssist separates code (installed once) from data (per-project). The <code>config.py</code> module resolves data paths automatically.</p>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Portable Architecture</div>
+    <div class="mermaid">
+flowchart TD
+    subgraph CODE["Code — ~/Github/SmartAssist/ (pip install -e)"]
+        direction LR
+        CFG["config.py\nPath resolution"]
+        MCP["mcp_server.py\n3 MCP tools"]
+        HOOKS["hooks/\n7 lifecycle hooks"]
+        TOOLS["tools/\n5 utility modules"]
+        CLI["cli.py\n9 subcommands"]
+    end
+
+    subgraph DATA1["Project A — .claude/smartassist/"]
+        direction LR
+        D1A["data/\nfeedback, scores"]
+        D1B["lancedb/\nvector DB"]
+    end
+
+    subgraph DATA2["Project B — .claude/smartassist/"]
+        direction LR
+        D2A["data/\nfeedback, scores"]
+        D2B["lancedb/\nvector DB"]
+    end
+
+    CFG -->|"auto-detect\nfrom cwd"| DATA1
+    CFG -->|"auto-detect\nfrom cwd"| DATA2
+
+    style CODE fill:#162032,stroke:#38bdf8,color:#e6edf3
+    style DATA1 fill:#162032,stroke:#34d399,color:#e6edf3
+    style DATA2 fill:#162032,stroke:#fb923c,color:#e6edf3
+    </div>
+  </div>
+
+  <h2>How Lessons Get In</h2>
+  <p style="color:var(--text-dim);font-size:14px;">Three automatic sources feed the knowledge base. You rarely need to do anything manually.</p>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Feedback Sources &rarr; Storage</div>
+    <div class="mermaid">
+flowchart TD
+    subgraph SRC["Feedback Sources"]
+        A["Manual Feedback\nYou say: thumbs down"]
+        B["Commit Hook\nScans git diffs"]
+        C["PR Harvester\nGitHub review comments"]
+    end
+
+    subgraph STORE["Storage Layer — .claude/smartassist/"]
+        D[("data/feedback_log.jsonl\n1,991 events")]
+        E[("data/reliability_scores.json")]
+        F[("lancedb/\n100 curated lessons")]
+    end
+
+    A --> D
+    B --> D
+    C --> D
+    D --> E
+    D --> F
+
+    style SRC fill:#162032,stroke:#22d3ee,color:#e6edf3
+    style STORE fill:#162032,stroke:#f87171,color:#e6edf3
+    </div>
+  </div>
+
+  <h2>How Lessons Come Out</h2>
+  <p style="color:var(--text-dim);font-size:14px;">Two separate channels deliver knowledge to Claude, each triggered differently.</p>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Dual Delivery Channels</div>
+    <div class="mermaid">
+flowchart TD
+    subgraph CH1["Channel 1: Automatic — Session Start"]
+        direction LR
+        A1["New session"] --> A2["Load scores"]
+        A2 --> A3{"Below 70%?"}
+        A3 -->|"Yes"| A4["Inject warnings"]
+        A3 -->|"No"| A5["Skip"]
+    end
+
+    subgraph CH2["Channel 2: On-Demand — MCP Server"]
+        direction LR
+        B1["You ask a question"] --> B2{"Relates to\nknowledge?"}
+        B2 -->|"Yes"| B3["rag_search"]
+        B3 --> B4["Return lessons"]
+        B2 -->|"No"| B5["Answer normally"]
+    end
+
+    A4 --> CLAUDE["Claude Code"]
+    B4 --> CLAUDE
+
+    style CH1 fill:#162032,stroke:#fb923c,color:#e6edf3
+    style CH2 fill:#162032,stroke:#34d399,color:#e6edf3
+    style CLAUDE fill:#131a27,stroke:#38bdf8,color:#e6edf3
+    </div>
+  </div>
+
+  <h2>MCP Search Pipeline</h2>
+  <p style="color:var(--text-dim);font-size:14px;">What happens inside the MCP server when Claude calls <code>rag_search</code>. The pipeline uses hybrid search (vector + BM25), distance filtering, cross-encoder reranking, and query enhancement.</p>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Hybrid Search Pipeline with Cross-Encoder Reranking</div>
+    <div class="mermaid">
+flowchart LR
+    A["Your question"] --> QE["Query Enhancement\nAdd correction prefix"]
+    QE --> B["Embed into\n1024-dim vector"]
+    B --> C["Hybrid Search\nVector + BM25"]
+    C --> D{"Distance ≤ 1.30?"}
+    D -->|"Relevant"| E["Cross-encoder\nrerank top results"]
+    D -->|"Irrelevant"| F["Filtered out"]
+    E --> G["Return to Claude\nwith relevance %"]
+
+    style A fill:#131a27,stroke:#38bdf8,color:#e6edf3
+    style QE fill:#131a27,stroke:#22d3ee,color:#e6edf3
+    style B fill:#131a27,stroke:#a78bfa,color:#e6edf3
+    style C fill:#131a27,stroke:#a78bfa,color:#e6edf3
+    style D fill:#131a27,stroke:#fb923c,color:#e6edf3
+    style E fill:#131a27,stroke:#f472b6,color:#e6edf3
+    style F fill:#131a27,stroke:#f87171,color:#e6edf3
+    style G fill:#131a27,stroke:#34d399,color:#e6edf3
+    </div>
+  </div>
+
+  <h3>Query Enhancement</h3>
+  <p style="color:var(--text-dim);font-size:14px;">Documents are stored as structured correction text (e.g., <code>"[code_edit] Use semantic colors..."</code>). Raw user questions live in a different semantic space. Prefixing queries with <code>"Correction for this project: "</code> bridges this gap.</p>
+  <table>
+    <tr><th>Query</th><th>Raw distance</th><th>Enhanced distance</th><th>Improvement</th></tr>
+    <tr><td>style components</td><td>1.140</td><td style="color:var(--green);">0.810</td><td style="color:var(--green);">-29%</td></tr>
+    <tr><td>unit tests</td><td>1.240</td><td style="color:var(--green);">0.932</td><td style="color:var(--green);">-25%</td></tr>
+    <tr><td>git commit</td><td>0.752</td><td style="color:var(--green);">0.695</td><td style="color:var(--green);">-8%</td></tr>
+    <tr><td>best practices</td><td style="color:var(--red);">1.498 (filtered!)</td><td style="color:var(--green);">1.075</td><td style="color:var(--green);">Now works!</td></tr>
+    <tr><td>quantum physics</td><td>1.609</td><td>1.349</td><td style="color:var(--text-muted);">Still filtered</td></tr>
+  </table>
+
+  <h2>Reliability Scoring</h2>
+  <p style="color:var(--text-dim);font-size:14px;">How Thompson Sampling decides whether a category is strong or weak.</p>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Thompson Sampling Flow</div>
+    <div class="mermaid">
+flowchart LR
+    A["Feedback event"] --> B["Identify category"]
+    B --> C["Update alpha/beta\nBayesian formula"]
+    C --> D{"Score ≥ 70%?"}
+    D -->|"Yes"| E["RELIABLE\nStop auto-injecting"]
+    D -->|"No"| F["WEAK\nKeep injecting lessons"]
+
+    style A fill:#131a27,stroke:#38bdf8,color:#e6edf3
+    style B fill:#131a27,stroke:#fb923c,color:#e6edf3
+    style C fill:#131a27,stroke:#a78bfa,color:#e6edf3
+    style D fill:#131a27,stroke:#fbbf24,color:#e6edf3
+    style E fill:#131a27,stroke:#34d399,color:#e6edf3
+    style F fill:#131a27,stroke:#f87171,color:#e6edf3
+    </div>
+  </div>
+
+  <h2>File Structure</h2>
+  <div class="code-block">~/Github/SmartAssist/                    # Code (installed once via pip)
+├── pyproject.toml                        # Package config, CLI entry point
+├── smartassist/
+│   ├── __init__.py
+│   ├── config.py                         # Path resolution + embedding config (keystone)
+│   ├── cli.py                            # `smartassist` CLI (9 subcommands)
+│   ├── mcp_server.py                     # MCP server (3 tools: search, dashboard, feedback)
+│   ├── thompson_sampling.py              # Beta-Bernoulli model with 30-day decay
+│   ├── feedback_system.py                # FeedbackCapture + JSONL storage
+│   ├── context_injection.py              # Lesson formatting + injection
+│   ├── lesson_feedback.py                # Per-lesson boost/demote/block scoring
+│   ├── hooks/
+│   │   ├── session_start.py              # SessionStart: inject weak-category lessons
+│   │   ├── session_end.py                # SessionEnd: save analytics
+│   │   ├── vectorize_learnings.py        # Auto-vectorize new lessons
+│   │   ├── prompt_inject.py              # UserPromptSubmit: context injection
+│   │   ├── commit_hook.py                # PreToolUse(Bash): scan diffs for anti-patterns
+│   │   ├── show_lessons.py               # PostToolUse: display search results
+│   │   └── seed_from_claudemd.py         # Seed lessons from CLAUDE.md
+│   └── tools/
+│       ├── cleanup_and_vectorize.py      # Data cleanup, dedup, DB rebuild
+│       ├── maintenance.py                # Staleness check, LanceDB compaction
+│       ├── health_check.py               # 6-check system health dashboard
+│       ├── analyze_usage.py              # Usage analytics (hit rate, latency, trends)
+│       └── generate_dashboard.py         # HTML dashboard generator
+└── tests/
+    ├── conftest.py                       # Shared fixtures (tmp data dirs)
+    ├── test_config.py                    # 5 tests — path resolution
+    ├── test_cleanup.py                   # 46 tests — cleanup filtering logic
+    └── test_thompson_sampling.py         # 7 tests — Thompson Sampling model
+
+&lt;any-project&gt;/.claude/smartassist/       # Data (per-project, auto-detected)
+├── data/
+│   ├── feedback_log.jsonl                # Raw feedback events
+│   ├── reliability_scores.json           # Thompson Sampling scores per category
+│   ├── curated_lessons.json              # 100 curated lessons
+│   ├── usage_log.jsonl                   # 20,070+ evidence entries
+│   ├── vectorization_log.json            # Sync state tracker
+│   ├── session_log.jsonl                 # Session analytics
+│   └── lessons_learned/                  # 1,982 markdown files
+└── lancedb/                              # 100 vector documents (1024-dim)</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- MCP SERVER                                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="mcp">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--green);">Section 03</div>
+    <div class="section-title">MCP Server</div>
+    <div class="section-tagline">On-demand knowledge retrieval &mdash; the core innovation.</div>
+    <div class="tags" style="margin-top:12px;">
+      <span class="tag tag-green">FastMCP</span>
+      <span class="tag tag-blue">stdio transport</span>
+      <span class="tag tag-purple">BAAI/bge-m3</span>
+      <span class="tag tag-cyan">LanceDB</span>
+      <span class="tag tag-red">Cross-Encoder Reranking</span>
+      <span class="tag tag-yellow">Hybrid Search</span>
+    </div>
+  </div>
+
+  <div class="callout callout-blue"><strong>The core innovation:</strong> Claude reads the tool description and decides when to search &mdash; only when your question relates to stored knowledge. Simple prompts like "yes" or "ok" skip it entirely. Now registered as a global <code>smartassist serve</code> command &mdash; no project-specific MCP config needed.</div>
+
+  <h2>MCP Configuration</h2>
+  <div class="code-block"># ~/.claude/mcp.json — works for ALL projects automatically
+{
+  "mcpServers": {
+    "smartassist": {
+      "command": "smartassist",
+      "args": ["serve"]
+    }
+  }
+}</div>
+
+  <h2>Tools Exposed</h2>
+  <div class="grid-3">
+    <div class="card card-green">
+      <h3 style="margin-top:0;"><code>rag_search(query, top_k, category)</code></h3>
+      <p style="color:var(--text-dim);font-size:13px;">Hybrid semantic search (vector + BM25) across 100 curated lessons. Embeds query into 1024-dim vector with BAAI/bge-m3, searches LanceDB, filters by distance threshold (1.30), cross-encoder reranks results, returns formatted lessons with relevance %. Every call logged with full decision funnel.</p>
+    </div>
+    <div class="card card-blue">
+      <h3 style="margin-top:0;"><code>rag_dashboard()</code></h3>
+      <p style="color:var(--text-dim);font-size:13px;">Returns Thompson Sampling reliability scores per category, identifies weak areas (&lt;70%), and shows feedback event statistics. Also logged for usage evidence.</p>
+    </div>
+    <div class="card card-orange">
+      <h3 style="margin-top:0;"><code>rag_feedback(helpful, category, notes)</code></h3>
+      <p style="color:var(--text-dim);font-size:13px;">Records whether the last suggestion was helpful. Updates Thompson Sampling scores directly from the MCP tool. Allows Claude to capture feedback in real-time during conversations.</p>
+    </div>
+  </div>
+
+  <h2>Search Example</h2>
+  <div class="diagram-wrap">
+    <div class="diagram-label">Real search flow with hybrid search + cross-encoder reranking</div>
+    <div class="mermaid">
+sequenceDiagram
+    actor You
+    participant Claude as Claude Code
+    participant MCP as SmartAssist MCP
+    participant DB as LanceDB
+
+    You->>Claude: How should I style this component?
+    Note over Claude: This relates to<br/>project conventions...
+    Claude->>MCP: rag_search("style components")
+    MCP->>MCP: Enhance query + embed (1024-dim)
+    MCP->>DB: Hybrid search (vector + BM25)
+    DB-->>MCP: 20 raw candidates
+    Note over MCP: Distance filter: ≤ 1.30
+    MCP->>MCP: Cross-encoder rerank top results
+    MCP-->>Claude: Lesson: Use semantic colors<br/>relevance: 87%
+    Note over MCP: Log to usage_log.jsonl
+    Claude-->>You: Uses the lesson in response
+    </div>
+  </div>
+
+  <h2>Why MCP Over Alternatives</h2>
+  <table>
+    <tr><th>Approach</th><th>Problem</th><th>MCP advantage</th></tr>
+    <tr><td><strong>UserPromptSubmit</strong></td><td>Fires on EVERY prompt &mdash; 2-3s latency, ~500 tokens noise each time</td><td>MCP only fires when Claude decides it would help</td></tr>
+    <tr><td><strong>SessionStart only</strong></td><td>Generic lessons once at start. Can't search mid-session</td><td>MCP enables on-demand search any time</td></tr>
+    <tr><td><strong>Static CLAUDE.md</strong></td><td>~2000 tokens loaded every session. No semantic matching</td><td>MCP retrieves only what's relevant</td></tr>
+  </table>
+
+  <h2>Key Design Decisions</h2>
+  <div class="grid-3">
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--green);">Lazy-Loaded Singletons</div>
+      <div class="mc-desc">Embedding model (BAAI/bge-m3) + cross-encoder load only on first tool call. Subsequent calls reuse cached instances. Zero startup overhead.</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--orange);">Distance Threshold</div>
+      <div class="mc-desc">MAX_DISTANCE = 1.30 filters irrelevant results. "yes" or "ok" returns nothing. Only relevant lessons surface.</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--purple);">Cross-Encoder Reranking</div>
+      <div class="mc-desc">ms-marco-MiniLM-L-6-v2 reranks the top 20 candidates for precision. Catches semantic matches that pure vector search might miss-rank.</div>
+    </div>
+  </div>
+
+  <h2>Test Coverage</h2>
+  <div class="callout callout-green"><strong>59 tests across 9 classes, all passing in 0.09s.</strong></div>
+
+  <h3>Test Suite (tests/)</h3>
+  <table>
+    <tr><th>File</th><th>Tests</th><th>Coverage</th></tr>
+    <tr><td><strong>test_cleanup.py</strong></td><td>46</td><td>Normalization, skip patterns, dedup keys, clean correction text, format text, all filter functions, non-imperative filter, sanitize to lesson</td></tr>
+    <tr><td><strong>test_thompson_sampling.py</strong></td><td>7</td><td>Initial reliability, record success/failure, weak categories, all reliabilities, persistence</td></tr>
+    <tr><td><strong>test_config.py</strong></td><td>5</td><td>Path resolution via env var, storage path, db path, directory creation</td></tr>
+    <tr><td><strong>conftest.py</strong></td><td>&mdash;</td><td>Shared <code>set_data_dir</code> fixture with <code>SMARTASSIST_DATA_DIR</code> monkeypatch + tmp directory</td></tr>
+  </table>
+
+  <h3>Hooks Configuration</h3>
+  <div class="code-block"># ~/.claude/settings.json — all hooks use python3 -m pattern
+{
+  "hooks": {
+    "UserPromptSubmit": [{"command": "python3 -m smartassist.hooks.prompt_inject"}],
+    "SessionStart":     [{"command": "python3 -m smartassist.hooks.session_start"}],
+    "PreToolUse(Bash)": [{"command": "python3 -m smartassist.hooks.commit_hook"}],
+    "PostToolUse":      [{"command": "python3 -m smartassist.hooks.show_lessons"}],
+    "SessionEnd":       [{"command": "python3 -m smartassist.hooks.session_end"}]
+  }
+}</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- LIVE METRICS                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="metrics">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--orange);">Section 04</div>
+    <div class="section-title">Live Metrics</div>
+    <div class="section-tagline">Current system performance as of February 2026.</div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="metric-value" style="color:var(--blue);">1,991</div><div class="metric-label">Raw Feedback Events</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--green);">100</div><div class="metric-label">Curated Vector Docs</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--purple);">6</div><div class="metric-label">Categories</div></div>
+  </div>
+  <div class="metrics">
+    <div class="metric"><div class="metric-value" style="color:var(--cyan);">59</div><div class="metric-label">Tests Passing</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--yellow);">20,070</div><div class="metric-label">Tool Calls Logged</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--green);">29</div><div class="metric-label">Source Files</div></div>
+  </div>
+
+  <h2>Reliability by Category</h2>
+  <p style="color:var(--text-dim);font-size:14px;">Scores were reset to baseline (50%) during the v4.0 migration to SmartAssist. They will rebuild naturally as you use the system and provide feedback.</p>
+
+  <div class="score-row">
+    <div class="score-label">Architecture</div>
+    <div class="score-bar"><div class="score-fill" style="width:50%;background:var(--gradient-1);"></div></div>
+    <div class="score-val" style="color:var(--blue);">50.0%</div>
+  </div>
+  <div class="score-row">
+    <div class="score-label">PR Review</div>
+    <div class="score-bar"><div class="score-fill" style="width:50%;background:var(--gradient-1);"></div></div>
+    <div class="score-val" style="color:var(--blue);">50.0%</div>
+  </div>
+  <div class="score-row">
+    <div class="score-label">Testing</div>
+    <div class="score-bar"><div class="score-fill" style="width:50%;background:var(--gradient-1);"></div></div>
+    <div class="score-val" style="color:var(--blue);">50.0%</div>
+  </div>
+  <div class="score-row">
+    <div class="score-label">Code Editing</div>
+    <div class="score-bar"><div class="score-fill" style="width:50%;background:var(--gradient-1);"></div></div>
+    <div class="score-val" style="color:var(--blue);">50.0%</div>
+  </div>
+  <div class="score-row">
+    <div class="score-label">Git Operations</div>
+    <div class="score-bar"><div class="score-fill" style="width:50%;background:var(--gradient-1);"></div></div>
+    <div class="score-val" style="color:var(--blue);">50.0%</div>
+  </div>
+  <div class="score-row">
+    <div class="score-label">Security</div>
+    <div class="score-bar"><div class="score-fill" style="width:50%;background:var(--gradient-1);"></div></div>
+    <div class="score-val" style="color:var(--blue);">50.0%</div>
+  </div>
+
+  <h2>Feedback Breakdown</h2>
+  <div class="grid-2">
+    <div class="card card-orange">
+      <h3 style="margin-top:0;">By Signal</h3>
+      <table>
+        <tr><td><strong>Corrections</strong></td><td>1,954 (98.1%)</td></tr>
+        <tr><td><strong>Thumbs Up</strong></td><td>35 (1.8%)</td></tr>
+        <tr><td><strong>Happy</strong></td><td>1</td></tr>
+        <tr><td><strong>Sad</strong></td><td>1</td></tr>
+      </table>
+    </div>
+    <div class="card card-blue">
+      <h3 style="margin-top:0;">By Category</h3>
+      <table>
+        <tr><td><strong>PR Review</strong></td><td>594 (29.8%)</td></tr>
+        <tr><td><strong>Code Editing</strong></td><td>531 (26.7%)</td></tr>
+        <tr><td><strong>Testing</strong></td><td>404 (20.3%)</td></tr>
+        <tr><td><strong>Architecture</strong></td><td>374 (18.8%)</td></tr>
+        <tr><td><strong>Git</strong></td><td>74 (3.7%)</td></tr>
+        <tr><td><strong>Security</strong></td><td>14 (0.7%)</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout callout-orange"><strong>Key observation:</strong> 98% of feedback comes from the PR Comment Harvester (automated). The primary source is GitHub review comments auto-converted into lessons.</div>
+
+  <h2>Threshold System</h2>
+  <p style="color:var(--text-dim);font-size:14px;">Once a category hits 70%, automatic session-start injection stops. Lessons stay searchable via MCP.</p>
+  <table>
+    <tr><th>Reliability</th><th>Status</th><th>Auto-inject?</th></tr>
+    <tr><td>&lt; 30%</td><td style="color:var(--red);">CRITICAL</td><td>Yes (priority)</td></tr>
+    <tr><td>30-50%</td><td style="color:var(--orange);">NEEDS WORK</td><td>Yes</td></tr>
+    <tr><td>50-70%</td><td style="color:var(--yellow);">IMPROVING</td><td>Yes</td></tr>
+    <tr><td>&ge; 70%</td><td style="color:var(--green);font-weight:700;">RELIABLE</td><td><strong>No (mastered)</strong></td></tr>
+  </table>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TECHNICAL DEEP DIVE                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="technical">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--cyan);">Section 05</div>
+    <div class="section-title">Technical Deep Dive</div>
+    <div class="section-tagline">Under-the-hood details for technical stakeholders.</div>
+  </div>
+
+  <h2>Session Lifecycle</h2>
+  <div class="diagram-wrap">
+    <div class="diagram-label">Full session from start to finish</div>
+    <div class="mermaid">
+flowchart TD
+    A["Session starts"] --> B["SessionStart hook\n(63ms)"]
+    B --> C["Load reliability scores"]
+    C --> D{"Any category\nbelow 70%?"}
+    D -->|"Yes"| E["Inject lessons for\nweak categories"]
+    D -->|"No"| F["No injection"]
+    E --> G["Working with Claude"]
+    F --> G
+    G --> H{"Question relates to\nstored knowledge?"}
+    H -->|"Yes"| I["Claude calls rag_search"]
+    I --> J["Hybrid search + rerank\nReturn relevant lessons"]
+    J --> K["PostToolUse hook\nshows lessons to user"]
+    K --> G
+    H -->|"No"| G
+    G --> L{"Git commit?"}
+    L -->|"Yes"| M["PreToolUse hook\nscans diff for anti-patterns"]
+    M --> G
+    L -->|"No"| G
+    G --> N["Session ends"]
+    N --> O["SessionEnd hook\nsave analytics"]
+
+    style A fill:#131a27,stroke:#38bdf8,color:#e6edf3
+    style G fill:#131a27,stroke:#38bdf8,color:#e6edf3
+    style I fill:#131a27,stroke:#34d399,color:#e6edf3
+    style M fill:#131a27,stroke:#fb923c,color:#e6edf3
+    style N fill:#131a27,stroke:#a78bfa,color:#e6edf3
+    </div>
+  </div>
+
+  <h2>1. Feedback Capture</h2>
+  <table>
+    <tr><th>Signal</th><th>Detection</th><th>Weight</th></tr>
+    <tr><td><strong>Thumbs Up</strong></td><td><code>thumbs up</code>, <code>good job</code>, <code>correct</code></td><td style="color:var(--green);">+5</td></tr>
+    <tr><td><strong>Thumbs Down</strong></td><td><code>thumbs down</code>, <code>wrong</code>, <code>incorrect</code></td><td style="color:var(--red);">-4</td></tr>
+    <tr><td><strong>Correction</strong></td><td><code>correction:</code>, <code>should be</code>, <code>use instead</code></td><td style="color:var(--red);">-4 + text</td></tr>
+    <tr><td><strong>Angry</strong></td><td><code>angry</code>, <code>terrible</code>, <code>broke</code></td><td style="color:var(--red);">-5</td></tr>
+  </table>
+
+  <h2>2. Thompson Sampling</h2>
+  <div class="card card-blue">
+    <h3 style="margin-top:0;">Core Formula</h3>
+    <p style="text-align:center;font-size:22px;margin:16px 0;"><strong>Reliability = &alpha; / (&alpha; + &beta;)</strong></p>
+    <p style="color:var(--text-dim);text-align:center;font-size:13px;">&alpha; = successes + 1 &nbsp;&bull;&nbsp; &beta; = failures + 1 &nbsp;&bull;&nbsp; Prior: &alpha;=1, &beta;=1 (50%)</p>
+  </div>
+
+  <h3>Exponential Decay (30-day half-life)</h3>
+  <p style="color:var(--text-dim);font-size:14px;">Recent feedback matters more. A correction from yesterday carries more weight than one from 3 months ago.</p>
+  <table>
+    <tr><th>Time ago</th><th>Weight</th></tr>
+    <tr><td>Today</td><td style="color:var(--green);">100%</td></tr>
+    <tr><td>15 days</td><td>70.7%</td></tr>
+    <tr><td>30 days</td><td>50.0%</td></tr>
+    <tr><td>60 days</td><td>25.0%</td></tr>
+    <tr><td>90 days</td><td style="color:var(--text-muted);">12.5%</td></tr>
+  </table>
+
+  <h2>3. Vector Database &amp; Search</h2>
+  <table>
+    <tr><th>Property</th><th>Value</th></tr>
+    <tr><td><strong>Embedding Model</strong></td><td>BAAI/bge-m3 (1024 dimensions, 8K context window)</td></tr>
+    <tr><td><strong>Reranker</strong></td><td>cross-encoder/ms-marco-MiniLM-L-6-v2 (precision reranking)</td></tr>
+    <tr><td><strong>Database</strong></td><td>LanceDB (Apache Arrow format)</td></tr>
+    <tr><td><strong>Search Mode</strong></td><td>Hybrid: Vector cosine + BM25 keyword (LinearCombinationReranker, weight=0.7)</td></tr>
+    <tr><td><strong>Distance Threshold</strong></td><td>MAX_DISTANCE = 1.30 (with query enhancement prefix)</td></tr>
+    <tr><td><strong>Rerank Pool</strong></td><td>Top 20 candidates reranked, then top_k returned</td></tr>
+    <tr><td><strong>Avg Search Latency</strong></td><td>838ms (includes embedding + hybrid search + reranking)</td></tr>
+    <tr><td><strong>Storage</strong></td><td>~3KB per event</td></tr>
+  </table>
+
+  <h2>4. Path Resolution (config.py)</h2>
+  <p style="color:var(--text-dim);font-size:14px;">The architectural keystone. Every module imports from <code>smartassist.config</code>.</p>
+  <table>
+    <tr><th>Resolution Order</th><th>Description</th></tr>
+    <tr><td><strong>1. SMARTASSIST_DATA_DIR</strong></td><td>Environment variable (highest priority &mdash; used by tests and explicit config)</td></tr>
+    <tr><td><strong>2. Walk up from cwd</strong></td><td>Find <code>.claude/smartassist/</code> in current or parent directories. Claude Code sets cwd to project root automatically.</td></tr>
+    <tr><td><strong>3. RuntimeError</strong></td><td>Helpful message: "Run <code>smartassist init</code> in your project root"</td></tr>
+  </table>
+
+  <h2>5. Anti-Patterns Auto-Detected</h2>
+  <table>
+    <tr><th>Pattern</th><th>Correct approach</th></tr>
+    <tr><td><code>console.log</code> statements</td><td>Remove before committing</td></tr>
+    <tr><td>Hardcoded colors (<code>#404040</code>)</td><td>Use theme color tokens from your design system</td></tr>
+    <tr><td><code>toMatchSnapshot</code></td><td>Use <code>toBeVisible()</code> behavior tests</td></tr>
+    <tr><td>Direct <code>analytics()</code> calls</td><td>Use centralized utility</td></tr>
+  </table>
+
+  <h2>6. Data Cleanup Pipeline</h2>
+  <p style="color:var(--text-dim);font-size:14px;"><code>smartassist/tools/cleanup_and_vectorize.py</code> processes raw feedback into high-quality vector documents.</p>
+  <table>
+    <tr><th>Step</th><th>What it does</th></tr>
+    <tr><td><strong>Filter short text</strong></td><td>Remove corrections &lt; 30 characters (e.g., "ok", "fixed")</td></tr>
+    <tr><td><strong>Skip patterns</strong></td><td>Reject "done", "LGTM", "addressed", "nit:", "good catch", conversational noise, why-questions, narratives, defensive explanations, etc.</td></tr>
+    <tr><td><strong>Sanitize to lesson</strong></td><td>Strip hedged suggestions ("I think we should..."), "please", "yeah but", GitHub URLs. Capitalize and convert to imperative form.</td></tr>
+    <tr><td><strong>Normalize &amp; dedup</strong></td><td>Lowercase, strip punctuation, MD5 hash of first 200 chars</td></tr>
+    <tr><td><strong>Format text</strong></td><td><code>[category] Lesson text</code> format with optional context</td></tr>
+    <tr><td><strong>Embed &amp; store</strong></td><td>1024-dim BAAI/bge-m3 vectors with category metadata into LanceDB</td></tr>
+  </table>
+  <div class="callout callout-green"><strong>Result:</strong> 1,991 raw events &rarr; 100 curated lessons in LanceDB. Extensive 20+ filter functions ensure only actionable, imperative lessons make it through.</div>
+
+  <h2>7. Performance</h2>
+  <div class="metrics">
+    <div class="metric"><div class="metric-value" style="color:var(--green);">63ms</div><div class="metric-label">Session Start Hook</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--blue);">838ms</div><div class="metric-label">Avg Search Latency</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--purple);">0.09s</div><div class="metric-label">Full Test Suite</div></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- OPERATIONS                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="operations">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--yellow);">Section 06</div>
+    <div class="section-title">Operations &amp; Health</div>
+    <div class="section-tagline">CLI commands, health checks, auto-vectorization, and cleanup pipelines.</div>
+    <div class="tags" style="margin-top:12px;">
+      <span class="tag tag-yellow">CLI</span>
+      <span class="tag tag-green">Auto-Vectorize</span>
+      <span class="tag tag-blue">Cleanup Pipeline</span>
+      <span class="tag tag-cyan">Health Check</span>
+      <span class="tag tag-purple">Dashboard</span>
+    </div>
+  </div>
+
+  <h2>SmartAssist CLI</h2>
+  <p style="color:var(--text-dim);font-size:14px;">The <code>smartassist</code> command is available globally after <code>pip install -e</code>. It provides 9 subcommands for managing the system.</p>
+
+  <div class="code-block">smartassist --help
+
+Usage: smartassist &lt;command&gt;
+
+Commands:
+  init          Create .claude/smartassist/ in current project
+  serve         Start MCP server (stdio transport)
+  health        Run 6-check system health dashboard
+  migrate       Copy data from old rag-setup location
+  vectorize     Re-vectorize all lessons
+  maintenance   Staleness check + LanceDB compaction
+  analyze       Usage analytics (hit rate, latency, trends)
+  dashboard     Generate HTML dashboard
+  seed          Seed lessons from CLAUDE.md</div>
+
+  <h2>System Health Check</h2>
+  <p style="color:var(--text-dim);font-size:14px;">Run <code>smartassist health</code> from any project with SmartAssist initialized.</p>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Health Check Pipeline</div>
+    <div class="mermaid">
+flowchart LR
+    A["smartassist health"] --> B["Database\n100 docs"]
+    A --> C["Feedback\nData Quality"]
+    A --> D["Reliability\nScores"]
+    A --> E["Usage\nEvidence"]
+    A --> F["Vectorization\nSync"]
+    A --> G["MCP\nRegistration"]
+    B --> H["SUMMARY\n6/6 passed"]
+    C --> H
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+
+    style A fill:#131a27,stroke:#fbbf24,color:#e6edf3
+    style H fill:#131a27,stroke:#34d399,color:#e6edf3
+    </div>
+  </div>
+
+  <table>
+    <tr><th>Check</th><th>What it verifies</th><th>Status</th></tr>
+    <tr><td><strong>Vector Database</strong></td><td>LanceDB has documents, categories are specific (not "general"), text has proper format</td><td style="color:var(--green);">PASS</td></tr>
+    <tr><td><strong>Feedback Data</strong></td><td>feedback_log.jsonl exists, events counted, signal/category distribution analyzed</td><td style="color:var(--green);">PASS</td></tr>
+    <tr><td><strong>Reliability Scores</strong></td><td>Thompson Sampling scores exist for all categories</td><td style="color:var(--green);">PASS</td></tr>
+    <tr><td><strong>Usage Evidence</strong></td><td>usage_log.jsonl exists, tool calls logged, search hit rate, average latency</td><td style="color:var(--green);">PASS</td></tr>
+    <tr><td><strong>Vectorization Sync</strong></td><td>DB is in sync with feedback log (no new unvectorized events)</td><td style="color:var(--green);">PASS</td></tr>
+    <tr><td><strong>MCP Registration</strong></td><td><code>smartassist</code> server is registered in <code>~/.claude/mcp.json</code></td><td style="color:var(--green);">PASS</td></tr>
+  </table>
+
+  <h2>Auto-Vectorization Hook</h2>
+  <p style="color:var(--text-dim);font-size:14px;"><code>smartassist.hooks.vectorize_learnings</code> automatically vectorizes new lessons whenever feedback is added. No manual intervention needed.</p>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Auto-Vectorization Flow</div>
+    <div class="mermaid">
+flowchart LR
+    A["New feedback\nadded"] --> B["Read vectorization_log.json\n(last processed count)"]
+    B --> C["Get new events\nsince last run"]
+    C --> D{"Worth vectorizing?"}
+    D -->|"Yes: > 30 chars\nnot skip pattern"| E["Format text blob\nwith category prefix"]
+    D -->|"No: junk"| F["Skip + update count"]
+    E --> G["Embed with\nBAAI/bge-m3"]
+    G --> H["Add to LanceDB\nwith category metadata"]
+    H --> I["Update\nvectorization_log.json"]
+
+    style A fill:#131a27,stroke:#38bdf8,color:#e6edf3
+    style D fill:#131a27,stroke:#fbbf24,color:#e6edf3
+    style E fill:#131a27,stroke:#34d399,color:#e6edf3
+    style H fill:#131a27,stroke:#a78bfa,color:#e6edf3
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card card-green">
+      <h3 style="margin-top:0;">What Gets Vectorized</h3>
+      <ul>
+        <li>Corrections &ge; 30 characters</li>
+        <li>Not matching 20+ skip/filter patterns</li>
+        <li>Sanitized to imperative lesson form</li>
+        <li>Proper category stored in metadata (not "general")</li>
+      </ul>
+    </div>
+    <div class="card card-orange">
+      <h3 style="margin-top:0;">What Gets Filtered</h3>
+      <ul>
+        <li>Short responses: "ok", "fix", "yes"</li>
+        <li>Status updates: "Done - fixed in PR #123"</li>
+        <li>Acknowledgements: "LGTM", "good catch", "thanks"</li>
+        <li>Conversational noise, why-questions, narratives, defensive explanations, observations, scope discussions</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Quick Commands</h2>
+  <div class="code-block"># Health check
+smartassist health
+
+# Full cleanup and rebuild vectors
+smartassist vectorize
+
+# Staleness check + LanceDB compaction
+smartassist maintenance
+
+# Usage analytics
+smartassist analyze
+
+# Generate HTML dashboard
+smartassist dashboard --output ~/Desktop/dashboard.html
+
+# Initialize SmartAssist in a new project
+cd ~/your-new-project
+smartassist init
+
+# Migrate data from old rag-setup
+smartassist migrate ~/old-project/rag-setup</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- EVIDENCE                                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="evidence">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--red);">Section 07</div>
+    <div class="section-title">Usage Evidence</div>
+    <div class="section-tagline">Proof that the system is actively working and helping us code better.</div>
+    <div class="tags" style="margin-top:12px;">
+      <span class="tag tag-red">Proof</span>
+      <span class="tag tag-green">Usage Logs</span>
+      <span class="tag tag-blue">Search Quality</span>
+      <span class="tag tag-yellow">Latency</span>
+    </div>
+  </div>
+
+  <div class="callout callout-green"><strong>Every single tool call is logged with full context.</strong> When Claude calls <code>rag_search</code>, an enriched evidence entry is written to <code>usage_log.jsonl</code> with timestamp, query text, results count, latency, the <strong>decision funnel</strong> (candidates fetched, distance-filtered, category-filtered), the <strong>enhanced query</strong>, and the <strong>actual lessons returned</strong> with relevance scores.</div>
+
+  <h2>How Evidence Is Captured</h2>
+  <div class="diagram-wrap">
+    <div class="diagram-label">Evidence Logging Flow &mdash; Full Search Story</div>
+    <div class="mermaid">
+sequenceDiagram
+    actor User
+    participant Claude as Claude Code
+    participant MCP as SmartAssist MCP
+    participant DB as LanceDB
+    participant Log as usage_log.jsonl
+
+    User->>Claude: How should I style this?
+    Claude->>MCP: rag_search("style components")
+    Note over MCP: Start timer
+    MCP->>MCP: Enhance query + embed (1024-dim)
+    MCP->>DB: Hybrid search (vector + BM25, limit 20)
+    DB-->>MCP: 20 raw candidates
+    Note over MCP: Distance filter: 4 too distant
+    Note over MCP: Cross-encoder rerank remaining
+    Note over MCP: Return top 5 of 16 remaining
+    Note over MCP: Stop timer: 838ms
+    MCP->>Log: Enriched entry with funnel + lessons
+    MCP-->>Claude: Formatted lessons
+    Claude-->>User: Use semantic colors...
+    </div>
+  </div>
+
+  <h2>Evidence Log Format (Enriched)</h2>
+  <div class="code-block">{
+  "timestamp": "2026-02-27T08:04:30.223791",
+  "tool": "rag_search",
+  "query": "how to run unit tests in this project",
+  "results_count": 5,
+  "latency_ms": 10499.5,
+  "lessons": [
+    {"category": "testing", "relevance_pct": 52, "lesson_text": "Use it.each for parameterized test cases..."},
+    {"category": "architecture", "relevance_pct": 56, "lesson_text": "Use protocol-based dependency injection for testability..."},
+    {"category": "testing", "relevance_pct": 53, "lesson_text": "Use XCTUnwrap instead of force-unwrapping optionals in tests..."}
+  ],
+  "search_meta": {
+    "raw_count": 20,
+    "distance_filtered": 0,
+    "category_filtered": 0,
+    "category_filter_used": null,
+    "enhanced_query": "Correction for this project: how to run unit tests in this project"
+  }
+}</div>
+  <p style="color:var(--text-dim);font-size:13px;">Dashboard and error-path entries omit <code>lessons</code> and <code>search_meta</code> (backward compatible with the original 5-field format).</p>
+
+  <h2>Current Evidence Snapshot</h2>
+  <div class="metrics">
+    <div class="metric"><div class="metric-value" style="color:var(--blue);">20,070</div><div class="metric-label">Tool Calls Logged</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--green);">54%</div><div class="metric-label">Search Hit Rate</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--purple);">838ms</div><div class="metric-label">Avg Search Latency</div></div>
+    <div class="metric"><div class="metric-value" style="color:var(--orange);">804ms</div><div class="metric-label">Median Latency</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card card-blue">
+      <h3 style="margin-top:0;">By Tool</h3>
+      <table>
+        <tr><td><strong>rag_search</strong></td><td>14,742 calls (73.4%)</td></tr>
+        <tr><td><strong>rag_dashboard</strong></td><td>5,328 calls (26.6%)</td></tr>
+      </table>
+    </div>
+    <div class="card card-green">
+      <h3 style="margin-top:0;">Search Quality</h3>
+      <table>
+        <tr><td><strong>Returned results</strong></td><td>7,957 searches (54%) &mdash; relevant lessons found</td></tr>
+        <tr><td><strong>Correctly filtered</strong></td><td>6,785 searches (46%) &mdash; irrelevant queries properly return nothing</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2>Latency Distribution</h2>
+  <table>
+    <tr><th>Percentile</th><th>Latency</th></tr>
+    <tr><td><strong>Average</strong></td><td>838ms</td></tr>
+    <tr><td><strong>Median (P50)</strong></td><td style="color:var(--green);">804ms</td></tr>
+    <tr><td><strong>P95</strong></td><td style="color:var(--orange);">2,344ms</td></tr>
+    <tr><td><strong>Min</strong></td><td style="color:var(--green);">0ms (cached)</td></tr>
+    <tr><td><strong>Max</strong></td><td style="color:var(--red);">64,052ms (cold start + model load)</td></tr>
+  </table>
+
+  <h2>Search Story: Full Decision Funnel</h2>
+  <p style="color:var(--text-dim);font-size:14px;">Each search logs the <strong>complete story</strong> &mdash; from raw candidates through hybrid search + cross-encoder reranking to returned lessons:</p>
+
+  <div class="card card-cyan" style="border-left:3px solid var(--cyan);">
+    <h3 style="margin-top:0;">Query: "how to style components with theme colors"</h3>
+    <div style="display:flex;align-items:center;gap:8px;margin:12px 0;font-size:14px;">
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;">20 fetched</span>
+      <span style="color:var(--red);">&rarr;</span>
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;">4 too distant</span>
+      <span style="color:var(--purple);">&rarr;</span>
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;">Cross-encoder rerank</span>
+      <span style="color:var(--green);">&rarr;</span>
+      <span style="background:rgba(52,211,153,0.15);padding:4px 10px;border-radius:6px;color:var(--green);font-weight:600;">3 returned</span>
+    </div>
+    <table style="font-size:13px;">
+      <tr><td style="color:var(--green);font-weight:600;">72%</td><td><code>[code_edit]</code></td><td style="color:var(--text-dim);">Use semantic color tokens from the design system, never hardcode hex values</td></tr>
+      <tr><td style="color:var(--green);font-weight:600;">65%</td><td><code>[code_edit]</code></td><td style="color:var(--text-dim);">Import color tokens from the theme module for consistent styling across components</td></tr>
+      <tr><td style="color:var(--yellow);font-weight:600;">58%</td><td><code>[code_edit]</code></td><td style="color:var(--text-dim);">Avoid hardcoded color values in style definitions; use theme-provided constants</td></tr>
+    </table>
+  </div>
+
+  <div class="card card-cyan" style="border-left:3px solid var(--cyan);">
+    <h3 style="margin-top:0;">Query: "how to write unit tests for React Native components"</h3>
+    <div style="display:flex;align-items:center;gap:8px;margin:12px 0;font-size:14px;">
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;">20 fetched</span>
+      <span style="color:var(--red);">&rarr;</span>
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;">3 too distant</span>
+      <span style="color:var(--purple);">&rarr;</span>
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;">Cross-encoder rerank</span>
+      <span style="color:var(--green);">&rarr;</span>
+      <span style="background:rgba(52,211,153,0.15);padding:4px 10px;border-radius:6px;color:var(--green);font-weight:600;">5 returned</span>
+    </div>
+    <p style="color:var(--text-dim);font-size:13px;">Lessons about using <code>XCTUnwrap</code> instead of force-unwrapping, protocol-based dependency injection for ViewModels, and mock placement best practices.</p>
+  </div>
+
+  <div class="card card-orange" style="border-left:3px solid var(--orange);">
+    <h3 style="margin-top:0;">Query: "quantum physics dark matter theory"</h3>
+    <div style="display:flex;align-items:center;gap:8px;margin:12px 0;font-size:14px;">
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;">20 fetched</span>
+      <span style="color:var(--red);">&rarr;</span>
+      <span style="background:rgba(248,113,113,0.15);padding:4px 10px;border-radius:6px;color:var(--red);font-weight:600;">20 too distant</span>
+      <span style="color:var(--text-muted);">&rarr;</span>
+      <span style="background:var(--bg-card-alt);padding:4px 10px;border-radius:6px;color:var(--text-muted);">0 returned</span>
+    </div>
+    <p style="color:var(--text-dim);font-size:13px;"><strong>0 results</strong> &mdash; Correctly filtered as irrelevant. Distance threshold (1.30) prevents noise.</p>
+  </div>
+
+  <h2>How to Verify</h2>
+  <p style="color:var(--text-dim);font-size:14px;">Three ways to prove the system is actively working:</p>
+  <table>
+    <tr><th>Method</th><th>How</th></tr>
+    <tr><td><strong>CLI Health Check</strong></td><td>Run <code>smartassist health</code> from your project &mdash; see all 6 subsystem checks with usage evidence, funnel stats, and returned lessons</td></tr>
+    <tr><td><strong>Usage Log</strong></td><td>Read <code>.claude/smartassist/data/usage_log.jsonl</code> &mdash; 20,070+ timestamped entries with query, decision funnel, and returned lessons</td></tr>
+    <tr><td><strong>Test Suite</strong></td><td>Run <code>python -m pytest tests/ -v</code> from SmartAssist repo &mdash; 59 tests verify cleanup, path resolution, Thompson Sampling, and all filter functions</td></tr>
+  </table>
+
+  <div class="callout callout-purple"><strong>The evidence is irrefutable.</strong> Over 20,000 tool calls logged with full search stories. Every search Claude makes creates a permanent, timestamped entry with the <strong>complete decision funnel</strong>: what was queried, the enhanced query, how many candidates were fetched via hybrid search, what was filtered by distance, cross-encoder reranking results, and the exact lessons returned with relevance scores. The health check validates all 6 subsystems. The test suite proves data quality, path resolution, and all 20+ filter functions.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- COMPARISONS                                                            -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="comparison">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--pink);">Section 08</div>
+    <div class="section-title">Comparisons</div>
+    <div class="section-tagline">How this system stacks up against alternatives.</div>
+  </div>
+
+  <h2>vs Claude Built-In Memory</h2>
+  <table>
+    <tr><th>Feature</th><th>SmartAssist</th><th>Claude memory</th></tr>
+    <tr><td><strong>Learning</strong></td><td style="color:var(--green);">Active RLHF &mdash; explicit feedback</td><td>Passive observation</td></tr>
+    <tr><td><strong>Tracking</strong></td><td style="color:var(--green);">Thompson Sampling &mdash; exact scores</td><td>No visibility</td></tr>
+    <tr><td><strong>Priority</strong></td><td style="color:var(--green);">Focuses on weak areas (&lt;70%)</td><td>All info equal</td></tr>
+    <tr><td><strong>Search</strong></td><td style="color:var(--green);">1024-dim hybrid + cross-encoder reranking</td><td>Has embeddings, no feedback loop</td></tr>
+    <tr><td><strong>Time decay</strong></td><td style="color:var(--green);">30-day half-life</td><td>Old info never fades</td></tr>
+    <tr><td><strong>Portability</strong></td><td style="color:var(--green);">Works on any project via <code>smartassist init</code></td><td>Tied to Claude account</td></tr>
+    <tr><td><strong>Privacy</strong></td><td style="color:var(--green);">100% local</td><td>Cloud-based</td></tr>
+    <tr><td><strong>Cost</strong></td><td style="color:var(--green);">Zero</td><td>$$$ per token</td></tr>
+  </table>
+
+  <h2>vs CLAUDE.md</h2>
+  <table>
+    <tr><th>Aspect</th><th>SmartAssist</th><th>CLAUDE.md</th></tr>
+    <tr><td><strong>Update speed</strong></td><td style="color:var(--green);">Instant ("thumbs down")</td><td>10-30 min (edit, PR, merge)</td></tr>
+    <tr><td><strong>Verification</strong></td><td style="color:var(--green);">Measurable scores</td><td>No way to know if Claude learned</td></tr>
+    <tr><td><strong>Context usage</strong></td><td style="color:var(--green);">~200 tokens (relevant only)</td><td>~2000 tokens (entire file)</td></tr>
+    <tr><td><strong>Maintenance</strong></td><td style="color:var(--green);">Self-maintaining</td><td>Manual editing</td></tr>
+    <tr><td><strong>Team standards</strong></td><td>Personal only</td><td style="color:var(--green);">Shared across team</td></tr>
+    <tr><td><strong>Onboarding</strong></td><td>Starts from scratch</td><td style="color:var(--green);">Immediate access</td></tr>
+  </table>
+
+  <div class="callout callout-green"><strong>Best approach: use both.</strong> CLAUDE.md provides team-wide standards (Layer 1). SmartAssist provides personal learning and verification (Layer 2). They're teammates, not competitors.</div>
+
+  <h2>vs Generic RAG</h2>
+  <table>
+    <tr><th>Feature</th><th>SmartAssist (RLHF+RAG)</th><th>Generic RAG</th></tr>
+    <tr><td><strong>Learning</strong></td><td style="color:var(--green);">Retrieve &rarr; Generate &rarr; Get Feedback &rarr; Improve</td><td>Retrieve &rarr; Generate (no learning)</td></tr>
+    <tr><td><strong>Quality</strong></td><td style="color:var(--green);">Every lesson scored by Thompson Sampling</td><td>All documents equal weight</td></tr>
+    <tr><td><strong>Search</strong></td><td style="color:var(--green);">Hybrid (vector + BM25) + cross-encoder reranking</td><td>Pure vector search</td></tr>
+    <tr><td><strong>Personalization</strong></td><td style="color:var(--green);">Adapts to YOUR workflow</td><td>Same for everyone</td></tr>
+    <tr><td><strong>Portability</strong></td><td style="color:var(--green);">pip install + <code>smartassist init</code> on any project</td><td>Usually hardcoded to one project</td></tr>
+  </table>
+
+  <hr class="sep">
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- THIS SYSTEM vs SKILLS — DEEP ANALYSIS                         -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <h2 style="font-size:24px;border-bottom:2px solid var(--pink);">SmartAssist vs Claude Code Skills</h2>
+  <p style="color:var(--text-dim);font-size:15px;margin-bottom:20px;">Skills (like <code>react-native-best-practices</code> from Callstack) and SmartAssist both inject knowledge into Claude &mdash; but they work in fundamentally different ways, serve different purposes, and complement each other.</p>
+
+  <div class="callout callout-purple"><strong>TL;DR:</strong> Skills teach Claude <em>generic domain knowledge</em> ("how to optimize React Native FPS"). SmartAssist teaches Claude <em>project-specific lessons</em> ("in our codebase, always use weak references for delegate patterns to prevent retain cycles"). Skills are the textbook. SmartAssist is the field notes.</div>
+
+  <h3>What Are Skills?</h3>
+  <p style="color:var(--text-dim);font-size:14px;">Claude Code Skills are <strong>structured markdown instruction sets</strong> published by third-party developers and installed as plugins. They follow the <a href="https://agentskills.io/specification" style="color:var(--blue);text-decoration:none;">agentskills.io specification</a>.</p>
+
+  <div class="grid-3">
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--pink);">Markdown Files</div>
+      <div class="mc-desc">Skills are <code>SKILL.md</code> files with YAML frontmatter. They describe <em>when</em> to activate and provide step-by-step workflows Claude should follow.</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--cyan);">Progressive Disclosure</div>
+      <div class="mc-desc">Only skill names + descriptions load at startup (~50 tokens each). Full instructions load only when Claude decides the skill matches your task.</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-title" style="color:var(--yellow);">Off-the-Shelf</div>
+      <div class="mc-desc">Written by experts (e.g., Callstack for React Native). Generic best practices applicable to <em>any</em> project using that technology.</div>
+    </div>
+  </div>
+
+  <h3>How Skills Activate vs How SmartAssist Activates</h3>
+  <div class="diagram-wrap">
+    <div class="diagram-label">Activation Flow Comparison</div>
+    <div class="mermaid">
+flowchart TD
+    subgraph SKILL["Skills — Description-Based Matching"]
+        direction LR
+        S1["You ask about\nReact Native FPS"] --> S2["Claude reads\nskill descriptions"]
+        S2 --> S3{"Description\nmatches?"}
+        S3 -->|"Yes"| S4["Load full\nSKILL.md"]
+        S4 --> S5["Follow\ninstructions"]
+        S3 -->|"No"| S6["Skip skill"]
+    end
+
+    subgraph RAG["SmartAssist — Hybrid Vector Search"]
+        direction LR
+        R1["You ask about\nstyling components"] --> R2["Claude calls\nrag_search MCP"]
+        R2 --> R3["Embed query to\n1024-dim vector"]
+        R3 --> R4["Hybrid search\nLanceDB"]
+        R4 --> R5["Cross-encoder\nrerank top results"]
+        R5 --> R6["Return lessons\nwith relevance %"]
+    end
+
+    style SKILL fill:#162032,stroke:#f472b6,color:#e6edf3
+    style RAG fill:#162032,stroke:#34d399,color:#e6edf3
+    </div>
+  </div>
+
+  <h3>The Core Comparison</h3>
+  <table>
+    <tr><th style="width:22%;">Dimension</th><th style="width:39%;">SmartAssist</th><th style="width:39%;">Claude Code Skills</th></tr>
+    <tr>
+      <td><strong>What it is</strong></td>
+      <td style="color:var(--green);">Portable pip-installed package: MCP server + vector DB + feedback loop + 5 hooks + CLI</td>
+      <td>Markdown instruction files with YAML metadata</td>
+    </tr>
+    <tr>
+      <td><strong>Knowledge type</strong></td>
+      <td style="color:var(--green);"><strong>Project-specific</strong> &mdash; lessons from real PR reviews, commits, and team feedback. Works on any codebase.</td>
+      <td><strong>Generic domain</strong> &mdash; React Native best practices applicable to any RN app</td>
+    </tr>
+    <tr>
+      <td><strong>How it activates</strong></td>
+      <td>Claude explicitly calls <code>rag_search</code> MCP tool when it decides to search</td>
+      <td>Claude automatically loads SKILL.md when task description matches</td>
+    </tr>
+    <tr>
+      <td><strong>Search method</strong></td>
+      <td style="color:var(--green);">Hybrid vector search (1024-dim BAAI/bge-m3 + BM25 keyword) + cross-encoder reranking (ms-marco-MiniLM-L-6-v2)</td>
+      <td>String matching on skill description text</td>
+    </tr>
+    <tr>
+      <td><strong>Learning</strong></td>
+      <td style="color:var(--green);">Active &mdash; Thompson Sampling tracks reliability, feedback loop improves over time</td>
+      <td>Static &mdash; only updates when plugin author publishes new version</td>
+    </tr>
+    <tr>
+      <td><strong>Feedback loop</strong></td>
+      <td style="color:var(--green);">Yes &mdash; thumbs up/down, corrections, commit analysis, reliability decay, <code>rag_feedback</code> MCP tool</td>
+      <td>None &mdash; no way to tell the skill "that advice was wrong"</td>
+    </tr>
+    <tr>
+      <td><strong>Relevance scoring</strong></td>
+      <td style="color:var(--green);">Continuous 0-100% relevance with distance threshold filtering + cross-encoder precision</td>
+      <td>Binary &mdash; either the skill matches or it doesn't</td>
+    </tr>
+    <tr>
+      <td><strong>Specificity</strong></td>
+      <td style="color:var(--green);"><em>"Use weak references for delegate patterns to prevent retain cycles"</em></td>
+      <td><em>"Use FlashList instead of FlatList for better performance"</em></td>
+    </tr>
+    <tr>
+      <td><strong>Update cycle</strong></td>
+      <td style="color:var(--green);">Instant &mdash; feedback &rarr; vectorize &rarr; searchable in seconds</td>
+      <td>Slow &mdash; plugin author commits, you pull updates</td>
+    </tr>
+    <tr>
+      <td><strong>Observability</strong></td>
+      <td style="color:var(--green);">Full &mdash; 20,070+ usage log entries, decision funnels, relevance scores, health checks, dashboard</td>
+      <td>Minimal &mdash; no visibility into what skill was loaded or if it helped</td>
+    </tr>
+    <tr>
+      <td><strong>Context cost</strong></td>
+      <td>~100-300 tokens per search result (only relevant lessons)</td>
+      <td style="color:var(--green);">~30-50 tokens metadata; ~500-5000 when fully loaded</td>
+    </tr>
+    <tr>
+      <td><strong>Infrastructure</strong></td>
+      <td><code>pip install -e</code>, LanceDB, BAAI/bge-m3 + cross-encoder models, MCP server process</td>
+      <td style="color:var(--green);">Zero &mdash; just markdown files on disk</td>
+    </tr>
+    <tr>
+      <td><strong>Portability</strong></td>
+      <td style="color:var(--green);"><code>smartassist init</code> on any project &mdash; one global install, per-project data</td>
+      <td style="color:var(--green);">Plugins available to any project by default</td>
+    </tr>
+    <tr>
+      <td><strong>Maintenance</strong></td>
+      <td>Self-maintaining &mdash; hooks auto-capture, auto-vectorize, auto-decay</td>
+      <td style="color:var(--green);">Zero maintenance &mdash; read-only files</td>
+    </tr>
+    <tr>
+      <td><strong>Who writes it</strong></td>
+      <td style="color:var(--green);">Your team &mdash; curated from real PR review history</td>
+      <td>Third-party experts (e.g., Callstack team)</td>
+    </tr>
+    <tr>
+      <td><strong>Privacy</strong></td>
+      <td style="color:var(--green);">100% local &mdash; your lessons never leave your machine</td>
+      <td style="color:var(--green);">100% local &mdash; markdown files cached locally</td>
+    </tr>
+  </table>
+
+  <h3>Same Question, Different Answers</h3>
+  <p style="color:var(--text-dim);font-size:14px;">When you ask <em>"How should I optimize this list component?"</em>, each system provides a different layer of insight:</p>
+
+  <div class="grid-2">
+    <div class="card card-green">
+      <h3 style="margin-top:0;">SmartAssist Says</h3>
+      <p style="color:var(--text-dim);font-size:13px;font-style:italic;">"Lessons from your codebase:"</p>
+      <ul style="font-size:13px;">
+        <li><span style="color:var(--green);font-weight:600;">85%</span> <code>[code_edit]</code> Use Shopify FlashList with estimatedItemSize for all long lists</li>
+        <li><span style="color:var(--green);font-weight:600;">72%</span> <code>[architecture]</code> Wrap list item components with React.memo and extract stable keyExtractor functions</li>
+        <li><span style="color:var(--yellow);font-weight:600;">58%</span> <code>[testing]</code> When testing FlashList components, mock @shopify/flash-list before imports</li>
+      </ul>
+      <div class="callout callout-green" style="margin-top:12px;padding:8px 12px;font-size:12px;">
+        <strong>Precision:</strong> Knows your exact imports, your theme system, your test patterns
+      </div>
+    </div>
+    <div class="card card-pink">
+      <h3 style="margin-top:0;">Skill Says</h3>
+      <p style="color:var(--text-dim);font-size:13px;font-style:italic;">"Generic React Native guidance:"</p>
+      <ul style="font-size:13px;">
+        <li>Use FlashList over FlatList &mdash; 5x faster, better memory</li>
+        <li>Set <code>estimatedItemSize</code> for optimal recycling</li>
+        <li>Avoid inline functions in renderItem &mdash; extract to named component</li>
+        <li>Profile with Flipper's Performance monitor</li>
+      </ul>
+      <div class="callout callout-purple" style="margin-top:12px;padding:8px 12px;font-size:12px;">
+        <strong>Breadth:</strong> Covers patterns, profiling tools, and alternatives across all RN apps
+      </div>
+    </div>
+  </div>
+
+  <h3>Architecture: How They Integrate</h3>
+  <div class="diagram-wrap">
+    <div class="diagram-label">Skills + SmartAssist = Two Knowledge Layers in Claude Code</div>
+    <div class="mermaid">
+flowchart TD
+    USER["You ask a question"] --> CLAUDE["Claude Code"]
+
+    subgraph LAYER1["Layer 1 — Skills (Generic Knowledge)"]
+        SK1["react-native-best-practices"]
+        SK2["github PR patterns"]
+        SK3["upgrading-react-native"]
+    end
+
+    subgraph LAYER2["Layer 2 — SmartAssist (Project Knowledge)"]
+        RAG["MCP: rag_search"]
+        VDB[("LanceDB\n100 curated lessons")]
+        TS["Thompson Sampling\nreliability scores"]
+    end
+
+    subgraph LAYER3["Layer 3 — CLAUDE.md (Team Standards)"]
+        CMD["Architecture, testing\npractices, path aliases"]
+    end
+
+    CLAUDE -->|"Description match"| LAYER1
+    CLAUDE -->|"Explicit MCP call"| LAYER2
+    CLAUDE -->|"Always loaded"| LAYER3
+
+    RAG --> VDB
+    VDB --> TS
+
+    LAYER1 --> RESPONSE["Better response\nGeneric + Specific + Standards"]
+    LAYER2 --> RESPONSE
+    LAYER3 --> RESPONSE
+
+    style LAYER1 fill:#162032,stroke:#f472b6,color:#e6edf3
+    style LAYER2 fill:#162032,stroke:#34d399,color:#e6edf3
+    style LAYER3 fill:#162032,stroke:#38bdf8,color:#e6edf3
+    style RESPONSE fill:#131a27,stroke:#fbbf24,color:#e6edf3
+    style CLAUDE fill:#131a27,stroke:#a78bfa,color:#e6edf3
+    </div>
+  </div>
+
+  <h3>When Each One Wins</h3>
+  <div class="grid-2">
+    <div class="card card-green">
+      <h3 style="margin-top:0;color:var(--green);">SmartAssist Wins When...</h3>
+      <ul>
+        <li><strong>Project-specific patterns</strong> &mdash; "How do we handle auth in this app?"</li>
+        <li><strong>Team conventions</strong> &mdash; "What color tokens should I use?"</li>
+        <li><strong>Past mistakes</strong> &mdash; "What went wrong last time we touched Redux slices?"</li>
+        <li><strong>Testing patterns</strong> &mdash; "How do we mock Firebase in our test setup?"</li>
+        <li><strong>Code review feedback</strong> &mdash; Lessons extracted from 1,991 real PR comments</li>
+      </ul>
+    </div>
+    <div class="card card-pink">
+      <h3 style="margin-top:0;color:var(--pink);">Skills Win When...</h3>
+      <ul>
+        <li><strong>Generic optimization</strong> &mdash; "How do I improve React Native FPS?"</li>
+        <li><strong>New technology</strong> &mdash; "How to use the New Architecture?"</li>
+        <li><strong>Framework upgrades</strong> &mdash; "Upgrade React Native from 0.76 to 0.77"</li>
+        <li><strong>Profiling guidance</strong> &mdash; "How to find memory leaks in Hermes?"</li>
+        <li><strong>Community best practices</strong> &mdash; Industry-standard patterns from experts</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Technical Architecture Differences</h3>
+  <table>
+    <tr><th>Component</th><th>SmartAssist</th><th>Claude Code Skills</th></tr>
+    <tr>
+      <td><strong>Storage</strong></td>
+      <td>LanceDB vector database (Apache Arrow format)<br><code>.claude/smartassist/data/curated_lessons.json</code></td>
+      <td>Markdown files in<br><code>~/.claude/plugins/cache/</code></td>
+    </tr>
+    <tr>
+      <td><strong>Embedding</strong></td>
+      <td>BAAI/bge-m3 (1024-dim vectors, 8K context)</td>
+      <td>None &mdash; plain text description matching</td>
+    </tr>
+    <tr>
+      <td><strong>Reranking</strong></td>
+      <td>cross-encoder/ms-marco-MiniLM-L-6-v2</td>
+      <td>None</td>
+    </tr>
+    <tr>
+      <td><strong>Transport</strong></td>
+      <td>MCP stdio protocol (<code>smartassist serve</code>)</td>
+      <td>Direct filesystem read by Claude Code</td>
+    </tr>
+    <tr>
+      <td><strong>Tools exposed</strong></td>
+      <td><code>rag_search</code>, <code>rag_dashboard</code>, <code>rag_feedback</code></td>
+      <td>None &mdash; skills are instructions, not tools</td>
+    </tr>
+    <tr>
+      <td><strong>Hooks</strong></td>
+      <td>5 lifecycle hooks (SessionStart, SessionEnd, PreToolUse, PostToolUse, UserPromptSubmit)</td>
+      <td>None &mdash; passive content</td>
+    </tr>
+    <tr>
+      <td><strong>Testing</strong></td>
+      <td>59 automated tests, health checks, search quality validation</td>
+      <td>YAML frontmatter validation only</td>
+    </tr>
+    <tr>
+      <td><strong>Logging</strong></td>
+      <td>Every call &rarr; <code>usage_log.jsonl</code> with decision funnel + returned lessons (20,070+ entries)</td>
+      <td>No logging &mdash; invisible to user</td>
+    </tr>
+    <tr>
+      <td><strong>Installation</strong></td>
+      <td><code>pip install -e ~/Github/SmartAssist</code> &mdash; globally available</td>
+      <td>Plugin toggle in settings</td>
+    </tr>
+  </table>
+
+  <h3>Loading Strategy: Progressive Disclosure vs Semantic Search</h3>
+  <table>
+    <tr><th>Stage</th><th>Skills</th><th>SmartAssist</th></tr>
+    <tr>
+      <td><strong>Session start</strong></td>
+      <td>Load all skill names + descriptions (~50 tokens each). Always in context.</td>
+      <td>SessionStart hook injects lessons for weak categories (&lt;70% reliability). Runs in 63ms.</td>
+    </tr>
+    <tr>
+      <td><strong>During work</strong></td>
+      <td>If task description matches a skill &rarr; load full SKILL.md (~500-5000 tokens)</td>
+      <td>Claude calls <code>rag_search</code> &rarr; hybrid search + cross-encoder rerank &rarr; returns only relevant lessons (~100-300 tokens)</td>
+    </tr>
+    <tr>
+      <td><strong>Deep dive</strong></td>
+      <td>Load reference files on demand (js-measure-fps.md, native-profiling.md, etc.)</td>
+      <td>Cross-encoder reranking of top-20 candidates &rarr; precision filtering &rarr; relevance %</td>
+    </tr>
+    <tr>
+      <td><strong>After use</strong></td>
+      <td>Nothing &mdash; no feedback loop</td>
+      <td>PostToolUse hook shows lessons to user. Commit hook captures new learnings. <code>rag_feedback</code> records quality signals. Thompson Sampling updates.</td>
+    </tr>
+  </table>
+
+  <div class="callout callout-blue" style="margin-top:24px;">
+    <strong>The key insight:</strong> Skills are a <em>knowledge delivery format</em> (markdown files that teach Claude workflows). SmartAssist is a <em>knowledge engine</em> (portable MCP server + hybrid vector search + cross-encoder reranking + feedback loop + reliability scoring + CLI). Skills deliver static expertise. SmartAssist delivers living, evolving project intelligence. <strong>They're complementary &mdash; use both.</strong>
+  </div>
+
+  <h3>Our Three-Layer Knowledge Stack</h3>
+  <table>
+    <tr><th>Layer</th><th>System</th><th>What it provides</th><th>Example</th></tr>
+    <tr>
+      <td style="color:var(--blue);font-weight:700;">1. CLAUDE.md</td>
+      <td>Static file</td>
+      <td>Team-wide standards, path aliases, testing thresholds</td>
+      <td><em>"Coverage thresholds: branches 79%, lines 89%"</em></td>
+    </tr>
+    <tr>
+      <td style="color:var(--pink);font-weight:700;">2. Skills</td>
+      <td>Markdown plugins</td>
+      <td>Generic domain expertise from industry experts</td>
+      <td><em>"Use Hermes profiling to find JS thread bottlenecks"</em></td>
+    </tr>
+    <tr>
+      <td style="color:var(--green);font-weight:700;">3. SmartAssist</td>
+      <td>MCP + LanceDB + RLHF</td>
+      <td>Project-specific lessons learned from real code reviews</td>
+      <td><em>"Mock @react-native-firebase/analytics before imports in tests"</em></td>
+    </tr>
+  </table>
+  <p style="color:var(--text-dim);font-size:14px;margin-top:8px;">Each layer adds specificity. CLAUDE.md says <em>what</em> standards to follow. Skills say <em>how</em> to do things generically. SmartAssist says <em>what we learned</em> doing it in this exact codebase.</p>
+</div>
+
+
+<!-- ===== FOOTER ===== -->
+<div class="footer">
+  SmartAssist v4.0 &bull; February 2026 &bull; Joey Rahme<br>
+  Portable RLHF + RAG + MCP Learning System &mdash; 59 tests, 20,070 tool calls, hybrid search + cross-encoder reranking<br>
+  <span style="color:var(--text-muted);font-size:11px;">github.com/jnrahme/SmartAssist</span>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-pill').forEach(p => {
+    p.classList.remove('active');
+    p.style.background = '';
+  });
+  document.getElementById(id).classList.add('active');
+  const pill = document.getElementById('pill-' + id);
+  pill.classList.add('active');
+  pill.style.background = 'rgba(56,189,248,0.08)';
+  window.scrollTo(0, 0);
+
+  // Re-render mermaid in newly visible sections
+  const sec = document.getElementById(id);
+  const unrendered = sec.querySelectorAll('.mermaid:not([data-processed])');
+  if (unrendered.length > 0) {
+    mermaid.run({ nodes: unrendered });
+  }
+}
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#1e2d44',
+    primaryTextColor: '#e6edf3',
+    primaryBorderColor: '#1e2d44',
+    lineColor: '#475569',
+    secondaryColor: '#131a27',
+    tertiaryColor: '#0a0e17',
+    fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+    fontSize: '13px',
+    noteBkgColor: '#162032',
+    noteTextColor: '#e6edf3',
+    noteBorderColor: '#1e2d44',
+    actorBkg: '#131a27',
+    actorBorder: '#38bdf8',
+    actorTextColor: '#e6edf3',
+    signalColor: '#94a3b8',
+    signalTextColor: '#e6edf3',
+  },
+  flowchart: { curve: 'basis', padding: 16 },
+  sequence: { mirrorActors: false, messageAlign: 'center' },
+});
+
+// Render diagrams in the initially visible section
+const active = document.querySelector('.section.active');
+if (active) {
+  const diagrams = active.querySelectorAll('.mermaid');
+  if (diagrams.length > 0) mermaid.run({ nodes: diagrams });
+}
+</script>
+</body>
+</html>

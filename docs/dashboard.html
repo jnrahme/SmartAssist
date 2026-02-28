@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartAssist Lessons Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --bg-card: #131a27;
+    --bg-alt: #162032;
+    --border: #1e2d44;
+    --text: #e6edf3;
+    --dim: #94a3b8;
+    --muted: #64748b;
+    --blue: #38bdf8;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --yellow: #fbbf24;
+    --cyan: #22d3ee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  .hero { text-align: center; margin-bottom: 32px; }
+  .hero h1 {
+    font-size: 32px; font-weight: 800;
+    background: linear-gradient(135deg, #38bdf8, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero .sub { color: var(--dim); font-size: 14px; margin-top: 4px; }
+  .hero .ts { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 20px 0; }
+  .metric { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .metric-val { font-size: 24px; font-weight: 800; }
+  .metric-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+
+  h2 {
+    font-size: 18px; font-weight: 700; margin: 32px 0 12px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border);
+  }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin: 12px 0;
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  th { background: var(--bg-alt); color: var(--dim); padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border: 1px solid var(--border); }
+  td { padding: 8px 12px; border: 1px solid var(--border); color: var(--dim); }
+  td strong { color: var(--text); }
+
+  .callout { border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; }
+  .callout-green { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.25); color: var(--green); }
+  .callout-blue { background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); color: var(--blue); }
+  .callout-orange { background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.25); color: var(--orange); }
+
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin: 2px; }
+  .tag-blue { background: rgba(56,189,248,0.12); color: var(--blue); }
+  .tag-green { background: rgba(52,211,153,0.12); color: var(--green); }
+  .tag-orange { background: rgba(251,146,60,0.12); color: var(--orange); }
+  .tag-red { background: rgba(248,113,113,0.12); color: var(--red); }
+  .tag-purple { background: rgba(167,139,250,0.12); color: var(--purple); }
+  .tag-cyan { background: rgba(34,211,238,0.12); color: var(--cyan); }
+  .tag-yellow { background: rgba(251,191,36,0.12); color: var(--yellow); }
+
+  .summary-banner {
+    text-align: center; padding: 16px; border-radius: 10px; margin: 24px 0;
+    font-size: 18px; font-weight: 700;
+  }
+  .summary-pass { background: rgba(52,211,153,0.1); border: 2px solid rgba(52,211,153,0.3); color: var(--green); }
+  .summary-warn { background: rgba(251,146,60,0.1); border: 2px solid rgba(251,146,60,0.3); color: var(--orange); }
+
+  .footer { margin-top: 40px; text-align: center; color: var(--muted); font-size: 12px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+  /* Search */
+  .search-wrap { position: relative; margin: 24px 0 8px; }
+  .search-input {
+    width: 100%; padding: 14px 18px 14px 44px;
+    background: var(--bg-card); border: 2px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 15px; outline: none;
+    font-family: inherit; transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--blue); }
+  .search-input::placeholder { color: var(--muted); }
+  .search-icon {
+    position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 16px; pointer-events: none;
+  }
+  .search-meta { display: flex; justify-content: space-between; align-items: center; margin: 8px 4px; font-size: 12px; color: var(--muted); }
+  .search-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 16px; }
+  .filter-btn {
+    padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--dim);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: var(--blue); color: var(--text); }
+  .filter-btn.active { border-color: var(--blue); color: var(--blue); background: rgba(56,189,248,0.08); }
+  .lesson-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 20px; margin: 8px 0; transition: border-color 0.15s;
+  }
+  .lesson-card:hover { border-color: rgba(56,189,248,0.4); }
+  .lesson-cat {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 600; margin-bottom: 6px;
+  }
+  .lesson-text { font-size: 14px; line-height: 1.5; color: var(--text); }
+  .lesson-text mark { background: rgba(56,189,248,0.2); color: var(--blue); border-radius: 2px; padding: 0 2px; }
+  .lesson-context { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .lesson-query { font-size: 12px; color: var(--dim); margin-top: 4px; font-style: italic; }
+  #search-results { max-height: 600px; overflow-y: auto; }
+  .no-results { text-align: center; padding: 40px; color: var(--muted); }
+
+  @media (max-width: 768px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>SmartAssist Lessons Dashboard</h1>
+  <p class="sub">RLHF + RAG + MCP Intelligent Learning System</p>
+  <p class="ts">Example Dashboard (demo data) &bull; SmartAssist v4.0 &bull; Joey Rahme</p>
+</div>
+
+<!-- SUMMARY BANNER -->
+<div class="callout callout-blue" style="margin-bottom:20px;">
+  <strong>This is a demo dashboard</strong> showing example iOS/Swift lessons. When you install SmartAssist and run <code>smartassist init</code>, your project starts empty &mdash; lessons are generated from <em>your</em> feedback, code reviews, and corrections over time.
+</div>
+
+<div class="summary-banner summary-pass">
+  7/7 Health Checks Passed
+</div>
+
+<!-- TOP METRICS -->
+<div class="metrics">
+  <div class="metric"><div class="metric-val" style="color:var(--blue);">1,991</div><div class="metric-lbl">Raw Events</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--green);">100</div><div class="metric-lbl">Clean Lessons</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--purple);">6</div><div class="metric-lbl">Categories</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--cyan);">20,070</div><div class="metric-lbl">Tool Calls</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--yellow);">54%</div><div class="metric-lbl">Hit Rate</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--orange);">838ms</div><div class="metric-lbl">Avg Latency</div></div>
+</div>
+
+<!-- LESSON SEARCH -->
+<h2>Search Lessons</h2>
+<div class="search-wrap">
+  <span class="search-icon">&#128269;</span>
+  <input type="text" class="search-input" id="searchInput" placeholder="Search lessons... e.g. auto layout, testing, memory management" autocomplete="off">
+</div>
+<div class="search-meta">
+  <span id="searchCount"></span>
+  <span id="searchHint" style="font-style:italic;">Type to search across 30 example lessons</span>
+</div>
+<div class="search-filters">
+  <button class="filter-btn active" onclick="filterCat('all')">All</button>
+  <button class="filter-btn" onclick="filterCat('architecture')">architecture</button><button class="filter-btn" onclick="filterCat('testing')">testing</button><button class="filter-btn" onclick="filterCat('code_edit')">code_edit</button><button class="filter-btn" onclick="filterCat('pr_review')">pr_review</button><button class="filter-btn" onclick="filterCat('git')">git</button><button class="filter-btn" onclick="filterCat('security')">security</button>
+</div>
+<div id="search-results"></div>
+
+<!-- HEALTH CHECKS -->
+<h2>System Health</h2>
+<div class="card">
+  <table>
+    <tr><th>Check</th><th>Status</th></tr>
+    <tr><td><strong>Vector Database</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+    <tr><td><strong>Feedback Data</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+    <tr><td><strong>Reliability Scores</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+    <tr><td><strong>Usage Evidence</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+    <tr><td><strong>Vectorization Sync</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+    <tr><td><strong>MCP Server</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+    <tr><td><strong>Search Quality</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+  </table>
+</div>
+
+<!-- RELIABILITY SCORES -->
+<h2>Reliability Scores (Thompson Sampling)</h2>
+<div class="card">
+  <table>
+    <tr><th>Category</th><th>Score</th><th>Status</th></tr>
+    <tr>
+      <td><strong>testing</strong></td>
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;height:10px;background:#1e2d44;border-radius:5px;overflow:hidden;">
+          <div style="width:78.0%;height:100%;background:#34d399;border-radius:5px;"></div>
+        </div>
+        <span style="color:#34d399;font-weight:700;width:50px;text-align:right;">78.0%</span>
+      </div></td>
+      <td style="color:#34d399;font-weight:600;">GOOD</td>
+    </tr>
+    <tr>
+      <td><strong>code_edit</strong></td>
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;height:10px;background:#1e2d44;border-radius:5px;overflow:hidden;">
+          <div style="width:82.0%;height:100%;background:#34d399;border-radius:5px;"></div>
+        </div>
+        <span style="color:#34d399;font-weight:700;width:50px;text-align:right;">82.0%</span>
+      </div></td>
+      <td style="color:#34d399;font-weight:600;">GOOD</td>
+    </tr>
+    <tr>
+      <td><strong>git</strong></td>
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;height:10px;background:#1e2d44;border-radius:5px;overflow:hidden;">
+          <div style="width:65.0%;height:100%;background:#fbbf24;border-radius:5px;"></div>
+        </div>
+        <span style="color:#fbbf24;font-weight:700;width:50px;text-align:right;">65.0%</span>
+      </div></td>
+      <td style="color:#f87171;font-weight:600;">WEAK</td>
+    </tr>
+    <tr>
+      <td><strong>architecture</strong></td>
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;height:10px;background:#1e2d44;border-radius:5px;overflow:hidden;">
+          <div style="width:74.0%;height:100%;background:#34d399;border-radius:5px;"></div>
+        </div>
+        <span style="color:#34d399;font-weight:700;width:50px;text-align:right;">74.0%</span>
+      </div></td>
+      <td style="color:#34d399;font-weight:600;">GOOD</td>
+    </tr>
+    <tr>
+      <td><strong>pr_review</strong></td>
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;height:10px;background:#1e2d44;border-radius:5px;overflow:hidden;">
+          <div style="width:71.0%;height:100%;background:#34d399;border-radius:5px;"></div>
+        </div>
+        <span style="color:#34d399;font-weight:700;width:50px;text-align:right;">71.0%</span>
+      </div></td>
+      <td style="color:#34d399;font-weight:600;">GOOD</td>
+    </tr>
+    <tr>
+      <td><strong>security</strong></td>
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;height:10px;background:#1e2d44;border-radius:5px;overflow:hidden;">
+          <div style="width:60.0%;height:100%;background:#fbbf24;border-radius:5px;"></div>
+        </div>
+        <span style="color:#fbbf24;font-weight:700;width:50px;text-align:right;">60.0%</span>
+      </div></td>
+      <td style="color:#f87171;font-weight:600;">WEAK</td>
+    </tr>
+  </table>
+  <div class="callout callout-blue" style="margin-top:12px;">
+    <strong>Formula:</strong> Reliability = &alpha; / (&alpha; + &beta;) &bull; Threshold: 70% &bull; Decay: 30-day half-life &bull;
+    <strong>2</strong> categories below threshold
+  </div>
+</div>
+
+<!-- VECTOR DATABASE -->
+<h2>Vector Database</h2>
+<div class="grid-2">
+  <div class="card">
+    <h3 style="font-size:14px;margin-bottom:8px;color:var(--blue);">Category Distribution</h3>
+    <table>
+      <tr><th>Category</th><th>Documents</th><th>Percentage</th></tr>
+      <tr><td><strong>architecture</strong></td><td>25</td><td>25.0%</td></tr>
+      <tr><td><strong>testing</strong></td><td>25</td><td>25.0%</td></tr>
+      <tr><td><strong>code_edit</strong></td><td>25</td><td>25.0%</td></tr>
+      <tr><td><strong>pr_review</strong></td><td>15</td><td>15.0%</td></tr>
+      <tr><td><strong>git</strong></td><td>7</td><td>7.0%</td></tr>
+      <tr><td><strong>security</strong></td><td>3</td><td>3.0%</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3 style="font-size:14px;margin-bottom:8px;color:var(--green);">Data Quality</h3>
+    <table>
+      <tr><td><strong>Total documents</strong></td><td>100</td></tr>
+      <tr><td><strong>Correction: format</strong></td><td>100% of docs</td></tr>
+      <tr><td><strong>Raw events</strong></td><td>1,991</td></tr>
+      <tr><td><strong>After cleanup</strong></td><td>910 (junk removed: 1,081)</td></tr>
+      <tr><td><strong>Vectorization sync</strong></td><td>In sync</td></tr>
+      <tr><td><strong>Embedding model</strong></td><td>BAAI/bge-m3 (1024-dim)</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- FEEDBACK DATA -->
+<h2>Feedback Breakdown</h2>
+<div class="grid-2">
+  <div class="card">
+    <h3 style="font-size:14px;margin-bottom:8px;color:var(--orange);">By Signal</h3>
+    <table>
+      <tr><th>Signal</th><th>Count</th><th>Percentage</th></tr>
+      <tr><td><strong>correction</strong></td><td>1,954</td><td>98.1%</td></tr>
+      <tr><td><strong>thumbs_up</strong></td><td>35</td><td>1.8%</td></tr>
+      <tr><td><strong>happy</strong></td><td>1</td><td>0.1%</td></tr>
+      <tr><td><strong>sad</strong></td><td>1</td><td>0.1%</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3 style="font-size:14px;margin-bottom:8px;color:var(--purple);">By Category</h3>
+    <table>
+      <tr><th>Category</th><th>Count</th><th>Percentage</th></tr>
+      <tr><td><strong>pr_review</strong></td><td>594</td><td>29.8%</td></tr>
+      <tr><td><strong>code_edit</strong></td><td>531</td><td>26.7%</td></tr>
+      <tr><td><strong>testing</strong></td><td>404</td><td>20.3%</td></tr>
+      <tr><td><strong>architecture</strong></td><td>374</td><td>18.8%</td></tr>
+      <tr><td><strong>git</strong></td><td>74</td><td>3.7%</td></tr>
+      <tr><td><strong>security</strong></td><td>14</td><td>0.7%</td></tr>
+    </table>
+  </div>
+</div>
+<div class="callout callout-orange">
+  <strong>Note:</strong> 1,938 events (97%) have response == correction (PR harvester pattern). These are cleaned during vectorization &mdash; the correction text IS the lesson.
+</div>
+
+<!-- USAGE EVIDENCE -->
+<h2>Usage Evidence</h2>
+<div class="callout callout-green">
+  <strong>Every tool call is logged with full context.</strong> When Claude calls <code>rag_search</code>, an enriched entry is written to <code>usage_log.jsonl</code> with timestamp, query, results count, latency, the <strong>decision funnel</strong> (candidates fetched &rarr; distance filtered &rarr; category filtered &rarr; returned), and the <strong>actual lessons returned</strong> with relevance scores.
+</div>
+<div class="metrics">
+  <div class="metric"><div class="metric-val" style="color:var(--blue);">14,742</div><div class="metric-lbl">rag_search</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--purple);">5,328</div><div class="metric-lbl">rag_dashboard</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--green);">2,264</div><div class="metric-lbl">Last 24h</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--cyan);">20,070</div><div class="metric-lbl">Last 7 days</div></div>
+  <div class="metric"><div class="metric-val" style="color:var(--orange);">2.7</div><div class="metric-lbl">Avg Lessons/Search</div></div>
+</div>
+
+<div class="card">
+  <h3 style="font-size:14px;margin-bottom:8px;color:var(--cyan);">Recent Searches &mdash; Full Search Story</h3>
+  <p style="color:var(--muted);font-size:12px;margin-bottom:8px;">Each search shows: original query, decision funnel (what was filtered and why), and the actual lessons returned to Claude.</p>
+  <table>
+    <tr><th>Time</th><th>Results</th><th>Query</th><th>Latency</th></tr>
+    <tr>
+      <td style="color:#64748b;">14:22:15</td>
+      <td style="color:#34d399;font-weight:600;">5</td>
+      <td>how to handle memory management</td>
+      <td style="color:#64748b;">842ms</td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 4px 24px;border-top:none;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+          <span style="color:var(--dim);">Funnel:</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">20 fetched</span>
+          <span style="color:var(--red);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">3 too distant</span>
+          <span style="color:var(--yellow);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">0 cat filtered</span>
+          <span style="color:var(--green);">&rarr;</span>
+          <span style="background:rgba(52,211,153,0.12);padding:2px 8px;border-radius:4px;color:var(--green);font-weight:600;">5 returned</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 4px 24px;border-top:none;">
+        <div style="font-size:11px;">
+          <span style="color:var(--purple);font-weight:600;">Enhanced:</span>
+          <span style="color:var(--dim);font-style:italic;">"Correction for this project: how to handle memory management"</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 8px 24px;border-top:none;">
+        <div style="font-size:11px;color:var(--cyan);font-weight:600;margin-bottom:2px;">Returned lessons:</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#34d399;font-weight:600;min-width:32px;">72%</span><span class="tag tag-blue" style="font-size:10px;">architecture</span><span style="color:var(--dim);">Use weak references for delegate patterns to prevent retain cycles between objec</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#34d399;font-weight:600;min-width:32px;">68%</span><span class="tag tag-blue" style="font-size:10px;">architecture</span><span style="color:var(--dim);">Profile memory usage with Instruments before and after changes to verify no leak</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#fbbf24;font-weight:600;min-width:32px;">55%</span><span class="tag tag-blue" style="font-size:10px;">code_edit</span><span style="color:var(--dim);">Use autoreleasepool blocks in tight loops that create many temporary objects</span></div>
+      </td>
+    </tr>
+    <tr>
+      <td style="color:#64748b;">14:21:48</td>
+      <td style="color:#34d399;font-weight:600;">4</td>
+      <td>how to write unit tests for view models</td>
+      <td style="color:#64748b;">756ms</td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 4px 24px;border-top:none;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+          <span style="color:var(--dim);">Funnel:</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">20 fetched</span>
+          <span style="color:var(--red);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">2 too distant</span>
+          <span style="color:var(--yellow);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">0 cat filtered</span>
+          <span style="color:var(--green);">&rarr;</span>
+          <span style="background:rgba(52,211,153,0.12);padding:2px 8px;border-radius:4px;color:var(--green);font-weight:600;">4 returned</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 4px 24px;border-top:none;">
+        <div style="font-size:11px;">
+          <span style="color:var(--purple);font-weight:600;">Enhanced:</span>
+          <span style="color:var(--dim);font-style:italic;">"Correction for this project: how to write unit tests for view models"</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 8px 24px;border-top:none;">
+        <div style="font-size:11px;color:var(--cyan);font-weight:600;margin-bottom:2px;">Returned lessons:</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#34d399;font-weight:600;min-width:32px;">65%</span><span class="tag tag-blue" style="font-size:10px;">testing</span><span style="color:var(--dim);">Use protocol-based dependency injection in ViewModels to enable testability with</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#fbbf24;font-weight:600;min-width:32px;">58%</span><span class="tag tag-blue" style="font-size:10px;">testing</span><span style="color:var(--dim);">Test ViewModel state transitions with XCTAssertEqual on published properties aft</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#fbbf24;font-weight:600;min-width:32px;">52%</span><span class="tag tag-blue" style="font-size:10px;">testing</span><span style="color:var(--dim);">Use expectation(description:) with fulfillment for async ViewModel operations in</span></div>
+      </td>
+    </tr>
+    <tr>
+      <td style="color:#64748b;">14:20:33</td>
+      <td style="color:#64748b;font-weight:600;">0</td>
+      <td>quantum physics dark matter theory</td>
+      <td style="color:#64748b;">312ms</td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 4px 24px;border-top:none;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+          <span style="color:var(--dim);">Funnel:</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">20 fetched</span>
+          <span style="color:var(--red);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--orange);">20 too distant</span>
+          <span style="color:var(--yellow);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">0 cat filtered</span>
+          <span style="color:var(--green);">&rarr;</span>
+          <span style="background:rgba(52,211,153,0.12);padding:2px 8px;border-radius:4px;color:var(--green);font-weight:600;">0 returned</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td style="color:#64748b;">14:19:55</td>
+      <td style="color:#34d399;font-weight:600;">5</td>
+      <td>auto layout best practices</td>
+      <td style="color:#64748b;">901ms</td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 4px 24px;border-top:none;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+          <span style="color:var(--dim);">Funnel:</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">20 fetched</span>
+          <span style="color:var(--red);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">0 too distant</span>
+          <span style="color:var(--yellow);">&rarr;</span>
+          <span style="background:var(--bg-alt);padding:2px 8px;border-radius:4px;color:var(--dim);">0 cat filtered</span>
+          <span style="color:var(--green);">&rarr;</span>
+          <span style="background:rgba(52,211,153,0.12);padding:2px 8px;border-radius:4px;color:var(--green);font-weight:600;">5 returned</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4" style="padding:4px 12px 8px 24px;border-top:none;">
+        <div style="font-size:11px;color:var(--cyan);font-weight:600;margin-bottom:2px;">Returned lessons:</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#34d399;font-weight:600;min-width:32px;">74%</span><span class="tag tag-blue" style="font-size:10px;">architecture</span><span style="color:var(--dim);">Use constraint-based Auto Layout instead of manual frame calculations for adapti</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#34d399;font-weight:600;min-width:32px;">67%</span><span class="tag tag-blue" style="font-size:10px;">architecture</span><span style="color:var(--dim);">Prefer stack views (UIStackView / VStack) for linear layouts to reduce constrain</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0;font-size:11px;"><span style="color:#fbbf24;font-weight:600;min-width:32px;">58%</span><span class="tag tag-blue" style="font-size:10px;">code_edit</span><span style="color:var(--dim);">Set content hugging and compression resistance priorities explicitly for dynamic</span></div>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<!-- SEARCH QUALITY -->
+<h2>Live Search Quality Tests</h2>
+<div class="card">
+  <table>
+    <tr><th>Query</th><th>Expect Results?</th><th>Actual</th><th>Status</th></tr>
+    <tr>
+      <td>how to handle memory management in Swift</td>
+      <td>Yes</td>
+      <td>5</td>
+      <td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td>
+    </tr>
+    <tr>
+      <td>how to write unit tests for ViewModels</td>
+      <td>Yes</td>
+      <td>4</td>
+      <td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td>
+    </tr>
+    <tr>
+      <td>git branching strategy</td>
+      <td>Yes</td>
+      <td>5</td>
+      <td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td>
+    </tr>
+    <tr>
+      <td>quantum physics dark matter theory</td>
+      <td>No</td>
+      <td>0</td>
+      <td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td>
+    </tr>
+  </table>
+</div>
+
+<!-- MCP SERVER -->
+<h2>MCP Server</h2>
+<div class="card">
+  <table>
+    <tr><td><strong>Status</strong></td><td><span style="background:rgba(52,211,153,0.15);color:#34d399;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;">PASS</span></td></tr>
+    <tr><td><strong>Server name</strong></td><td>smartassist</td></tr>
+    <tr><td><strong>Transport</strong></td><td>stdio</td></tr>
+    <tr><td><strong>Entry point</strong></td><td><code>smartassist serve</code></td></tr>
+    <tr><td><strong>Tools</strong></td><td>
+      <span class="tag tag-green">rag_search</span>
+      <span class="tag tag-blue">rag_dashboard</span>
+      <span class="tag tag-purple">rag_feedback</span>
+    </td></tr>
+  </table>
+</div>
+
+<div class="footer">
+  SmartAssist v4.0 &bull; February 2026 &bull; Joey Rahme<br>
+  RLHF + RAG + MCP Intelligent Learning System &bull;
+  <a href="https://jnrahme.github.io/SmartAssist/" style="color:var(--blue);text-decoration:none;">Interactive Docs</a> &bull;
+  <a href="https://github.com/jnrahme/SmartAssist/wiki" style="color:var(--blue);text-decoration:none;">Wiki</a>
+</div>
+
+<script>
+const LESSONS = [
+  {"lesson": "Use weak references for delegate patterns to prevent retain cycles between objects", "category": "architecture", "query": "", "response": "", "context": ""},
+  {"lesson": "Profile memory usage with Instruments before and after changes to verify no leaks are introduced", "category": "architecture", "query": "", "response": "", "context": ""},
+  {"lesson": "Use constraint-based Auto Layout instead of manual frame calculations for adaptive interfaces", "category": "architecture", "query": "", "response": "", "context": ""},
+  {"lesson": "Prefer stack views (UIStackView / VStack) for linear layouts to reduce constraint complexity", "category": "architecture", "query": "", "response": "", "context": ""},
+  {"lesson": "Follow the Coordinator pattern for navigation to decouple view controllers from each other", "category": "architecture", "query": "", "response": "", "context": ""},
+  {"lesson": "Extract business logic into separate service classes that are independent of UIKit or SwiftUI", "category": "architecture", "query": "", "response": "", "context": ""},
+  {"lesson": "Use protocol-based dependency injection to enable testability and reduce coupling between modules", "category": "architecture", "query": "", "response": "", "context": ""},
+  {"lesson": "Use protocol-based dependency injection in ViewModels to enable testability with mock services", "category": "testing", "query": "", "response": "", "context": ""},
+  {"lesson": "Test ViewModel state transitions with XCTAssertEqual on published properties after triggering actions", "category": "testing", "query": "", "response": "", "context": ""},
+  {"lesson": "Use expectation(description:) with fulfillment for async ViewModel operations in XCTest", "category": "testing", "query": "", "response": "", "context": ""},
+  {"lesson": "Mock network layers at the URLProtocol level for integration tests instead of mocking individual methods", "category": "testing", "query": "", "response": "", "context": ""},
+  {"lesson": "Use XCTUnwrap instead of force-unwrapping optionals in tests to get better failure messages", "category": "testing", "query": "", "response": "", "context": ""},
+  {"lesson": "Run UI tests on a dedicated simulator with reset state to prevent flaky test failures", "category": "testing", "query": "", "response": "", "context": ""},
+  {"lesson": "Use measure blocks in XCTest for performance-critical code paths to catch regressions early", "category": "testing", "query": "", "response": "", "context": ""},
+  {"lesson": "Use autoreleasepool blocks in tight loops that create many temporary objects to control memory peaks", "category": "code_edit", "query": "", "response": "", "context": ""},
+  {"lesson": "Set content hugging and compression resistance priorities explicitly for dynamic-height cells", "category": "code_edit", "query": "", "response": "", "context": ""},
+  {"lesson": "Prefer value types (structs, enums) over classes for model objects unless reference semantics are needed", "category": "code_edit", "query": "", "response": "", "context": ""},
+  {"lesson": "Use guard let for early returns instead of nested if-let pyramids to improve code readability", "category": "code_edit", "query": "", "response": "", "context": ""},
+  {"lesson": "Prefer Result type over throwing functions when errors are expected control flow, not exceptional cases", "category": "code_edit", "query": "", "response": "", "context": ""},
+  {"lesson": "Use @MainActor annotation on ViewModel classes to ensure UI updates happen on the main thread", "category": "code_edit", "query": "", "response": "", "context": ""},
+  {"lesson": "Extract reusable view modifiers into ViewModifier structs instead of duplicating styling code", "category": "code_edit", "query": "", "response": "", "context": ""},
+  {"lesson": "Check for nil and empty arrays before accessing indices to prevent index-out-of-range crashes", "category": "pr_review", "query": "", "response": "", "context": ""},
+  {"lesson": "Use OSLog with appropriate log levels instead of print statements in production code", "category": "pr_review", "query": "", "response": "", "context": ""},
+  {"lesson": "Prefer async/await over completion handler callbacks for new asynchronous code in Swift 5.5+", "category": "pr_review", "query": "", "response": "", "context": ""},
+  {"lesson": "Use task cancellation checks in long-running async operations to respect cancellation signals", "category": "pr_review", "query": "", "response": "", "context": ""},
+  {"lesson": "Always validate server responses with Codable and handle decoding errors gracefully", "category": "pr_review", "query": "", "response": "", "context": ""},
+  {"lesson": "Use feature branches named feature/TICKET-123-description and keep PRs focused on one change", "category": "git", "query": "", "response": "", "context": ""},
+  {"lesson": "Squash merge feature branches to keep the main branch history clean and bisectable", "category": "git", "query": "", "response": "", "context": ""},
+  {"lesson": "Never force-push to main or develop branches; use revert commits for rollbacks instead", "category": "git", "query": "", "response": "", "context": ""},
+  {"lesson": "Store API keys and secrets in the Keychain, never in UserDefaults, plist files, or source code", "category": "security", "query": "", "response": "", "context": ""},
+  {"lesson": "Enable App Transport Security and only add exceptions for documented third-party requirements", "category": "security", "query": "", "response": "", "context": ""},
+  {"lesson": "Use certificate pinning for sensitive API endpoints to prevent man-in-the-middle attacks", "category": "security", "query": "", "response": "", "context": ""}
+];
+
+const CAT_COLORS = {
+  code_edit: {bg:"rgba(56,189,248,0.12)", fg:"#38bdf8"},
+  pr_review: {bg:"rgba(167,139,250,0.12)", fg:"#a78bfa"},
+  testing: {bg:"rgba(52,211,153,0.12)", fg:"#34d399"},
+  architecture: {bg:"rgba(251,146,60,0.12)", fg:"#fb923c"},
+  git: {bg:"rgba(251,191,36,0.12)", fg:"#fbbf24"},
+  security: {bg:"rgba(248,113,113,0.12)", fg:"#f87171"},
+};
+
+let activeCat = "all";
+
+function filterCat(cat) {
+  activeCat = cat;
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  event.target.classList.add("active");
+  doSearch();
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function highlight(text, terms) {
+  if (!terms.length) return escapeHtml(text);
+  let result = escapeHtml(text);
+  terms.forEach(t => {
+    const re = new RegExp("(" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+    result = result.replace(re, "<mark>$1</mark>");
+  });
+  return result;
+}
+
+function doSearch() {
+  const q = document.getElementById("searchInput").value.trim().toLowerCase();
+  const terms = q.split(/\s+/).filter(t => t.length > 1);
+  const container = document.getElementById("search-results");
+  const countEl = document.getElementById("searchCount");
+  const hintEl = document.getElementById("searchHint");
+
+  if (!q) {
+    container.innerHTML = "";
+    countEl.textContent = "";
+    hintEl.textContent = "Type to search across " + LESSONS.length + " lessons";
+    return;
+  }
+
+  let filtered = LESSONS;
+  if (activeCat !== "all") {
+    filtered = filtered.filter(l => l.category === activeCat);
+  }
+
+  const scored = filtered.map(l => {
+    const hay = (l.lesson + " " + l.query + " " + l.context + " " + l.category).toLowerCase();
+    let score = 0;
+    terms.forEach(t => {
+      if (hay.includes(t)) score++;
+      if (l.lesson.toLowerCase().includes(t)) score += 2;
+    });
+    return { ...l, score };
+  }).filter(l => l.score > 0).sort((a, b) => b.score - a.score).slice(0, 50);
+
+  hintEl.textContent = "";
+
+  if (scored.length === 0) {
+    container.innerHTML = '<div class="no-results">No lessons match your search.</div>';
+    countEl.textContent = "0 results";
+    return;
+  }
+
+  countEl.textContent = scored.length + (scored.length === 50 ? "+" : "") + " results";
+
+  container.innerHTML = scored.map(l => {
+    const colors = CAT_COLORS[l.category] || {bg:"rgba(148,163,184,0.12)", fg:"#94a3b8"};
+    let html = '<div class="lesson-card">';
+    html += '<span class="lesson-cat" style="background:' + colors.bg + ';color:' + colors.fg + ';">' + escapeHtml(l.category) + '</span>';
+    html += '<div class="lesson-text">' + highlight(l.lesson, terms) + '</div>';
+    if (l.query) html += '<div class="lesson-query">When: ' + highlight(l.query, terms) + '</div>';
+    if (l.context) html += '<div class="lesson-context">' + highlight(l.context, terms) + '</div>';
+    html += '</div>';
+    return html;
+  }).join("");
+}
+
+document.getElementById("searchInput").addEventListener("input", doSearch);
+
+// Focus search on page load
+document.getElementById("searchInput").focus();
+</script>
+
+</body>
+</html>

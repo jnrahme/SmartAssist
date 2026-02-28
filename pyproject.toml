@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smartassist"
+version = "1.0.0"
+description = "Portable RAG learning system for Claude Code — works on any codebase"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Joey Rahme"}]
+
+dependencies = [
+    "mcp>=1.0.0",
+    "sentence-transformers>=3.0.0",
+    "lancedb>=0.15.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+smartassist = "smartassist.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["smartassist*"]
