@@ -91,7 +91,7 @@ graph TB
 Install once globally. Run on any codebase. Per-project data stays isolated:
 
 ```
-Code  → ~/Github/SmartAssist/        (pip install -e, one global install)
+Code  → pipx install (one global install)
 Data  → <any-project>/.claude/smartassist/  (auto-detected from cwd)
 ```
 
@@ -102,8 +102,9 @@ No virtual environments. No hardcoded paths. No per-project MCP configuration.
 ## Quick Start
 
 ```bash
-# 1. Install globally
-pip install -e ~/Github/SmartAssist
+# 1. Install globally (pick one)
+pipx install git+https://github.com/jnrahme/SmartAssist.git
+# or: pip install git+https://github.com/jnrahme/SmartAssist.git
 
 # 2. Initialize in any project
 cd ~/your-project
