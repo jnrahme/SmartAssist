@@ -7,17 +7,21 @@ Searches curated_lessons.json using fast keyword matching (pure stdlib, <50ms).
 2. Injects relevant lessons into Claude's prompt as <rag-context>
 3. Applies per-lesson scoring (boost/block from feedback)
 4. Deduplicates lessons already injected in the same session
+
+V2: Claude-as-curator feedback — per-lesson decisions via MCP tools.
 """
 
 import sys
 import json
 import re
+import time
 from math import log
 from datetime import datetime
 
 from smartassist.config import get_storage_path
 from smartassist.lesson_feedback import (
     load_lesson_scores,
+    load_last_injection,
     save_last_injection,
     load_session_state,
     save_session_state,
@@ -32,6 +36,14 @@ SKIP_PATTERNS = [
     r"^(done|cancel|stop|quit|exit)\s*$",
     r"^/",  # slash commands
 ]
+
+# ── Feedback signals ─────────────────────────────────────────────────
+FEEDBACK_SIGNALS = {
+    ":)": "positive", ":-)": "positive",
+    ":(": "negative", ":-(": "negative",
+    "thumbs_up": "positive", "thumbs up": "positive",
+    "thumbs_down": "negative", "thumbs down": "negative",
+}
 
 # ── Stop words ───────────────────────────────────────────────────────────
 STOP_WORDS = {
@@ -73,6 +85,9 @@ SYNONYMS = {
     "firebase": {"analytics", "crashlytics", "remoteconfig"},
     "performance": {"optimize", "memo", "usememo", "usecallback", "flashlist"},
 }
+
+# ── Max age for injection staleness ──────────────────────────────────────
+MAX_INJECTION_AGE = 300  # 5 minutes
 
 
 def tokenize(text):
@@ -263,6 +278,189 @@ def write_to_live_log(storage_path, user_message, results, query_tokens=None,
         pass
 
 
+# ── V2 Feedback System ────────────────────────────────────────────────────
+
+
+def detect_feedback_signal(message):
+    """Detect feedback signal. Supports standalone or signal+context.
+
+    Returns (sentiment, user_context) tuple or (None, None).
+
+    Examples:
+        ":)" → ("positive", "")
+        ":( dont do this to the theme" → ("negative", "dont do this to the theme")
+        "fix the bug" → (None, None)
+    """
+    stripped = message.strip().lower()
+    if not stripped:
+        return None, None
+
+    # Exact match — standalone signal
+    if stripped in FEEDBACK_SIGNALS:
+        return FEEDBACK_SIGNALS[stripped], ""
+
+    # Prefix match — signal at start, rest is context
+    for signal, sentiment in sorted(FEEDBACK_SIGNALS.items(), key=lambda x: -len(x[0])):
+        if stripped.startswith(signal) and len(stripped) > len(signal):
+            rest = stripped[len(signal):].strip()
+            if rest:
+                # Preserve original case for context
+                return sentiment, message.strip()[len(signal):].strip()
+
+    return None, None
+
+
+def _reconstruct_injected_lessons(storage_path):
+    """Build full picture of what Claude last saw for feedback decisions.
+
+    Loads last_injection.json + curated_lessons.json + lesson_scores.json.
+    Returns list of dicts with id, category, lesson, boost, ups, downs, confidence.
+    Returns [] if stale (>MAX_INJECTION_AGE) or missing.
+    """
+    last = load_last_injection()
+    if not last:
+        return []
+
+    # Check staleness
+    injection_time = last.get("_timestamp", 0)
+    if injection_time and (time.time() - injection_time) > MAX_INJECTION_AGE:
+        return []
+
+    # Load curated lessons for full text + category
+    curated_path = storage_path / "curated_lessons.json"
+    curated_map = {}
+    if curated_path.exists():
+        try:
+            lessons = json.loads(curated_path.read_text())
+            curated_map = {l.get("id", ""): l for l in lessons}
+        except Exception:
+            pass
+
+    # Load scores
+    scores = load_lesson_scores()
+
+    reconstructed = []
+    for key, lesson_id in last.items():
+        if key.startswith("_"):
+            continue
+        curated = curated_map.get(lesson_id, {})
+        score_entry = scores.get(lesson_id, {})
+        ups = score_entry.get("ups", 0)
+        downs = score_entry.get("downs", 0)
+        boost = score_entry.get("boost", DEFAULT_BOOST)
+        # Laplace smoothing: confidence = ups / (ups + downs + 2)
+        confidence = ups / (ups + downs + 2)
+
+        reconstructed.append({
+            "id": lesson_id,
+            "category": curated.get("category", "unknown"),
+            "lesson": curated.get("lesson", f"[lesson text not found for {lesson_id}]"),
+            "boost": boost,
+            "ups": ups,
+            "downs": downs,
+            "confidence": confidence,
+        })
+
+    return reconstructed
+
+
+def build_rich_feedback_context(sentiment, user_context, storage_path):
+    """Build rich context for Claude to make per-lesson feedback decisions.
+
+    Replaces the old build_lesson_instructions() with a structured decision framework
+    that shows Claude the actual lessons, their scores, and lets it decide per-lesson.
+    """
+    lessons = []
+    if storage_path:
+        lessons = _reconstruct_injected_lessons(storage_path)
+
+    if sentiment == "positive":
+        mood = "POSITIVE"
+        guidance = "The user is happy with your recent actions. Reinforce what worked."
+    else:
+        mood = "NEGATIVE"
+        guidance = "The user is unhappy with your recent actions. Identify what went wrong."
+
+    parts = [f"FEEDBACK SIGNAL: {mood}", guidance, ""]
+
+    if user_context:
+        parts.append(f'User context: "{user_context}"')
+        parts.append("")
+
+    if lessons:
+        parts.append("RECENTLY INJECTED LESSONS:")
+        parts.append(f"{'ID':<6} {'Category':<14} {'Boost':>6} {'Ups':>4} {'Downs':>5} {'Conf':>6}  Lesson")
+        parts.append(f"{'-'*6} {'-'*14} {'-'*6} {'-'*4} {'-'*5} {'-'*6}  {'-'*40}")
+        for l in lessons:
+            parts.append(
+                f"{l['id']:<6} {l['category']:<14} {l['boost']:>5.1f}x {l['ups']:>4} {l['downs']:>5} "
+                f"{l['confidence']:>5.0%}  {l['lesson'][:60]}"
+            )
+        parts.append("")
+        parts.append("DECISION FRAMEWORK — evaluate EACH lesson above:")
+        parts.append(f"  RULE 1: If lesson was {'helpful' if sentiment == 'positive' else 'harmful/irrelevant'} → "
+                     f"call `{'boost_lesson' if sentiment == 'positive' else 'demote_lesson'}(lesson_id)`")
+        parts.append(f"  RULE 2: If lesson was NOT relevant to what just happened → SKIP (do nothing)")
+        parts.append(f"  RULE 3: If two+ lessons overlap or say the same thing → "
+                     f"call `merge_lessons(lesson_ids, new_lesson, category)`")
+        parts.append(f"  RULE 4: If the feedback is about something NOT covered by any lesson above → "
+                     f"call `create_lesson(lesson, category, sentiment, intensity, context)`")
+        parts.append("")
+        parts.append("CONSTRAINTS:")
+        parts.append("  - Max 5 tool calls total for this feedback round")
+        parts.append("  - Lessons with confidence <20% are unreliable — consider demoting or merging")
+        parts.append("  - Lessons with boost >=2.5x are already highly valued — only boost if clearly relevant")
+    else:
+        parts.append("NO LESSONS WERE RECENTLY INJECTED — create a new lesson instead.")
+        parts.append("")
+        parts.append("Call `create_lesson` with:")
+        parts.append("  - lesson: Imperative statement (>30 chars) with action verb, project-specific")
+        parts.append("  - category: One of: testing, code_edit, git, architecture, pr_review, security, debugging")
+        parts.append(f'  - sentiment: "{sentiment}"')
+        parts.append("  - intensity: 1-5")
+        parts.append("  - context: Brief context about what happened")
+
+    parts.append("")
+    parts.append("After making your tool calls, briefly acknowledge the feedback to the user.")
+
+    return "\n".join(parts)
+
+
+def write_to_live_log_feedback(storage_path, signal_text, sentiment, user_context=""):
+    """Write feedback detection event to rag_live.log for the monitor terminal."""
+    live_log = storage_path / "rag_live.log"
+    now = datetime.now().strftime("%H:%M:%S")
+
+    prompt_count, inject_count = read_counter(storage_path)
+    prompt_count += 1
+    write_counter(storage_path, prompt_count, inject_count)
+
+    # Count lessons for display
+    lessons = _reconstruct_injected_lessons(storage_path)
+    lesson_count = len(lessons)
+
+    lines = []
+    lines.append("")
+    lines.append(f"\033[90m{'=' * 60}\033[0m")
+    lines.append(f"\033[90m  {now}  |  Prompt #{prompt_count}\033[0m")
+
+    color = "\033[32m" if sentiment == "positive" else "\033[31m"
+    lines.append(f"{color}\033[1m  FEEDBACK DETECTED {signal_text}\033[0m")
+    lines.append(f"  Sentiment: {sentiment}")
+
+    if user_context:
+        lines.append(f"  Context: \"{user_context}\"")
+
+    lines.append(f"  \033[90m{lesson_count} lesson(s) sent to Claude for per-lesson decisions\033[0m")
+    lines.append("")
+
+    try:
+        with open(live_log, "a") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception:
+        pass
+
+
 def main():
     try:
         hook_input = json.load(sys.stdin)
@@ -270,6 +468,28 @@ def main():
         return
 
     user_message = hook_input.get("prompt", "")
+
+    # ── Check for feedback signals before length filter ──────────────
+    sentiment, user_context = detect_feedback_signal(user_message) if user_message else (None, None)
+    if sentiment:
+        try:
+            storage_path = get_storage_path()
+            write_to_live_log_feedback(
+                storage_path, user_message.strip(), sentiment,
+                user_context=user_context,
+            )
+        except RuntimeError:
+            storage_path = None
+
+        context = build_rich_feedback_context(sentiment, user_context, storage_path)
+        output = {
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": context,
+            }
+        }
+        print(json.dumps(output))
+        return
 
     if not user_message or len(user_message.strip()) < 12:
         return
@@ -328,7 +548,8 @@ def main():
         already_injected.update(new_ids)
         save_session_state(session_id, already_injected)
 
-    injection_lessons = [f"[{r['category']}] {r['lesson']}" for r in results]
+    # V2: Include lesson IDs in injection format
+    injection_lessons = [f"[{r.get('id', '?')}] [{r['category']}] {r['lesson']}" for r in results]
     context = "Project-specific lessons from our RAG knowledge base:\n"
     context += "\n".join(f"- {l}" for l in injection_lessons)
 

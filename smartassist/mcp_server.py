@@ -2,17 +2,23 @@
 """
 SmartAssist MCP Server - Exposes the RLHF knowledge base as tools for Claude Code.
 
-Provides three tools:
+Provides tools:
   - rag_search: Semantic search across past lessons, corrections, and feedback
   - rag_dashboard: View current reliability scores and system stats
   - rag_feedback: Record feedback on suggestions
+  - create_lesson: Create new project-specific lesson (dual-path: feedback_log + curated)
+  - boost_lesson: Increase a lesson's score (V2 per-lesson feedback)
+  - demote_lesson: Decrease a lesson's score, auto-retire if warranted
+  - merge_lessons: Consolidate overlapping lessons into one
 
 Runs via stdio transport. Entry point: `smartassist serve`
 """
 
 import math
 import json
+import sys
 import time
+import subprocess
 import logging
 from typing import Optional
 from datetime import datetime
@@ -20,6 +26,16 @@ from datetime import datetime
 from mcp.server.fastmcp import FastMCP
 
 from smartassist.config import EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path
+from smartassist.lesson_feedback import (
+    load_lesson_scores,
+    save_lesson_scores,
+    _get_or_create_score,
+    DEFAULT_BOOST,
+    BOOST_INCREMENT,
+    DEMOTE_DECREMENT,
+    BOOST_CAP,
+    BOOST_FLOOR,
+)
 
 # Suppress noisy logs from dependencies during MCP startup
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
@@ -34,6 +50,9 @@ _cross_encoder = None
 
 # Results above this distance are too irrelevant to return.
 MAX_DISTANCE = 1.30
+
+# Corpus capacity limit
+MAX_CURATED_LESSONS = 300
 
 
 def _get_storage():
@@ -170,6 +189,98 @@ def _get_feedback_stats():
                 continue
 
     return {"total_events": total, "by_category": by_cat, "by_signal": by_sig}
+
+
+# ── V2 Shared Helpers ──────────────────────────────────────────────────────
+
+
+def _update_thompson_for_lesson(lesson_id, storage, success=True):
+    """Look up lesson's category in curated_lessons.json and update Thompson Sampling."""
+    curated_path = storage / "curated_lessons.json"
+    if not curated_path.exists():
+        return
+    try:
+        lessons = json.loads(curated_path.read_text())
+        cat = None
+        for l in lessons:
+            if l.get("id") == lesson_id:
+                cat = l.get("category")
+                break
+        if not cat:
+            return
+        thompson = _get_thompson()
+        if success:
+            thompson.record_success(cat, 3)
+        else:
+            thompson.record_failure(cat, 3)
+    except Exception:
+        pass
+
+
+def _update_feedback_metrics(storage, action_type):
+    """Increment action count in feedback_metrics.json."""
+    metrics_path = storage / "feedback_metrics.json"
+    try:
+        if metrics_path.exists():
+            metrics = json.loads(metrics_path.read_text())
+        else:
+            metrics = {
+                "boosts": 0, "demotes": 0, "creates": 0, "merges": 0,
+                "positive_signals": 0, "negative_signals": 0,
+                "last_updated": None,
+            }
+        metrics[action_type] = metrics.get(action_type, 0) + 1
+        metrics["last_updated"] = datetime.now().isoformat()
+        metrics_path.write_text(json.dumps(metrics, indent=2))
+    except Exception:
+        pass
+
+
+def _add_to_curated(storage, lesson_text, category):
+    """Append lesson to curated_lessons.json. Returns (new_id, None) or (None, error_msg).
+
+    Creates file if missing. Enforces MAX_CURATED_LESSONS cap.
+    """
+    curated_path = storage / "curated_lessons.json"
+    try:
+        if curated_path.exists():
+            lessons = json.loads(curated_path.read_text())
+        else:
+            lessons = []
+    except Exception:
+        lessons = []
+
+    if len(lessons) >= MAX_CURATED_LESSONS:
+        return None, f"Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
+
+    # Generate next ID
+    existing_ids = {l.get("id", "") for l in lessons}
+    max_num = 0
+    for lid in existing_ids:
+        if lid.startswith("L") and lid[1:].isdigit():
+            max_num = max(max_num, int(lid[1:]))
+    new_id = f"L{max_num + 1:03d}"
+
+    lessons.append({
+        "id": new_id,
+        "lesson": lesson_text,
+        "category": category,
+    })
+    curated_path.write_text(json.dumps(lessons, indent=2))
+    return new_id, None
+
+
+def _remove_from_curated(storage, lesson_id):
+    """Remove lesson from curated_lessons.json by ID. No-op if missing."""
+    curated_path = storage / "curated_lessons.json"
+    if not curated_path.exists():
+        return
+    try:
+        lessons = json.loads(curated_path.read_text())
+        lessons = [l for l in lessons if l.get("id") != lesson_id]
+        curated_path.write_text(json.dumps(lessons, indent=2))
+    except Exception:
+        pass
 
 
 # ── MCP Server ──────────────────────────────────────────────────────────────
@@ -336,11 +447,11 @@ def _format_lesson(raw_text: str, category: str, distance: float) -> str:
 
 @mcp.tool()
 def rag_dashboard() -> str:
-    """View current RLHF system reliability scores and statistics.
+    """View current RLHF system reliability scores, corpus stats, and feedback metrics.
 
     Shows performance metrics across all tracked categories (testing, git,
-    code_edit, etc.) with Thompson Sampling reliability scores. Useful for
-    understanding which areas need attention.
+    code_edit, etc.) with Thompson Sampling reliability scores. Also shows
+    corpus capacity and feedback action breakdown.
     """
     t0 = time.time()
     try:
@@ -349,7 +460,7 @@ def rag_dashboard() -> str:
         _log_usage("rag_dashboard")
         return f"Error loading Thompson model: {e}"
 
-    scores = thompson.get_all_reliabilities()
+    scores_data = thompson.get_all_reliabilities()
     weak = thompson.get_weak_categories(threshold=0.70)
     stats = _get_feedback_stats()
     _log_usage("rag_dashboard", "", 0, (time.time() - t0) * 1000)
@@ -357,13 +468,49 @@ def rag_dashboard() -> str:
     lines = ["RLHF System Dashboard", "=" * 40, ""]
 
     lines.append("Reliability by Category:")
-    for cat, score in sorted(scores.items(), key=lambda x: x[1]):
+    for cat, score in sorted(scores_data.items(), key=lambda x: x[1]):
         status = "WEAK" if cat in weak else "OK"
         bar = "#" * int(score * 20) + "." * (20 - int(score * 20))
         lines.append(f"  {cat:15s} [{bar}] {score:.1%}  ({status})")
 
     lines.append("")
     lines.append(f"Weak categories (<70%): {', '.join(weak) if weak else 'None'}")
+
+    # V2: Corpus stats
+    try:
+        storage = _get_storage()
+        curated_path = storage / "curated_lessons.json"
+        if curated_path.exists():
+            curated = json.loads(curated_path.read_text())
+            total_lessons = len(curated)
+        else:
+            total_lessons = 0
+
+        lesson_scores = load_lesson_scores()
+        active_count = total_lessons
+        retired_count = sum(1 for s in lesson_scores.values() if s.get("retired", False))
+
+        pct = int((total_lessons / MAX_CURATED_LESSONS) * 100) if MAX_CURATED_LESSONS > 0 else 0
+        lines.append("")
+        lines.append(f"Corpus: {total_lessons}/{MAX_CURATED_LESSONS} lessons ({pct}% capacity)")
+        lines.append(f"  Active: {active_count}  |  Retired: {retired_count}")
+    except Exception:
+        pass
+
+    # V2: Feedback metrics
+    try:
+        metrics_path = storage / "feedback_metrics.json"
+        if metrics_path.exists():
+            metrics = json.loads(metrics_path.read_text())
+            lines.append("")
+            lines.append("Feedback Actions:")
+            lines.append(f"  Boosts: {metrics.get('boosts', 0)}  |  Demotes: {metrics.get('demotes', 0)}  |  "
+                         f"Creates: {metrics.get('creates', 0)}  |  Merges: {metrics.get('merges', 0)}")
+            pos = metrics.get("positive_signals", 0)
+            neg = metrics.get("negative_signals", 0)
+            lines.append(f"  Total signals: {pos + neg} (positive: {pos}, negative: {neg})")
+    except Exception:
+        pass
 
     lines.append("")
     lines.append(f"Total feedback events: {stats['total_events']}")
@@ -438,6 +585,416 @@ def rag_feedback(
         return f"Feedback recorded: {'helpful' if helpful else 'not helpful'} for {cat} (reliability: {score:.1%})"
     else:
         return f"Feedback recorded: {'helpful' if helpful else 'not helpful'}"
+
+
+VALID_CATEGORIES = {"testing", "code_edit", "git", "architecture", "pr_review", "security", "debugging"}
+
+ACTION_VERBS = {
+    "use", "never", "always", "avoid", "prefer", "check", "run", "ensure",
+    "include", "test", "verify", "add", "remove", "replace", "apply", "call",
+    "import", "export", "wrap", "split", "move", "keep", "delete", "update",
+    "follow", "mock", "assert", "validate", "configure", "set", "create",
+}
+
+GENERIC_STARTS = {
+    "good job", "be careful", "remember to", "nice work", "well done",
+    "great job", "bad job", "try to", "make sure to",
+}
+
+
+@mcp.tool()
+def create_lesson(
+    lesson: str,
+    category: str,
+    sentiment: str = "positive",
+    intensity: int = 3,
+    context: str = "",
+) -> str:
+    """Create a new project-specific lesson from user feedback.
+
+    Called by Claude after detecting a feedback signal (:), :(, thumbs_up, etc.).
+    The lesson should be specific to this project, not generic programming advice.
+
+    Args:
+        lesson: Imperative statement (>30 chars) with an action verb.
+                Example: "Always use semantic colors from theme instead of hardcoded hex values"
+        category: One of: testing, code_edit, git, architecture, pr_review, security, debugging
+        sentiment: "positive" or "negative"
+        intensity: Importance level 1-5 (clamped)
+        context: Brief context about what Claude was doing when feedback was given
+    """
+    t0 = time.time()
+
+    # ── Quality gate: category ────────────────────────────────────────
+    cat = category.lower().strip() if category else ""
+    if cat not in VALID_CATEGORIES:
+        return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
+
+    # ── Quality gate: sentiment ───────────────────────────────────────
+    sentiment = sentiment.lower().strip() if sentiment else ""
+    if sentiment not in ("positive", "negative"):
+        return f"Invalid sentiment '{sentiment}'. Must be 'positive' or 'negative'."
+
+    # ── Quality gate: intensity ───────────────────────────────────────
+    intensity = max(1, min(5, int(intensity)))
+
+    # ── Quality gate: lesson length ───────────────────────────────────
+    lesson = lesson.strip() if lesson else ""
+    if len(lesson) < 30:
+        return f"Lesson too short ({len(lesson)} chars). Must be at least 30 characters. Be specific and actionable."
+
+    # ── Quality gate: reject generic starts ───────────────────────────
+    lesson_lower = lesson.lower()
+    for generic in GENERIC_STARTS:
+        if lesson_lower.startswith(generic):
+            return f"Lesson starts with generic phrase '{generic}'. Be project-specific and actionable."
+
+    # ── Quality gate: must contain action verb ────────────────────────
+    has_verb = any(f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
+                    for verb in ACTION_VERBS)
+    if not has_verb:
+        return (
+            f"Lesson must contain an action verb. Include one of: "
+            f"{', '.join(sorted(list(ACTION_VERBS)[:10]))}..."
+        )
+
+    # ── Store to feedback_log.jsonl ───────────────────────────────────
+    try:
+        storage_path = _get_storage()
+    except Exception as e:
+        return f"Error accessing storage: {e}"
+
+    signal = "thumbs_up" if sentiment == "positive" else "correction"
+
+    feedback_entry = {
+        "timestamp": time.time(),
+        "signal": signal,
+        "category": cat,
+        "intensity": intensity,
+        "query": "",
+        "response": "",
+        "correction": lesson,
+        "context": context or "create_lesson MCP tool",
+    }
+
+    feedback_log = storage_path / "feedback_log.jsonl"
+    try:
+        with open(feedback_log, "a", encoding="utf-8") as f:
+            f.write(json.dumps(feedback_entry) + "\n")
+    except Exception as e:
+        return f"Error writing feedback: {e}"
+
+    # ── V2: Dual-path write — also add to curated_lessons.json ────────
+    new_id, cap_error = _add_to_curated(storage_path, lesson, cat)
+    if cap_error:
+        curated_msg = f" (Note: {cap_error})"
+    else:
+        curated_msg = f" [ID: {new_id}]"
+
+    # ── Thompson Sampling update ──────────────────────────────────────
+    try:
+        thompson = _get_thompson()
+        if sentiment == "positive":
+            thompson.record_success(cat, intensity)
+        else:
+            thompson.record_failure(cat, intensity)
+    except Exception:
+        pass  # Don't fail if Thompson model has issues
+
+    # ── Fire-and-forget vectorization ─────────────────────────────────
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "smartassist.hooks.vectorize_learnings"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+    # ── Update feedback metrics ───────────────────────────────────────
+    _update_feedback_metrics(storage_path, "creates")
+    signal_key = "positive_signals" if sentiment == "positive" else "negative_signals"
+    _update_feedback_metrics(storage_path, signal_key)
+
+    latency = (time.time() - t0) * 1000
+    _log_usage("create_lesson", lesson[:100], 1, latency)
+
+    icon = "+" if sentiment == "positive" else "!"
+    return f"Lesson recorded {icon} [{cat}] {lesson[:80]}{'...' if len(lesson) > 80 else ''}{curated_msg}"
+
+
+@mcp.tool()
+def boost_lesson(lesson_id: str) -> str:
+    """Boost a lesson's score after positive feedback.
+
+    Call this when a specific injected lesson was helpful and should be
+    prioritized more in future injections.
+
+    Args:
+        lesson_id: The lesson ID (e.g., "L001") to boost
+    """
+    t0 = time.time()
+    lesson_id = lesson_id.strip().upper()
+
+    scores = load_lesson_scores()
+    entry = _get_or_create_score(scores, lesson_id)
+
+    if entry.get("retired", False):
+        return f"Cannot boost {lesson_id}: lesson is retired."
+
+    if entry.get("blocked", False):
+        return f"Cannot boost {lesson_id}: lesson is blocked. Unblock first."
+
+    entry["ups"] += 1
+    old_boost = entry["boost"]
+    entry["boost"] = min(entry["boost"] + BOOST_INCREMENT, BOOST_CAP)
+    save_lesson_scores(scores)
+
+    # Thompson Sampling update
+    try:
+        storage = _get_storage()
+        _update_thompson_for_lesson(lesson_id, storage, success=True)
+        _update_feedback_metrics(storage, "boosts")
+        _update_feedback_metrics(storage, "positive_signals")
+    except Exception:
+        pass
+
+    latency = (time.time() - t0) * 1000
+    _log_usage("boost_lesson", lesson_id, 0, latency)
+
+    # Check if lesson exists in curated
+    warning = ""
+    try:
+        storage = _get_storage()
+        curated_path = storage / "curated_lessons.json"
+        if curated_path.exists():
+            curated = json.loads(curated_path.read_text())
+            if not any(l.get("id") == lesson_id for l in curated):
+                warning = f" (Warning: {lesson_id} not found in curated lessons)"
+    except Exception:
+        pass
+
+    return (f"Boosted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+            f"(ups: {entry['ups']}, downs: {entry['downs']}){warning}")
+
+
+@mcp.tool()
+def demote_lesson(lesson_id: str) -> str:
+    """Demote a lesson's score after negative feedback.
+
+    Call this when a specific injected lesson was harmful, irrelevant, or wrong.
+    If the lesson has never been helpful (0 ups) and reaches 0.0 boost, it will
+    be automatically retired and removed from the corpus.
+
+    Args:
+        lesson_id: The lesson ID (e.g., "L001") to demote
+    """
+    t0 = time.time()
+    lesson_id = lesson_id.strip().upper()
+
+    scores = load_lesson_scores()
+    entry = _get_or_create_score(scores, lesson_id)
+
+    if entry.get("blocked", False):
+        return f"Cannot demote {lesson_id}: lesson is already blocked."
+
+    if entry.get("retired", False):
+        return f"Cannot demote {lesson_id}: lesson is already retired."
+
+    entry["downs"] += 1
+    old_boost = entry["boost"]
+    entry["boost"] = max(entry["boost"] - DEMOTE_DECREMENT, BOOST_FLOOR)
+
+    # Auto-retire check: boost at 0.0 AND never been helpful
+    auto_retired = False
+    if entry["boost"] <= BOOST_FLOOR and entry.get("ups", 0) == 0:
+        entry["blocked"] = True
+        entry["retired"] = True
+        entry["retired_reason"] = "auto-retired: boost 0.0 with 0 positive feedback"
+        entry["retired_at"] = datetime.now().isoformat()
+        auto_retired = True
+
+    save_lesson_scores(scores)
+
+    # Remove from curated if auto-retired
+    if auto_retired:
+        try:
+            storage = _get_storage()
+            _remove_from_curated(storage, lesson_id)
+        except Exception:
+            pass
+
+    # Thompson Sampling update
+    try:
+        storage = _get_storage()
+        _update_thompson_for_lesson(lesson_id, storage, success=False)
+        _update_feedback_metrics(storage, "demotes")
+        _update_feedback_metrics(storage, "negative_signals")
+    except Exception:
+        pass
+
+    latency = (time.time() - t0) * 1000
+    _log_usage("demote_lesson", lesson_id, 0, latency)
+
+    # Warning for lessons with strong positive history
+    warning = ""
+    if entry.get("ups", 0) >= 5:
+        warning = f" (Warning: this lesson has {entry['ups']} positive feedbacks — consider merging instead)"
+
+    # Check if lesson exists in curated
+    curated_warning = ""
+    if not auto_retired:
+        try:
+            storage = _get_storage()
+            curated_path = storage / "curated_lessons.json"
+            if curated_path.exists():
+                curated = json.loads(curated_path.read_text())
+                if not any(l.get("id") == lesson_id for l in curated):
+                    curated_warning = f" (Warning: {lesson_id} not found in curated lessons)"
+        except Exception:
+            pass
+
+    if auto_retired:
+        return (f"RETIRED {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+                f"(ups: {entry['ups']}, downs: {entry['downs']}) — "
+                f"removed from corpus (never had positive feedback)")
+    else:
+        return (f"Demoted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+                f"(ups: {entry['ups']}, downs: {entry['downs']}){warning}{curated_warning}")
+
+
+@mcp.tool()
+def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
+    """Merge multiple overlapping lessons into a single consolidated lesson.
+
+    Call this when two or more injected lessons cover the same topic and should
+    be combined into one stronger, clearer lesson.
+
+    Args:
+        lesson_ids: Comma-separated lesson IDs to merge (e.g., "L001,L002,L003")
+        new_lesson: The consolidated lesson text (>30 chars, imperative, with action verb)
+        category: Category for the new lesson (testing, code_edit, git, etc.)
+    """
+    t0 = time.time()
+
+    # Parse IDs
+    ids = [lid.strip().upper() for lid in lesson_ids.split(",") if lid.strip()]
+    if len(ids) < 2:
+        return "Merge requires at least 2 lesson IDs (comma-separated)."
+
+    # Validate category
+    cat = category.lower().strip() if category else ""
+    if cat not in VALID_CATEGORIES:
+        return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
+
+    # Quality gates on new_lesson (same as create_lesson)
+    new_lesson = new_lesson.strip() if new_lesson else ""
+    if len(new_lesson) < 30:
+        return f"New lesson too short ({len(new_lesson)} chars). Must be at least 30 characters."
+
+    lesson_lower = new_lesson.lower()
+    for generic in GENERIC_STARTS:
+        if lesson_lower.startswith(generic):
+            return f"Lesson starts with generic phrase '{generic}'. Be project-specific and actionable."
+
+    has_verb = any(f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
+                    for verb in ACTION_VERBS)
+    if not has_verb:
+        return (
+            f"Lesson must contain an action verb. Include one of: "
+            f"{', '.join(sorted(list(ACTION_VERBS)[:10]))}..."
+        )
+
+    try:
+        storage = _get_storage()
+    except Exception as e:
+        return f"Error accessing storage: {e}"
+
+    # Verify source lessons exist in curated
+    curated_path = storage / "curated_lessons.json"
+    if not curated_path.exists():
+        return f"curated_lessons.json not found. Cannot merge."
+
+    try:
+        curated = json.loads(curated_path.read_text())
+    except Exception:
+        return "Error reading curated_lessons.json."
+
+    curated_ids = {l.get("id") for l in curated}
+    missing = [lid for lid in ids if lid not in curated_ids]
+    if missing:
+        return f"Cannot merge: lesson(s) {', '.join(missing)} not found in curated lessons."
+
+    # Combine scores from sources
+    scores = load_lesson_scores()
+    combined_ups = 0
+    max_boost = DEFAULT_BOOST
+    for lid in ids:
+        entry = scores.get(lid, {})
+        combined_ups += entry.get("ups", 0)
+        max_boost = max(max_boost, entry.get("boost", DEFAULT_BOOST))
+
+    # Add new consolidated lesson
+    new_id, cap_error = _add_to_curated(storage, new_lesson, cat)
+    if cap_error:
+        return f"Cannot merge: {cap_error}"
+
+    # Set score for new lesson
+    new_entry = _get_or_create_score(scores, new_id)
+    new_entry["ups"] = combined_ups
+    new_entry["boost"] = max_boost
+
+    # Mark sources as superseded
+    for lid in ids:
+        source_entry = _get_or_create_score(scores, lid)
+        source_entry["blocked"] = True
+        source_entry["retired"] = True
+        source_entry["retired_reason"] = f"superseded_by={new_id}"
+        source_entry["retired_at"] = datetime.now().isoformat()
+
+    save_lesson_scores(scores)
+
+    # Remove sources from curated
+    for lid in ids:
+        _remove_from_curated(storage, lid)
+
+    # Write to feedback_log for vectorization
+    feedback_entry = {
+        "timestamp": time.time(),
+        "signal": "merge",
+        "category": cat,
+        "intensity": 3,
+        "query": "",
+        "response": "",
+        "correction": new_lesson,
+        "context": f"Merged from: {', '.join(ids)}",
+    }
+    feedback_log = storage / "feedback_log.jsonl"
+    try:
+        with open(feedback_log, "a", encoding="utf-8") as f:
+            f.write(json.dumps(feedback_entry) + "\n")
+    except Exception:
+        pass
+
+    # Fire vectorization
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "smartassist.hooks.vectorize_learnings"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+    # Update metrics
+    _update_feedback_metrics(storage, "merges")
+
+    latency = (time.time() - t0) * 1000
+    _log_usage("merge_lessons", f"{ids} -> {new_id}", 0, latency)
+
+    return (f"Merged {', '.join(ids)} → {new_id} [{cat}] "
+            f"{new_lesson[:60]}{'...' if len(new_lesson) > 60 else ''} "
+            f"(ups: {combined_ups}, boost: {max_boost:.1f}x)")
 
 
 def serve():

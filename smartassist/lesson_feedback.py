@@ -5,6 +5,7 @@ per-lesson scores, last injection state, and feedback commands.
 """
 
 import json
+import time
 from pathlib import Path
 
 from smartassist.config import get_storage_path
@@ -56,6 +57,7 @@ def save_last_injection(results):
         results: list of dicts with "id" keys, in display order.
     """
     mapping = {str(i + 1): r["id"] for i, r in enumerate(results)}
+    mapping["_timestamp"] = time.time()
     _injection_path().write_text(json.dumps(mapping, indent=2))
 
 
@@ -82,13 +84,20 @@ def save_session_state(session_id, injected_ids):
 
 
 def _get_or_create_score(scores, lesson_id):
-    """Get existing score entry or create default."""
+    """Get existing score entry or create default.
+
+    New V2 fields (retired, retired_reason, retired_at) are backwards-compatible:
+    existing entries without these keys get defaults via .get() in callers.
+    """
     if lesson_id not in scores:
         scores[lesson_id] = {
             "boost": DEFAULT_BOOST,
             "ups": 0,
             "downs": 0,
             "blocked": False,
+            "retired": False,
+            "retired_reason": "",
+            "retired_at": None,
         }
     return scores[lesson_id]
 

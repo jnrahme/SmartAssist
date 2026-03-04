@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartAssist V2 — System Design: Claude as Lesson Curator</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --bg-card: #131a27;
+    --bg-card-alt: #162032;
+    --border: #1e2d44;
+    --text: #e6edf3;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+    --blue: #38bdf8;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --cyan: #22d3ee;
+    --yellow: #fbbf24;
+    --gradient-1: linear-gradient(135deg, #38bdf8 0%, #a78bfa 100%);
+    --gradient-2: linear-gradient(135deg, #34d399 0%, #38bdf8 100%);
+    --gradient-3: linear-gradient(135deg, #fb923c 0%, #f87171 100%);
+    --gradient-4: linear-gradient(135deg, #a78bfa 0%, #f472b6 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 24px 100px;
+  }
+
+  .hero { text-align: center; margin-bottom: 48px; }
+  .hero h1 {
+    font-size: 34px; font-weight: 800;
+    background: var(--gradient-1);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin-bottom: 8px;
+  }
+  .hero .subtitle { color: var(--text-dim); font-size: 17px; margin-bottom: 6px; }
+  .hero .back { color: var(--text-muted); font-size: 13px; }
+  .hero .back a { color: var(--blue); text-decoration: none; }
+  .hero .back a:hover { text-decoration: underline; }
+
+  h2 { font-size: 22px; font-weight: 700; margin: 48px 0 16px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; color: var(--blue); }
+  p { margin-bottom: 12px; }
+  ul { padding-left: 20px; margin: 8px 0 12px; }
+  li { margin: 6px 0; font-size: 14px; color: var(--text-dim); }
+  li strong { color: var(--text); }
+  code { background: rgba(56,189,248,0.1); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); color: var(--text-dim); font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin: 16px 0;
+    position: relative; overflow: hidden;
+  }
+  .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .card-blue::before { background: var(--gradient-1); }
+  .card-green::before { background: var(--gradient-2); }
+  .card-pink::before { background: var(--gradient-4); }
+  .card-orange::before { background: linear-gradient(135deg, #fb923c, #fbbf24); }
+  .card-red::before { background: linear-gradient(135deg, #f87171, #fb923c); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  .diagram-wrap {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px; margin: 20px 0; overflow-x: auto;
+  }
+  .diagram-wrap .mermaid { display: flex; justify-content: center; }
+  .diagram-label {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-muted); margin-bottom: 16px;
+  }
+
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .tag-green { background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.25); color: var(--green); }
+  .tag-blue { background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.25); color: var(--blue); }
+  .tag-orange { background: rgba(251,146,60,0.12); border: 1px solid rgba(251,146,60,0.25); color: var(--orange); }
+  .tag-red { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.25); color: var(--red); }
+  .tag-purple { background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.25); color: var(--purple); }
+  .tag-pink { background: rgba(244,114,182,0.12); border: 1px solid rgba(244,114,182,0.25); color: var(--pink); }
+
+  .compare-table td:first-child { font-weight: 600; color: var(--blue); width: 220px; }
+  .compare-table .v1 { color: var(--red); }
+  .compare-table .v2 { color: var(--green); }
+
+  pre {
+    background: var(--bg-card); padding: 16px; border-radius: 8px;
+    font-size: 13px; overflow-x: auto; margin: 12px 0; border: 1px solid var(--border);
+  }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .stat-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; text-align: center;
+  }
+  .stat-number { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+  .stat-label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  @media (max-width: 768px) { .stat-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>V2 System Design</h1>
+  <p class="subtitle">Claude as Lesson Curator &mdash; From Blind Reinforcement to Intelligent Curation</p>
+  <p class="back"><a href="index.html">&larr; Back to SmartAssist Docs</a> &middot; <a href="feedback-signals.html">Feedback Signals Docs</a></p>
+</div>
+
+<!-- ═══════════ STATS ═══════════ -->
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-number" style="color:var(--blue);">7</div><div class="stat-label">MCP Tools</div></div>
+  <div class="stat-card"><div class="stat-number" style="color:var(--green);">229</div><div class="stat-label">Tests Passing</div></div>
+  <div class="stat-card"><div class="stat-number" style="color:var(--orange);">300</div><div class="stat-label">Corpus Cap</div></div>
+  <div class="stat-card"><div class="stat-number" style="color:var(--purple);">0</div><div class="stat-label">Regressions</div></div>
+</div>
+
+<!-- ═══════════ V1 vs V2 ═══════════ -->
+<h2>Why V2? &mdash; V1 Gaps</h2>
+
+<table class="compare-table">
+  <tr><th>Problem</th><th>V1 Behavior</th><th>V2 Solution</th></tr>
+  <tr>
+    <td>Blind reinforcement</td>
+    <td class="v1">ALL injected lessons boosted/demoted equally on every signal</td>
+    <td class="v2">Claude evaluates EACH lesson individually via <code>boost_lesson</code> / <code>demote_lesson</code></td>
+  </tr>
+  <tr>
+    <td>No lesson IDs visible</td>
+    <td class="v1">Claude saw <code>[code_edit] Use semantic colors</code> with no ID</td>
+    <td class="v2">Claude sees <code>[L042] [code_edit] Use semantic colors</code> with full score table</td>
+  </tr>
+  <tr>
+    <td>Signal+context rejected</td>
+    <td class="v1"><code>:( dont do this</code> was not a feedback signal (exact match only)</td>
+    <td class="v2">Prefix matching: <code>:( dont do this</code> &rarr; ("negative", "dont do this")</td>
+  </tr>
+  <tr>
+    <td>No lifecycle management</td>
+    <td class="v1">Corpus grew unbounded, no way to retire or merge lessons</td>
+    <td class="v2">Auto-retire, merge, 300 cap, log rotation, metrics dashboard</td>
+  </tr>
+  <tr>
+    <td>No curated write path</td>
+    <td class="v1"><code>create_lesson</code> only wrote to <code>feedback_log.jsonl</code></td>
+    <td class="v2">Dual-path: writes to both <code>feedback_log.jsonl</code> AND <code>curated_lessons.json</code></td>
+  </tr>
+</table>
+
+<!-- ═══════════ ARCHITECTURE ═══════════ -->
+<h2>V2 Architecture</h2>
+
+<div class="diagram-wrap">
+  <div class="diagram-label">V2 Feedback Flow &mdash; Claude as Intelligent Curator</div>
+  <div class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant H as prompt_inject.py<br/>(Hook)
+    participant C as Claude<br/>(LLM Curator)
+    participant B as boost_lesson
+    participant D as demote_lesson
+    participant M as merge_lessons
+    participant T as create_lesson
+
+    U->>H: ":( dont do this to theme"
+    activate H
+    Note over H: detect_feedback_signal()<br/>→ ("negative", "dont do this to theme")
+    H->>H: _reconstruct_injected_lessons()
+    Note over H: Builds lesson table with<br/>IDs, scores, confidence
+    H->>H: build_rich_feedback_context()
+    H->>C: Decision framework + lesson table
+    deactivate H
+    activate C
+    Note over C: Evaluates each lesson<br/>against user context
+    C->>D: demote_lesson("L042") — theme lesson was harmful
+    C->>B: boost_lesson("L015") — color lesson was helpful
+    C->>M: merge_lessons("L003,L007", ...) — overlapping
+    C->>T: create_lesson("Never hardcode...") — new insight
+    C->>U: "Adjusted 4 lessons based on your feedback"
+    deactivate C
+  </div>
+</div>
+
+<!-- ═══════════ TOOL DESIGN ═══════════ -->
+<h2>MCP Tool Design</h2>
+
+<div class="grid-2">
+  <div class="card card-green">
+    <h3>boost_lesson(lesson_id)</h3>
+    <p>Increments <code>ups</code>, increases boost by +0.3x (cap 3.0x). Updates Thompson Sampling with <code>record_success</code>. Rejects blocked/retired lessons. Warns if lesson not in curated.</p>
+    <p><span class="tag tag-green">Per-lesson</span> <span class="tag tag-blue">Thompson</span></p>
+  </div>
+  <div class="card card-red">
+    <h3>demote_lesson(lesson_id)</h3>
+    <p>Increments <code>downs</code>, decreases boost by -0.4x (floor 0.0x). <strong>Auto-retires</strong> if boost hits 0.0 AND ups == 0 (never helpful). Warns if lesson has strong positive history (5+ ups).</p>
+    <p><span class="tag tag-red">Auto-retire</span> <span class="tag tag-blue">Thompson</span></p>
+  </div>
+  <div class="card card-purple">
+    <h3>merge_lessons(ids, new_lesson, category)</h3>
+    <p>Consolidates 2+ overlapping lessons. Applies all quality gates on new text. Combines ups, uses max boost. Marks sources as <code>superseded</code>. Physically removes sources from curated.</p>
+    <p><span class="tag tag-purple">Consolidate</span> <span class="tag tag-orange">Quality-Gated</span></p>
+  </div>
+  <div class="card card-orange">
+    <h3>create_lesson(lesson, category, ...)</h3>
+    <p>V2 dual-path: writes to <code>feedback_log.jsonl</code> (for vectorization) AND <code>curated_lessons.json</code> (for injection). Auto-generates ID. Enforces 300 lesson cap.</p>
+    <p><span class="tag tag-orange">Dual-Path</span> <span class="tag tag-green">Self-Healing</span></p>
+  </div>
+</div>
+
+<!-- ═══════════ DECISION FRAMEWORK ═══════════ -->
+<h2>Claude's Decision Framework</h2>
+
+<p>When a feedback signal is detected, Claude receives a structured context with these rules:</p>
+
+<div class="card card-blue">
+<pre style="background: transparent; border: none; margin: 0; padding: 0;">
+RECENTLY INJECTED LESSONS:
+ID     Category       Boost   Ups  Downs   Conf  Lesson
+------ -------------- ------ ---- ----- ------  ----------------------------------------
+L042   code_edit       1.3x    2     1    25%   Use semantic colors from theme tokens
+L015   testing         2.0x    8     1    73%   Mock HTTP boundary, never internal code
+L003   code_edit       0.7x    1     3    17%   Avoid hardcoded hex color values
+
+DECISION FRAMEWORK — evaluate EACH lesson above:
+  RULE 1: If lesson was harmful/irrelevant → call demote_lesson(lesson_id)
+  RULE 2: If lesson was NOT relevant to what just happened → SKIP
+  RULE 3: If two+ lessons overlap → call merge_lessons(ids, new, category)
+  RULE 4: If feedback is about something NOT covered → call create_lesson(...)
+
+CONSTRAINTS:
+  - Max 5 tool calls total for this feedback round
+  - Lessons with confidence <20% are unreliable — consider demoting or merging
+  - Lessons with boost >=2.5x are already highly valued — only boost if clearly relevant</pre>
+</div>
+
+<!-- ═══════════ LIFECYCLE ═══════════ -->
+<h2>Lesson Lifecycle</h2>
+
+<div class="diagram-wrap">
+  <div class="diagram-label">Lesson State Machine</div>
+  <div class="mermaid">
+stateDiagram-v2
+    [*] --> Active: create_lesson / seed
+    Active --> Active: boost_lesson (+0.3x)
+    Active --> Active: demote_lesson (-0.4x)
+    Active --> Retired: auto-retire (boost=0, ups=0)
+    Active --> Superseded: merge_lessons
+    Active --> Blocked: manual xN command
+    Retired --> [*]: audit trail preserved
+    Superseded --> [*]: audit trail preserved
+    Blocked --> Active: unblock (u ID)
+  </div>
+</div>
+
+<div class="grid-3">
+  <div class="card card-red">
+    <h3>Auto-Retire</h3>
+    <p><code>demote_lesson</code> drops boost to 0.0 AND lesson has 0 ups (never helpful). Removed from curated, marked retired in scores.</p>
+  </div>
+  <div class="card card-purple">
+    <h3>Merge</h3>
+    <p><code>merge_lessons</code> combines 2+ overlapping lessons. Sources removed from curated, new consolidated lesson added. Reduces corpus size.</p>
+  </div>
+  <div class="card card-orange">
+    <h3>Corpus Cap</h3>
+    <p>Soft cap at 300 lessons. <code>_add_to_curated()</code> returns actionable error at capacity. Dashboard shows percentage.</p>
+  </div>
+</div>
+
+<!-- ═══════════ EDGE CASES ═══════════ -->
+<h2>Edge Cases Handled</h2>
+
+<table>
+  <tr><th>Edge Case</th><th>What Happens</th></tr>
+  <tr><td>curated_lessons.json missing</td><td><code>_add_to_curated()</code> creates it as <code>[]</code>. Self-healing.</td></tr>
+  <tr><td>Corpus at 300 capacity</td><td>Returns: "Corpus at capacity (300). Merge or demote lessons first."</td></tr>
+  <tr><td>No recent injection</td><td>Rich context says: "NO LESSONS WERE RECENTLY INJECTED — create a new lesson instead."</td></tr>
+  <tr><td>Stale injection (>5 min)</td><td><code>_reconstruct_injected_lessons()</code> returns <code>[]</code>. Claude defaults to create.</td></tr>
+  <tr><td>Demote lesson with ups=0 to 0.0</td><td>Auto-retired. Removed from curated. Marked in scores with timestamp + reason.</td></tr>
+  <tr><td>Demote lesson with ups&gt;0 to 0.0</td><td>NOT auto-retired. Was helpful sometimes. Stays in curated at floor.</td></tr>
+  <tr><td>feedback_log.jsonl >10K lines</td><td>Maintenance rotates: archive oldest, keep 5K recent, reset vectorization counter.</td></tr>
+  <tr><td>Boost blocked/retired lesson</td><td>Rejected with clear error message. Must unblock first.</td></tr>
+  <tr><td>Merge with missing source IDs</td><td>Error listing which IDs are missing. No partial merge.</td></tr>
+</table>
+
+<!-- ═══════════ DATA FLOW ═══════════ -->
+<h2>Storage &amp; Data Flow</h2>
+
+<div class="diagram-wrap">
+  <div class="diagram-label">Data Storage Architecture</div>
+  <div class="mermaid">
+flowchart LR
+    subgraph "Active Data"
+        A["curated_lessons.json<br/>Active lesson corpus<br/>Injected into prompts"]
+        B["lesson_scores.json<br/>Boost, ups, downs<br/>Blocked, retired flags"]
+    end
+
+    subgraph "Event Logs"
+        C["feedback_log.jsonl<br/>Raw feedback events<br/>Vectorization source"]
+        D["feedback_metrics.json<br/>Action counters<br/>Dashboard data"]
+    end
+
+    subgraph "Derived"
+        E["LanceDB vectors<br/>Semantic search index"]
+        F["reliability_scores.json<br/>Thompson Sampling"]
+    end
+
+    A -->|inject| B
+    C -->|vectorize| E
+    B -->|display| D
+    F -->|category scores| A
+
+    style A fill:#162032,stroke:#34d399,color:#e6edf3
+    style B fill:#162032,stroke:#38bdf8,color:#e6edf3
+    style C fill:#162032,stroke:#fb923c,color:#e6edf3
+    style D fill:#162032,stroke:#a78bfa,color:#e6edf3
+    style E fill:#162032,stroke:#f87171,color:#e6edf3
+    style F fill:#162032,stroke:#f472b6,color:#e6edf3
+  </div>
+</div>
+
+<!-- ═══════════ TEST PROOF ═══════════ -->
+<h2>Test Coverage</h2>
+
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-number" style="color:var(--green);">117</div><div class="stat-label">Feedback Tests</div></div>
+  <div class="stat-card"><div class="stat-number" style="color:var(--blue);">229</div><div class="stat-label">Total Suite</div></div>
+  <div class="stat-card"><div class="stat-number" style="color:var(--green);">16</div><div class="stat-label">Test Classes</div></div>
+  <div class="stat-card"><div class="stat-number" style="color:var(--purple);">0.89s</div><div class="stat-label">Runtime</div></div>
+</div>
+
+<table>
+  <tr><th>Test Class</th><th>Count</th><th>What's Covered</th></tr>
+  <tr><td>TestFeedbackSignalDetectionV2</td><td>20</td><td>Tuple returns, prefix matching, signal+context, case, whitespace</td></tr>
+  <tr><td>TestReconstructInjectedLessons</td><td>8</td><td>Empty, stale, full reconstruction, missing data, confidence</td></tr>
+  <tr><td>TestBuildRichFeedbackContext</td><td>10</td><td>Positive/negative, lesson table, user context, empty state, constraints</td></tr>
+  <tr><td>TestWriteToLiveLogFeedback</td><td>6</td><td>Log output, colors, counters, user context, lesson count</td></tr>
+  <tr><td>TestBoostLessonTool</td><td>8</td><td>Boost, cap, blocked/retired rejection, Thompson, metrics</td></tr>
+  <tr><td>TestDemoteLessonTool</td><td>9</td><td>Demote, floor, auto-retire, warning, Thompson, metrics</td></tr>
+  <tr><td>TestMergeLessonsTool</td><td>13</td><td>Quality gates, score combination, physical removal, curated update</td></tr>
+  <tr><td>TestCreateLessonV2</td><td>14</td><td>Dual-path write, auto ID, cap enforcement, all quality gates</td></tr>
+  <tr><td>TestAddToCurated</td><td>5</td><td>Create file, append, cap, ID sequence, empty file</td></tr>
+  <tr><td>TestRemoveFromCurated</td><td>3</td><td>Removal, missing file, missing ID</td></tr>
+  <tr><td>TestFeedbackMetrics</td><td>4</td><td>Initialization, increment, multiple types, timestamp</td></tr>
+  <tr><td>TestAutoRetire</td><td>4</td><td>Retire conditions, audit trail, curated removal, positive feedback</td></tr>
+  <tr><td>TestFeedbackLogRotation</td><td>4</td><td>Under threshold, rotation, counter reset, missing log</td></tr>
+  <tr><td>TestPromptInjectMainFeedback</td><td>6</td><td>V2 hook output, signal+context, no V1 reinforce, lesson IDs</td></tr>
+  <tr><td>TestScoreSchemaV2</td><td>2</td><td>New retired fields, backwards compatibility</td></tr>
+</table>
+
+<!-- ═══════════ FILES CHANGED ═══════════ -->
+<h2>Files Changed</h2>
+
+<table>
+  <tr><th>File</th><th>Change Summary</th></tr>
+  <tr><td><code>smartassist/hooks/prompt_inject.py</code></td><td>V2 signal detection (tuple returns + prefix), rich context builder with decision framework, lesson reconstruction with confidence, removed blind reinforcement + old instructions, cleaned imports</td></tr>
+  <tr><td><code>smartassist/mcp_server.py</code></td><td>3 new MCP tools (<code>boost_lesson</code>, <code>demote_lesson</code>, <code>merge_lessons</code>), 4 shared helpers, dual-path <code>create_lesson</code>, dashboard with corpus metrics, feedback metrics tracking</td></tr>
+  <tr><td><code>smartassist/lesson_feedback.py</code></td><td>Added <code>retired</code>, <code>retired_reason</code>, <code>retired_at</code> to score schema. Backwards compatible.</td></tr>
+  <tr><td><code>smartassist/tools/maintenance.py</code></td><td>Added <code>rotate_feedback_log()</code> with 10K line trigger, archive oldest, keep 5K recent, reset vectorization counter</td></tr>
+  <tr><td><code>tests/test_feedback_lesson.py</code></td><td>Full rewrite: 117 tests across 16 classes (was 61 in V1). Removed V1 reinforcement/instructions tests.</td></tr>
+  <tr><td><code>docs/feedback-signals.html</code></td><td>Updated all sections for V2: flow diagrams, lifecycle, test proof, critical review</td></tr>
+  <tr><td><code>docs/v2-system-design.html</code></td><td>This page &mdash; comprehensive V2 design documentation</td></tr>
+</table>
+
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#162032',
+    primaryTextColor: '#e6edf3',
+    primaryBorderColor: '#38bdf8',
+    lineColor: '#38bdf8',
+    secondaryColor: '#131a27',
+    tertiaryColor: '#0a0e17',
+    noteTextColor: '#e6edf3',
+    noteBkgColor: '#162032',
+    noteBorderColor: '#1e2d44',
+  }
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartAssist — Feedback Signal System</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --bg-card: #131a27;
+    --bg-card-alt: #162032;
+    --border: #1e2d44;
+    --text: #e6edf3;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+    --blue: #38bdf8;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --cyan: #22d3ee;
+    --yellow: #fbbf24;
+    --gradient-1: linear-gradient(135deg, #38bdf8 0%, #a78bfa 100%);
+    --gradient-2: linear-gradient(135deg, #34d399 0%, #38bdf8 100%);
+    --gradient-3: linear-gradient(135deg, #fb923c 0%, #f87171 100%);
+    --gradient-4: linear-gradient(135deg, #a78bfa 0%, #f472b6 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 24px 100px;
+  }
+
+  .hero { text-align: center; margin-bottom: 48px; }
+  .hero h1 {
+    font-size: 34px; font-weight: 800;
+    background: var(--gradient-1);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin-bottom: 8px;
+  }
+  .hero .subtitle { color: var(--text-dim); font-size: 17px; margin-bottom: 6px; }
+  .hero .back { color: var(--text-muted); font-size: 13px; }
+  .hero .back a { color: var(--blue); text-decoration: none; }
+  .hero .back a:hover { text-decoration: underline; }
+
+  .nav-pills {
+    display: flex; gap: 10px; justify-content: center;
+    margin: 32px 0 48px; flex-wrap: wrap;
+  }
+  .nav-pill {
+    padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    text-decoration: none; color: var(--text-dim); background: var(--bg-card);
+    border: 1px solid var(--border); transition: all 0.2s; cursor: pointer;
+  }
+  .nav-pill:hover { border-color: var(--blue); color: var(--text); }
+  .nav-pill.active { border-color: var(--blue); color: var(--blue); background: rgba(56,189,248,0.08); }
+
+  .section { display: none; margin: 0 0 80px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .section.active { display: block; }
+  .section-header { margin-bottom: 32px; }
+  .section-num { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+  .section-title { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+  .section-tagline { color: var(--text-dim); font-size: 16px; font-style: italic; }
+
+  h2 { font-size: 20px; font-weight: 700; margin: 40px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; color: var(--blue); }
+  p { margin-bottom: 12px; }
+  ul { padding-left: 20px; margin: 8px 0 12px; }
+  li { margin: 6px 0; font-size: 14px; color: var(--text-dim); }
+  li strong { color: var(--text); }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin: 16px 0;
+    position: relative; overflow: hidden;
+  }
+  .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .card-blue::before { background: var(--gradient-1); }
+  .card-green::before { background: var(--gradient-2); }
+  .card-pink::before { background: var(--gradient-4); }
+  .card-orange::before { background: linear-gradient(135deg, #fb923c, #fbbf24); }
+  .card-red::before { background: linear-gradient(135deg, #f87171, #fb923c); }
+
+  .diagram-wrap {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px; margin: 20px 0; overflow-x: auto;
+  }
+  .diagram-wrap .mermaid { display: flex; justify-content: center; }
+  .diagram-label {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-muted); margin-bottom: 16px;
+  }
+
+  code {
+    background: rgba(56,189,248,0.08); color: var(--cyan);
+    padding: 2px 6px; border-radius: 4px; font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  }
+  pre {
+    background: var(--bg-card-alt); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px; margin: 12px 0;
+    overflow-x: auto; font-size: 13px; line-height: 1.6;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    color: var(--text-dim);
+  }
+  pre .kw { color: var(--purple); }
+  pre .str { color: var(--green); }
+  pre .cmt { color: var(--text-muted); font-style: italic; }
+  pre .fn { color: var(--blue); }
+  pre .num { color: var(--orange); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .tag {
+    display: inline-block; padding: 3px 10px; border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+  }
+  .tag-blue { background: rgba(56,189,248,0.12); color: var(--blue); }
+  .tag-green { background: rgba(52,211,153,0.12); color: var(--green); }
+  .tag-orange { background: rgba(251,146,60,0.12); color: var(--orange); }
+  .tag-red { background: rgba(248,113,113,0.12); color: var(--red); }
+  .tag-purple { background: rgba(167,139,250,0.12); color: var(--purple); }
+
+  /* Interactive demo */
+  .demo-container {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 0; margin: 20px 0; overflow: hidden;
+  }
+  .demo-header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .demo-header .dots { display: flex; gap: 6px; }
+  .demo-header .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .demo-header .dot-r { background: #f87171; }
+  .demo-header .dot-y { background: #fbbf24; }
+  .demo-header .dot-g { background: #34d399; }
+  .demo-header .demo-title { color: var(--text-muted); font-size: 13px; font-weight: 600; }
+  .demo-body { padding: 24px; }
+
+  .chat-msg {
+    display: flex; gap: 12px; margin: 12px 0; padding: 12px 16px;
+    border-radius: 10px; font-size: 14px; line-height: 1.6;
+    opacity: 0; transform: translateY(10px);
+    transition: opacity 0.4s, transform 0.4s;
+  }
+  .chat-msg.visible { opacity: 1; transform: translateY(0); }
+  .chat-msg.user { background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.15); }
+  .chat-msg.system { background: rgba(167,139,250,0.06); border: 1px solid rgba(167,139,250,0.15); }
+  .chat-msg.hook { background: rgba(52,211,153,0.06); border: 1px solid rgba(52,211,153,0.15); }
+  .chat-msg.tool { background: rgba(251,146,60,0.06); border: 1px solid rgba(251,146,60,0.15); }
+  .chat-msg.storage { background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.15); }
+  .chat-msg .avatar {
+    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+  }
+  .chat-msg.user .avatar { background: rgba(56,189,248,0.15); color: var(--blue); }
+  .chat-msg.system .avatar { background: rgba(167,139,250,0.15); color: var(--purple); }
+  .chat-msg.hook .avatar { background: rgba(52,211,153,0.15); color: var(--green); }
+  .chat-msg.tool .avatar { background: rgba(251,146,60,0.15); color: var(--orange); }
+  .chat-msg.storage .avatar { background: rgba(248,113,113,0.15); color: var(--red); }
+  .chat-msg .content { flex: 1; }
+  .chat-msg .label { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .chat-msg.user .label { color: var(--blue); }
+  .chat-msg.system .label { color: var(--purple); }
+  .chat-msg.hook .label { color: var(--green); }
+  .chat-msg.tool .label { color: var(--orange); }
+  .chat-msg.storage .label { color: var(--red); }
+
+  .demo-controls {
+    display: flex; gap: 12px; margin-top: 20px; padding-top: 16px;
+    border-top: 1px solid var(--border); justify-content: center;
+  }
+  .btn {
+    padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--border); cursor: pointer; transition: all 0.2s;
+    background: var(--bg-card-alt); color: var(--text);
+  }
+  .btn:hover { border-color: var(--blue); color: var(--blue); }
+  .btn.active { background: rgba(56,189,248,0.1); border-color: var(--blue); color: var(--blue); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* File table */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { text-align: left; padding: 10px 14px; font-size: 14px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { color: var(--text-dim); }
+  td code { font-size: 12px; }
+
+  /* Quality gate bar */
+  .gate-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+  .gate {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: var(--bg-card-alt); border-radius: 8px; border: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .gate-icon { font-size: 16px; flex-shrink: 0; width: 24px; text-align: center; }
+  .gate-pass .gate-icon { color: var(--green); }
+  .gate-fail .gate-icon { color: var(--red); }
+  .gate-text { color: var(--text-dim); flex: 1; }
+  .gate-fail { border-color: rgba(248,113,113,0.3); }
+  .gate-fail .gate-text { color: var(--red); }
+
+  /* Metric bars */
+  .metric-row { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+  .metric-label { width: 120px; font-size: 13px; color: var(--text-dim); text-align: right; }
+  .metric-bar-bg {
+    flex: 1; height: 8px; background: var(--bg-card-alt);
+    border-radius: 4px; overflow: hidden;
+  }
+  .metric-bar {
+    height: 100%; border-radius: 4px; transition: width 1s ease;
+  }
+  .metric-bar.green { background: var(--green); }
+  .metric-bar.blue { background: var(--blue); }
+  .metric-bar.orange { background: var(--orange); }
+  .metric-bar.red { background: var(--red); }
+  .metric-val { width: 50px; font-size: 13px; font-weight: 600; }
+
+  /* Test results */
+  .test-suite { margin: 12px 0; }
+  .test-suite-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px; background: var(--bg-card-alt); border-radius: 8px;
+    cursor: pointer; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  .test-suite-header:hover { border-color: var(--blue); }
+  .test-count { margin-left: auto; font-size: 12px; color: var(--green); }
+  .test-list {
+    display: none; padding: 4px 0 4px 40px; font-size: 13px; color: var(--text-dim);
+  }
+  .test-list.open { display: block; }
+  .test-item { padding: 4px 0; }
+  .test-item::before { content: '\2713 '; color: var(--green); font-weight: 700; }
+
+  .alert {
+    padding: 16px 20px; border-radius: 10px; margin: 16px 0;
+    font-size: 14px; line-height: 1.6;
+  }
+  .alert-warn {
+    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.25);
+    color: var(--yellow);
+  }
+  .alert-info {
+    background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25);
+    color: var(--blue);
+  }
+  .alert-good {
+    background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.25);
+    color: var(--green);
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Feedback Signal System</h1>
+  <p class="subtitle">V2: Claude as Lesson Curator &mdash; Per-Lesson Decisions via MCP Tools</p>
+  <p class="back"><a href="index.html">&larr; Back to SmartAssist Docs</a></p>
+</div>
+
+<div class="nav-pills" id="nav">
+  <div class="nav-pill active" data-section="overview">Overview</div>
+  <div class="nav-pill" data-section="flow">System Flow</div>
+  <div class="nav-pill" data-section="lifecycle">Lifecycle</div>
+  <div class="nav-pill" data-section="quality">Quality Gates</div>
+  <div class="nav-pill" data-section="tests">Test Proof</div>
+  <div class="nav-pill" data-section="review">Critical Review</div>
+</div>
+
+<!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+<div class="section active" id="sec-overview">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--blue);">01 / Overview</div>
+    <div class="section-title">What This Feature Does</div>
+    <div class="section-tagline">Turn emoticons into lasting project knowledge</div>
+  </div>
+
+  <p>When a user types <code>:)</code> or <code>:(</code> (optionally with context like <code>:( dont do this to the theme</code>), Claude becomes the <strong>intelligent curator</strong> of the knowledge base:</p>
+
+  <div class="grid-2">
+    <div class="card card-green">
+      <h3>1. Per-Lesson Decisions (V2)</h3>
+      <p>Claude sees a <strong>table of recently injected lessons</strong> with IDs, scores, and confidence levels. For each lesson, Claude decides: <code>boost_lesson</code>, <code>demote_lesson</code>, <code>merge_lessons</code>, or skip. No more blind reinforcement.</p>
+      <p><span class="tag tag-green">Intelligent</span> <span class="tag tag-blue">Per-Lesson</span></p>
+    </div>
+    <div class="card card-orange">
+      <h3>2. Create / Merge / Retire</h3>
+      <p>Claude can <code>create_lesson</code> (dual-path: curated + vectorized), <code>merge_lessons</code> to consolidate overlaps, or auto-retire lessons that were never helpful. Corpus capped at 300 lessons.</p>
+      <p><span class="tag tag-orange">LLM-Powered</span> <span class="tag tag-purple">Lifecycle-Managed</span></p>
+    </div>
+  </div>
+
+  <h2>V2 MCP Tools</h2>
+  <table>
+    <tr><th>Tool</th><th>Purpose</th><th>Key Behavior</th></tr>
+    <tr><td><code>boost_lesson(id)</code></td><td>Increase score</td><td>+0.3x boost, cap 3.0x, Thompson success</td></tr>
+    <tr><td><code>demote_lesson(id)</code></td><td>Decrease score</td><td>-0.4x boost, auto-retire at 0.0 with 0 ups</td></tr>
+    <tr><td><code>merge_lessons(ids, new, cat)</code></td><td>Consolidate overlapping</td><td>Combines scores, removes sources, quality-gated</td></tr>
+    <tr><td><code>create_lesson(...)</code></td><td>New lesson</td><td>Dual-path write (curated + vectorized), 6 quality gates</td></tr>
+  </table>
+
+  <h2>Supported Signals (V2: with context)</h2>
+  <table>
+    <tr><th>Signal</th><th>Sentiment</th><th>Context Support</th><th>Example</th></tr>
+    <tr><td><code>:)</code> <code>:-)</code></td><td><span class="tag tag-green">positive</span></td><td>Optional</td><td><code>:) good use of theme colors</code></td></tr>
+    <tr><td><code>:(</code> <code>:-(</code></td><td><span class="tag tag-red">negative</span></td><td>Optional</td><td><code>:( dont do this to the theme</code></td></tr>
+    <tr><td><code>thumbs up</code> <code>thumbs_up</code></td><td><span class="tag tag-green">positive</span></td><td>Optional</td><td><code>thumbs_up great testing</code></td></tr>
+    <tr><td><code>thumbs down</code> <code>thumbs_down</code></td><td><span class="tag tag-red">negative</span></td><td>Optional</td><td><code>thumbs_down bad approach</code></td></tr>
+  </table>
+
+  <h2>Files Modified (V2)</h2>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>hooks/prompt_inject.py</code></td><td>V2 signal detection (tuple returns + prefix), rich context builder, lesson reconstruction, removed blind reinforcement</td></tr>
+    <tr><td><code>mcp_server.py</code></td><td>3 new tools (boost/demote/merge), dual-path create, shared helpers, dashboard with corpus metrics</td></tr>
+    <tr><td><code>lesson_feedback.py</code></td><td>Retired fields in score schema (retired, retired_reason, retired_at)</td></tr>
+    <tr><td><code>maintenance.py</code></td><td>feedback_log.jsonl rotation (>10K lines &rarr; archive + keep 5K)</td></tr>
+    <tr><td><code>tests/test_feedback_lesson.py</code></td><td>117 tests across 16 test classes (was 61 in V1)</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════ SYSTEM FLOW ═══════════════════ -->
+<div class="section" id="sec-flow">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--green);">02 / System Flow</div>
+    <div class="section-title">How It Works End-to-End</div>
+    <div class="section-tagline">From keystroke to knowledge base</div>
+  </div>
+
+  <div class="diagram-wrap">
+    <div class="diagram-label">Sequence Diagram &mdash; V2 Feedback Flow (Claude as Curator)</div>
+    <div class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant H as prompt_inject.py<br/>(Hook)
+    participant C as Claude<br/>(LLM Curator)
+    participant B as boost_lesson<br/>(MCP Tool)
+    participant D as demote_lesson<br/>(MCP Tool)
+    participant M as merge_lessons<br/>(MCP Tool)
+    participant T as create_lesson<br/>(MCP Tool)
+
+    U->>H: Types ":( dont do this to theme"
+    activate H
+    Note over H: detect_feedback_signal()<br/>returns ("negative", "dont do this to theme")
+    H->>H: _reconstruct_injected_lessons()
+    H->>H: build_rich_feedback_context()
+    H->>C: Lesson table + decision framework
+    deactivate H
+    activate C
+    Note over C: Evaluates EACH lesson
+    C->>D: demote_lesson("L042") - irrelevant
+    C->>B: boost_lesson("L015") - was helpful
+    C->>T: create_lesson("Never hardcode...") - new insight
+    C->>U: "Got it! Demoted the theme lesson, boosted the color one."
+    deactivate C
+    </div>
+  </div>
+
+  <h2>V2 vs V1 Decision Flow</h2>
+  <div class="diagram-wrap">
+    <div class="diagram-label">V2 Component Architecture</div>
+    <div class="mermaid">
+flowchart TB
+    subgraph "User Input"
+        A["Signal: :( dont do this to theme"]
+    end
+
+    subgraph "Hook Layer (prompt_inject.py)"
+        B["detect_feedback_signal() &rarr; tuple"]
+        C["_reconstruct_injected_lessons()"]
+        D["build_rich_feedback_context()"]
+    end
+
+    subgraph "Claude (Intelligent Curator)"
+        F["Lesson table + scores + confidence"]
+        F2["Per-lesson BOOST / SKIP / DEMOTE"]
+    end
+
+    subgraph "MCP Tools (mcp_server.py)"
+        G1["boost_lesson(id)"]
+        G2["demote_lesson(id)"]
+        G3["merge_lessons(ids, new, cat)"]
+        G4["create_lesson(lesson, cat, ...)"]
+    end
+
+    subgraph "Lifecycle"
+        H1["Auto-retire: boost 0.0 + 0 ups"]
+        H2["Corpus cap: 300 lessons"]
+        H3["Log rotation: 10K lines"]
+    end
+
+    subgraph "Storage"
+        I["curated_lessons.json"]
+        J["lesson_scores.json"]
+        K["feedback_log.jsonl"]
+        L["feedback_metrics.json"]
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    D --> F
+    F --> F2
+    F2 --> G1
+    F2 --> G2
+    F2 --> G3
+    F2 --> G4
+    G1 --> J
+    G2 --> J
+    G2 --> H1
+    G3 --> I
+    G4 --> I
+    G4 --> K
+    H1 --> I
+    H2 --> I
+    H3 --> K
+
+    style A fill:#162032,stroke:#38bdf8,color:#e6edf3
+    style B fill:#162032,stroke:#34d399,color:#e6edf3
+    style C fill:#162032,stroke:#34d399,color:#e6edf3
+    style D fill:#162032,stroke:#34d399,color:#e6edf3
+    style F fill:#162032,stroke:#a78bfa,color:#e6edf3
+    style F2 fill:#162032,stroke:#a78bfa,color:#e6edf3
+    style G1 fill:#162032,stroke:#fb923c,color:#e6edf3
+    style G2 fill:#162032,stroke:#fb923c,color:#e6edf3
+    style G3 fill:#162032,stroke:#fb923c,color:#e6edf3
+    style G4 fill:#162032,stroke:#fb923c,color:#e6edf3
+    style H1 fill:#162032,stroke:#f472b6,color:#e6edf3
+    style H2 fill:#162032,stroke:#f472b6,color:#e6edf3
+    style H3 fill:#162032,stroke:#f472b6,color:#e6edf3
+    style I fill:#162032,stroke:#f87171,color:#e6edf3
+    style J fill:#162032,stroke:#f87171,color:#e6edf3
+    style K fill:#162032,stroke:#f87171,color:#e6edf3
+    style L fill:#162032,stroke:#f87171,color:#e6edf3
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ LIVE DEMO ═══════════════════ -->
+<div class="section" id="sec-lifecycle">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--orange);">03 / Lifecycle</div>
+    <div class="section-title">Lesson Lifecycle Management</div>
+    <div class="section-tagline">Create, boost, demote, merge, retire &mdash; bounded corpus</div>
+  </div>
+
+  <h2>How Lessons Get Removed</h2>
+  <table>
+    <tr><th>Trigger</th><th>When</th><th>What Happens</th></tr>
+    <tr><td><strong>Auto-retire</strong></td><td><code>demote_lesson</code> drops boost to 0.0 AND ups == 0</td><td>Lesson was never helpful. Removed from curated, marked retired in scores.</td></tr>
+    <tr><td><strong>Merge</strong></td><td><code>merge_lessons</code> called by Claude</td><td>Source lessons physically removed from curated. New consolidated lesson added. Sources marked superseded.</td></tr>
+    <tr><td><strong>Manual block</strong></td><td>User runs <code>xN</code> in monitor</td><td>Sets blocked=True, removes from curated.</td></tr>
+  </table>
+
+  <h2>Corpus Capacity</h2>
+  <div class="card card-pink">
+    <h3>Soft Cap: 300 Lessons</h3>
+    <p>When <code>curated_lessons.json</code> reaches 300 entries, <code>_add_to_curated()</code> returns an actionable error: <em>"Corpus at capacity (300). Merge or demote lessons first."</em></p>
+    <p>Dashboard shows: <code>Corpus: 87/300 lessons (29% capacity)</code></p>
+    <p>Merges reduce count (removes 2+ originals, adds 1). Auto-retire reduces count too.</p>
+  </div>
+
+  <h2>Feedback Log Rotation</h2>
+  <div class="card card-blue">
+    <h3>Trigger: >10,000 Lines</h3>
+    <p>During <code>smartassist maintenance</code>, if <code>feedback_log.jsonl</code> exceeds 10K lines:</p>
+    <ul>
+      <li>Archive oldest lines to <code>.bak</code> file</li>
+      <li>Keep most recent 5,000 lines</li>
+      <li>Reset vectorization counter to match</li>
+    </ul>
+  </div>
+
+  <h2>Score Entry Lifecycle</h2>
+  <div class="card card-green">
+    <h3>Audit Trail</h3>
+    <p>Score entries in <code>lesson_scores.json</code> are never deleted. Even retired/blocked entries stay (~100 bytes each). They serve as:</p>
+    <ul>
+      <li>Audit trail for why a lesson was removed</li>
+      <li>Prevention of re-creating retired lessons</li>
+      <li>Historical feedback data (ups, downs, boost history)</li>
+    </ul>
+  </div>
+
+  <h2>Feedback Metrics Dashboard</h2>
+  <p><code>rag_dashboard</code> now shows:</p>
+  <pre style="background: var(--bg-card); padding: 16px; border-radius: 8px; font-size: 13px;">
+Corpus: 87/300 lessons (29% capacity)
+  Active: 87  |  Retired: 5
+
+Feedback Actions:
+  Boosts: 42  |  Demotes: 18  |  Creates: 24  |  Merges: 3
+  Total signals: 60 (positive: 38, negative: 22)</pre>
+</div>
+
+<!-- ═══════════════════ QUALITY GATES ═══════════════════ -->
+<div class="section" id="sec-quality">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--purple);">04 / Quality Gates</div>
+    <div class="section-title">6 Gates Protect the Knowledge Base</div>
+    <div class="section-tagline">Only high-value, project-specific lessons get stored</div>
+  </div>
+
+  <p>The <code>create_lesson</code> MCP tool validates every lesson before storing it. If a gate fails, it returns an error message so Claude can retry with better input.</p>
+
+  <h3>Example: Valid Lesson</h3>
+  <div class="gate-list">
+    <div class="gate gate-pass"><div class="gate-icon">&#10003;</div><div class="gate-text"><strong>Gate 1 &mdash; Category:</strong> "code_edit" is in {testing, code_edit, git, architecture, pr_review, security, debugging}</div></div>
+    <div class="gate gate-pass"><div class="gate-icon">&#10003;</div><div class="gate-text"><strong>Gate 2 &mdash; Sentiment:</strong> "positive" is valid</div></div>
+    <div class="gate gate-pass"><div class="gate-icon">&#10003;</div><div class="gate-text"><strong>Gate 3 &mdash; Intensity:</strong> 4 is within [1, 5]</div></div>
+    <div class="gate gate-pass"><div class="gate-icon">&#10003;</div><div class="gate-text"><strong>Gate 4 &mdash; Length:</strong> "Always use semantic colors from theme instead of hardcoded hex values" = 69 chars &ge; 30</div></div>
+    <div class="gate gate-pass"><div class="gate-icon">&#10003;</div><div class="gate-text"><strong>Gate 5 &mdash; No Generic Start:</strong> Does not start with "good job", "be careful", etc.</div></div>
+    <div class="gate gate-pass"><div class="gate-icon">&#10003;</div><div class="gate-text"><strong>Gate 6 &mdash; Action Verb:</strong> Contains "use" &mdash; an imperative action verb</div></div>
+  </div>
+
+  <h3>Example: Rejected Lessons</h3>
+  <div class="gate-list">
+    <div class="gate gate-fail"><div class="gate-icon">&#10007;</div><div class="gate-text"><strong>"Use theme colors"</strong> &mdash; Too short (16 chars &lt; 30)</div></div>
+    <div class="gate gate-fail"><div class="gate-icon">&#10007;</div><div class="gate-text"><strong>"Good job using semantic colors from the theme"</strong> &mdash; Starts with generic "good job"</div></div>
+    <div class="gate gate-fail"><div class="gate-icon">&#10007;</div><div class="gate-text"><strong>"Semantic colors are better than hardcoded hex values"</strong> &mdash; No action verb (descriptive, not imperative)</div></div>
+    <div class="gate gate-fail"><div class="gate-icon">&#10007;</div><div class="gate-text"><strong>"Remember to run tests before committing"</strong> &mdash; Starts with generic "remember to"</div></div>
+  </div>
+
+  <h2>Action Verbs Accepted</h2>
+  <p style="color:var(--text-dim); font-size:14px;">
+    <code>use</code> <code>never</code> <code>always</code> <code>avoid</code> <code>prefer</code>
+    <code>check</code> <code>run</code> <code>ensure</code> <code>include</code> <code>test</code>
+    <code>verify</code> <code>add</code> <code>remove</code> <code>replace</code> <code>apply</code>
+    <code>call</code> <code>import</code> <code>export</code> <code>wrap</code> <code>split</code>
+    <code>move</code> <code>keep</code> <code>delete</code> <code>update</code> <code>follow</code>
+    <code>mock</code> <code>assert</code> <code>validate</code> <code>configure</code> <code>set</code>
+    <code>create</code>
+  </p>
+
+  <h2>Storage Format</h2>
+  <p>Entries are written to <code>feedback_log.jsonl</code> with the <code>correction</code> field populated (&ge;30 chars) to ensure <code>vectorize_learnings.py</code> picks them up:</p>
+  <pre>{
+  <span class="str">"timestamp"</span>: <span class="num">1709500000.0</span>,
+  <span class="str">"signal"</span>: <span class="str">"thumbs_up"</span>,       <span class="cmt">// or "correction" for negative</span>
+  <span class="str">"category"</span>: <span class="str">"code_edit"</span>,
+  <span class="str">"intensity"</span>: <span class="num">4</span>,
+  <span class="str">"query"</span>: <span class="str">""</span>,
+  <span class="str">"response"</span>: <span class="str">""</span>,
+  <span class="str">"correction"</span>: <span class="str">"Always use semantic colors from theme instead of hardcoded hex values"</span>,
+  <span class="str">"context"</span>: <span class="str">"Was styling login button component"</span>
+}</pre>
+</div>
+
+<!-- ═══════════════════ TEST PROOF ═══════════════════ -->
+<div class="section" id="sec-tests">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--cyan);">05 / Test Proof</div>
+    <div class="section-title">117 Tests, 0 Failures</div>
+    <div class="section-tagline">229 total tests in suite &mdash; zero regressions</div>
+  </div>
+
+  <div class="alert alert-good">
+    <strong>All 229 tests pass in 0.89s</strong> &mdash; 117 feedback tests (V2), 112 existing tests unchanged.
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <h3>V2 Test Coverage by Area</h3>
+      <div class="metric-row"><div class="metric-label">Signal Detection V2</div><div class="metric-bar-bg"><div class="metric-bar green" style="width:100%"></div></div><div class="metric-val">20/20</div></div>
+      <div class="metric-row"><div class="metric-label">Reconstruct Lessons</div><div class="metric-bar-bg"><div class="metric-bar blue" style="width:100%"></div></div><div class="metric-val">8/8</div></div>
+      <div class="metric-row"><div class="metric-label">Rich Context</div><div class="metric-bar-bg"><div class="metric-bar blue" style="width:100%"></div></div><div class="metric-val">10/10</div></div>
+      <div class="metric-row"><div class="metric-label">boost_lesson</div><div class="metric-bar-bg"><div class="metric-bar green" style="width:100%"></div></div><div class="metric-val">8/8</div></div>
+      <div class="metric-row"><div class="metric-label">demote_lesson</div><div class="metric-bar-bg"><div class="metric-bar green" style="width:100%"></div></div><div class="metric-val">9/9</div></div>
+      <div class="metric-row"><div class="metric-label">merge_lessons</div><div class="metric-bar-bg"><div class="metric-bar green" style="width:100%"></div></div><div class="metric-val">13/13</div></div>
+      <div class="metric-row"><div class="metric-label">create_lesson V2</div><div class="metric-bar-bg"><div class="metric-bar green" style="width:100%"></div></div><div class="metric-val">14/14</div></div>
+      <div class="metric-row"><div class="metric-label">Helpers &amp; Lifecycle</div><div class="metric-bar-bg"><div class="metric-bar blue" style="width:100%"></div></div><div class="metric-val">22/22</div></div>
+      <div class="metric-row"><div class="metric-label">Integration</div><div class="metric-bar-bg"><div class="metric-bar blue" style="width:100%"></div></div><div class="metric-val">6/6</div></div>
+      <div class="metric-row"><div class="metric-label">Log Rotation</div><div class="metric-bar-bg"><div class="metric-bar blue" style="width:100%"></div></div><div class="metric-val">4/4</div></div>
+    </div>
+    <div>
+      <h3>What's Tested (V2)</h3>
+      <ul>
+        <li>V2 tuple returns + prefix matching (signal+context)</li>
+        <li>Lesson reconstruction with scores + confidence</li>
+        <li>Rich context with decision framework</li>
+        <li>Per-lesson boost/demote with Thompson + metrics</li>
+        <li>Auto-retire lifecycle (conditions, audit trail, curated removal)</li>
+        <li>Merge with quality gates, score combination, source removal</li>
+        <li>Dual-path create (curated + vectorized)</li>
+        <li>Corpus cap enforcement at 300</li>
+        <li>Feedback metrics tracking</li>
+        <li>feedback_log.jsonl rotation (archive + keep)</li>
+        <li>Backwards-compatible score schema</li>
+        <li>End-to-end main() with V2 flow</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>V2 Test Classes (16 total)</h2>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestFeedbackSignalDetectionV2<span class="test-count">20 passed</span></div><div class="test-list"><div class="test-item">test_smiley_positive (tuple return)</div><div class="test-item">test_smiley_with_context</div><div class="test-item">test_frown_with_context</div><div class="test-item">test_context_preserves_original_case</div><div class="test-item">test_smiley_in_long_message_no_prefix_match</div><div class="test-item">...and 15 more</div></div></div>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestReconstructInjectedLessons<span class="test-count">8 passed</span></div><div class="test-list"><div class="test-item">test_empty_when_no_injection</div><div class="test-item">test_empty_when_stale_injection</div><div class="test-item">test_reconstructs_with_curated_data</div><div class="test-item">test_includes_scores</div><div class="test-item">test_confidence_laplace_smoothing</div><div class="test-item">test_missing_curated_file</div><div class="test-item">test_missing_lesson_in_curated</div><div class="test-item">test_recent_injection_is_reconstructed</div></div></div>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestBuildRichFeedbackContext<span class="test-count">10 passed</span></div><div class="test-list"><div class="test-item">test_positive/negative_context</div><div class="test-item">test_includes_user_context</div><div class="test-item">test_empty_lessons_shows_create_instruction</div><div class="test-item">test_with_lessons_shows_table</div><div class="test-item">test_decision_framework_included</div><div class="test-item">test_constraints_included</div><div class="test-item">test_merge_mentioned</div></div></div>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestBoostLessonTool<span class="test-count">8 passed</span></div><div class="test-list"><div class="test-item">test_boosts_score</div><div class="test-item">test_boost_capped_at_max</div><div class="test-item">test_rejects_blocked/retired</div><div class="test-item">test_warns_not_in_curated</div><div class="test-item">test_updates_thompson + metrics</div></div></div>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestDemoteLessonTool<span class="test-count">9 passed</span></div><div class="test-list"><div class="test-item">test_demotes_score</div><div class="test-item">test_auto_retire_zero_ups</div><div class="test-item">test_auto_retire_removes_from_curated</div><div class="test-item">test_no_auto_retire_with_ups</div><div class="test-item">test_warns_strong_positive_history</div></div></div>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestMergeLessonsTool<span class="test-count">13 passed</span></div><div class="test-list"><div class="test-item">test_merge_two_lessons</div><div class="test-item">test_removes_sources_from_curated</div><div class="test-item">test_combines_scores</div><div class="test-item">test_marks_sources_superseded</div><div class="test-item">test_quality_gates (short, category, generic, verb)</div><div class="test-item">test_writes_to_feedback_log + fires_vectorization</div></div></div>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestCreateLessonV2 + Helpers + Lifecycle<span class="test-count">36 passed</span></div><div class="test-list"><div class="test-item">TestCreateLessonV2: dual-path, auto-id, cap, metrics, gates</div><div class="test-item">TestAddToCurated: create file, append, cap, id sequence</div><div class="test-item">TestRemoveFromCurated: remove, no-op cases</div><div class="test-item">TestFeedbackMetrics: create, increment, timestamp</div><div class="test-item">TestAutoRetire: conditions, audit trail, curated removal</div><div class="test-item">TestFeedbackLogRotation: threshold, archive, counter reset</div><div class="test-item">TestScoreSchemaV2: retired fields, backwards compat</div></div></div>
+
+  <div class="test-suite"><div class="test-suite-header" onclick="this.nextElementSibling.classList.toggle('open')">TestPromptInjectMainFeedback<span class="test-count">6 passed</span></div><div class="test-list"><div class="test-item">test_smiley_produces_hook_output</div><div class="test-item">test_frown_produces_negative_context</div><div class="test-item">test_signal_with_context_passes_through</div><div class="test-item">test_normal_short_message_still_skipped</div><div class="test-item">test_no_reinforce_called (V1 removed)</div><div class="test-item">test_injection_includes_lesson_ids</div></div></div>
+</div>
+
+<!-- ═══════════════════ CRITICAL REVIEW ═══════════════════ -->
+<div class="section" id="sec-review">
+  <div class="section-header">
+    <div class="section-num" style="color:var(--red);">06 / Critical Review</div>
+    <div class="section-title">Honest Assessment</div>
+    <div class="section-tagline">Problems found, mitigations applied, and remaining risks</div>
+  </div>
+
+  <h2>Issues Found &amp; Fixed</h2>
+
+  <div class="card card-green">
+    <h3>1. Quality gate ordering bug (FIXED)</h3>
+    <p>The "generic start" check was running <em>after</em> the "action verb" check. Lessons like "Good job using semantic colors" were rejected with "no action verb" instead of the correct "generic phrase" error. Claude would then add an action verb but keep the generic start, creating an infinite retry loop.</p>
+    <p><strong>Fix:</strong> Moved generic start check before action verb check.</p>
+  </div>
+
+  <div class="card card-green">
+    <h3>2. Redundant detection logic (FIXED)</h3>
+    <p><code>detect_feedback_signal()</code> had a duplicate branch that could never trigger. Simplified to a single <code>FEEDBACK_SIGNALS.get(stripped)</code> call.</p>
+  </div>
+
+  <div class="card card-green">
+    <h3>3. Thompson deduplication for reinforcement (FIXED)</h3>
+    <p>If 3 injected lessons were all category "testing", Thompson would get 3x the intended update. Added <code>categories_updated</code> set to ensure each category is only updated once per feedback signal.</p>
+  </div>
+
+  <h2>Risks That Remain</h2>
+
+  <div class="card card-red">
+    <h3>Risk 1: Claude Might Not Call the Tool</h3>
+    <p>The system relies on Claude <em>choosing</em> to call <code>create_lesson</code> after receiving instructions. Claude could hallucinate a response, acknowledge without calling the tool, or produce a low-quality lesson that passes quality gates but isn't useful. There's no enforcement mechanism &mdash; only "MUST" in the prompt.</p>
+    <p><strong>Mitigation:</strong> Strong instruction wording + quality gates catch most junk. Could add a follow-up check in a future hook.</p>
+    <p><span class="tag tag-orange">Medium Risk</span> <span class="tag tag-blue">Prompt-dependent</span></p>
+  </div>
+
+  <div class="card card-red">
+    <h3>Risk 2: Stale Last Injection</h3>
+    <p><code>last_injection.json</code> stores the most recently injected lessons, but it could be from a different conversation or hours ago. A <code>:)</code> typed in a new session would reinforce lessons from the <em>previous</em> session's last RAG injection.</p>
+    <p><strong>Mitigation:</strong> Could add a timestamp to <code>last_injection.json</code> and ignore entries older than N minutes. Not implemented yet.</p>
+    <p><span class="tag tag-orange">Medium Risk</span> <span class="tag tag-purple">Cross-session</span></p>
+  </div>
+
+  <div class="card card-red">
+    <h3>Risk 3: Action Verb Check is Word-Boundary Naive</h3>
+    <p>The verb check uses <code>" verb " in " lesson "</code> padding, which works for whole words but misses verb forms like "testing" (not "test"), "avoided" (not "avoid"), or verbs at the end of a sentence without trailing space (handled by start-of-string check only).</p>
+    <p><strong>Mitigation:</strong> The current verb list is large enough (31 verbs) that most imperative lessons will match. Could use regex word boundaries <code>\bverb\b</code> for more precision.</p>
+    <p><span class="tag tag-green">Low Risk</span> <span class="tag tag-blue">Cosmetic</span></p>
+  </div>
+
+  <div class="card card-red">
+    <h3>Risk 4: No Rate Limiting</h3>
+    <p>A user spamming <code>:)</code> 50 times would create 50 lessons and boost scores 50 times. The boost is capped at 3.0x, but 50 feedback_log entries and 50 vectorization subprocesses could be wasteful.</p>
+    <p><strong>Mitigation:</strong> Could add a cooldown (e.g., ignore duplicate signals within 30 seconds). Not critical since this is a developer tool, not a public API.</p>
+    <p><span class="tag tag-green">Low Risk</span> <span class="tag tag-blue">Edge case</span></p>
+  </div>
+
+  <h2>What Could Be Better</h2>
+
+  <div class="alert alert-info">
+    <strong>V2 Resolved: Blind reinforcement eliminated.</strong> V1 boosted/demoted ALL injected lessons equally. V2 gives Claude per-lesson tools (<code>boost_lesson</code>, <code>demote_lesson</code>) so only relevant lessons are affected.
+  </div>
+
+  <div class="alert alert-info">
+    <strong>V2 Resolved: Unbounded corpus growth.</strong> Soft cap at 300 lessons with <code>merge_lessons</code> to consolidate and <code>auto-retire</code> to remove never-helpful lessons. Dashboard shows capacity.
+  </div>
+
+  <div class="alert alert-info">
+    <strong>V2 Resolved: Signal+context support.</strong> <code>:( dont do this to the theme</code> now works. Context is passed to Claude for targeted feedback decisions.
+  </div>
+
+  <div class="alert alert-warn">
+    <strong>Known limitation: Race conditions.</strong> Single-user dev tool. Concurrent sessions doing feedback at the same millisecond could cause last-writer-wins on <code>lesson_scores.json</code> and <code>curated_lessons.json</code>. Not worth file locking complexity for the use case.
+  </div>
+</div>
+
+<script>
+// Navigation
+document.querySelectorAll('.nav-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.nav-pill').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    pill.classList.add('active');
+    document.getElementById('sec-' + pill.dataset.section).classList.add('active');
+  });
+});
+
+// Mermaid
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#162032',
+    primaryTextColor: '#e6edf3',
+    primaryBorderColor: '#38bdf8',
+    lineColor: '#38bdf8',
+    secondaryColor: '#131a27',
+    tertiaryColor: '#0a0e17',
+    noteBkgColor: '#162032',
+    noteTextColor: '#94a3b8',
+    noteBorderColor: '#1e2d44',
+    actorBkg: '#131a27',
+    actorBorder: '#38bdf8',
+    actorTextColor: '#e6edf3',
+    signalColor: '#38bdf8',
+    signalTextColor: '#e6edf3',
+    activationBkgColor: '#162032',
+    activationBorderColor: '#38bdf8',
+  },
+  sequence: { actorMargin: 40, messageFontSize: 13, noteFontSize: 12 },
+  flowchart: { htmlLabels: true, curve: 'basis' }
+});
+
+// Demo
+let demoTimer = null;
+const posSteps = [
+  { type: 'user', label: 'User', text: ':)', delay: 600 },
+  { type: 'hook', label: 'Hook (prompt_inject.py)', text: '<strong>FEEDBACK DETECTED :)</strong> &mdash; sentiment: positive', delay: 800 },
+  { type: 'hook', label: 'Reinforce Injected Lessons', text: 'Boosted L014 (code_edit) &rarr; 1.3x<br>Boosted L027 (code_edit) &rarr; 1.3x<br>Thompson: record_success("code_edit", 3)', delay: 1000 },
+  { type: 'system', label: 'Claude (reflecting)', text: 'The user liked that I used semantic colors from the theme instead of hardcoded hex values. I should create a lesson about this...', delay: 1200 },
+  { type: 'tool', label: 'create_lesson (MCP Tool)', text: '<strong>Gate 1 &check;</strong> category: "code_edit"<br><strong>Gate 2 &check;</strong> sentiment: "positive"<br><strong>Gate 3 &check;</strong> intensity: 4<br><strong>Gate 4 &check;</strong> length: 69 chars<br><strong>Gate 5 &check;</strong> no generic start<br><strong>Gate 6 &check;</strong> verb: "use"', delay: 1000 },
+  { type: 'storage', label: 'Storage', text: '<strong>feedback_log.jsonl</strong> &larr; new entry with correction field<br><strong>Thompson</strong> &larr; record_success("code_edit", 4)<br><strong>vectorize_learnings</strong> &larr; subprocess fired', delay: 800 },
+  { type: 'system', label: 'Claude', text: 'Thanks for the feedback! I noted that using semantic colors from the theme is the right approach for this project. I\'ll keep doing that.', delay: 400 },
+];
+
+const negSteps = [
+  { type: 'user', label: 'User', text: ':(', delay: 600 },
+  { type: 'hook', label: 'Hook (prompt_inject.py)', text: '<strong>FEEDBACK DETECTED :(</strong> &mdash; sentiment: negative', delay: 800 },
+  { type: 'hook', label: 'Demote Injected Lessons', text: 'Demoted L014 (code_edit) &rarr; 0.6x<br>Demoted L027 (code_edit) &rarr; 0.6x<br>Thompson: record_failure("code_edit", 3)', delay: 1000 },
+  { type: 'system', label: 'Claude (reflecting)', text: 'The user didn\'t like my approach. I used hardcoded hex colors instead of the theme tokens. That was wrong for this project...', delay: 1200 },
+  { type: 'tool', label: 'create_lesson (MCP Tool)', text: '<strong>Gate 1 &check;</strong> category: "code_edit"<br><strong>Gate 2 &check;</strong> sentiment: "negative"<br><strong>Gate 3 &check;</strong> intensity: 5<br><strong>Gate 4 &check;</strong> length: 78 chars<br><strong>Gate 5 &check;</strong> no generic start<br><strong>Gate 6 &check;</strong> verb: "never"', delay: 1000 },
+  { type: 'storage', label: 'Storage', text: '<strong>feedback_log.jsonl</strong> &larr; new entry (signal: "correction")<br><strong>Thompson</strong> &larr; record_failure("code_edit", 5)<br><strong>vectorize_learnings</strong> &larr; subprocess fired', delay: 800 },
+  { type: 'system', label: 'Claude', text: 'I understand. I should never use hardcoded hex colors in this project. I\'ll always use semantic theme tokens going forward.', delay: 400 },
+];
+
+const monitorPos = `<span style="color:#64748b">============================================================</span>
+<span style="color:#64748b">  14:32:07  |  Prompt #42</span>
+<span style="color:#34d399;font-weight:bold">  FEEDBACK DETECTED :)</span>
+  Sentiment: positive
+<span style="color:#64748b">  Boosted 2 injected lesson(s):</span>
+    L014: boosted -> 1.3x
+    L027: boosted -> 1.3x
+<span style="color:#64748b">  Injecting create_lesson instructions for Claude</span>`;
+
+const monitorNeg = `<span style="color:#64748b">============================================================</span>
+<span style="color:#64748b">  14:32:07  |  Prompt #42</span>
+<span style="color:#f87171;font-weight:bold">  FEEDBACK DETECTED :(</span>
+  Sentiment: negative
+<span style="color:#64748b">  Demoted 2 injected lesson(s):</span>
+    L014: demoted -> 0.6x
+    L027: demoted -> 0.6x
+<span style="color:#64748b">  Injecting create_lesson instructions for Claude</span>`;
+
+function resetDemo() {
+  if (demoTimer) clearTimeout(demoTimer);
+  const body = document.getElementById('demo-body');
+  const msgs = body.querySelectorAll('.chat-msg:not(#step-ctx):not(#step-ctx2)');
+  msgs.forEach(m => m.remove());
+  document.getElementById('monitor-output').innerHTML = 'Waiting for signals...';
+  document.getElementById('btn-pos').classList.add('active');
+  document.getElementById('btn-neg').classList.remove('active');
+}
+
+function runDemo(sentiment) {
+  resetDemo();
+  document.getElementById('btn-pos').classList.toggle('active', sentiment === 'positive');
+  document.getElementById('btn-neg').classList.toggle('active', sentiment === 'negative');
+
+  const steps = sentiment === 'positive' ? posSteps : negSteps;
+  const body = document.getElementById('demo-body');
+  let totalDelay = 400;
+
+  steps.forEach((step, i) => {
+    totalDelay += step.delay;
+    demoTimer = setTimeout(() => {
+      const msg = document.createElement('div');
+      msg.className = `chat-msg ${step.type}`;
+      const avatarMap = { user: 'U', system: 'C', hook: 'H', tool: 'T', storage: 'S' };
+      msg.innerHTML = `
+        <div class="avatar">${avatarMap[step.type]}</div>
+        <div class="content">
+          <div class="label">${step.label}</div>
+          ${step.text}
+        </div>
+      `;
+      body.appendChild(msg);
+      requestAnimationFrame(() => msg.classList.add('visible'));
+      msg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      if (i === 1) {
+        document.getElementById('monitor-output').innerHTML =
+          sentiment === 'positive' ? monitorPos : monitorNeg;
+      }
+    }, totalDelay);
+  });
+}
+</script>
+
+</body>
+</html>

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Maintenance Script - Staleness policy + LanceDB compaction.
+Maintenance Script - Staleness policy + LanceDB compaction + feedback log rotation.
 
 Features:
   - Archive docs > 180 days with no positive reinforcement
   - Flag docs > 90 days for review
   - LanceDB compaction (compact_files + cleanup_old_versions)
+  - Rotate feedback_log.jsonl when it exceeds 10K lines
 
 Usage:
     smartassist maintenance [--dry-run]
@@ -14,6 +15,7 @@ Usage:
 import json
 import sys
 import time
+import shutil
 from datetime import datetime
 
 from smartassist.config import get_storage_path, get_db_path, EMBEDDING_DIM
@@ -29,6 +31,10 @@ RESET = "\033[0m"
 # Staleness thresholds (in seconds)
 FLAG_THRESHOLD = 90 * 86400   # 90 days
 ARCHIVE_THRESHOLD = 180 * 86400  # 180 days
+
+# Feedback log rotation thresholds
+FEEDBACK_LOG_MAX_LINES = 10000
+FEEDBACK_LOG_KEEP_LINES = 5000
 
 
 def check_staleness(dry_run: bool = False):
@@ -120,6 +126,70 @@ def compact_database():
         print(f"  {YELLOW}Compaction: {e}{RESET}")
 
 
+def rotate_feedback_log():
+    """Rotate feedback_log.jsonl if it exceeds FEEDBACK_LOG_MAX_LINES.
+
+    Archives oldest lines to feedback_log.jsonl.{timestamp}.bak,
+    keeps the most recent FEEDBACK_LOG_KEEP_LINES.
+    Resets vectorization_log.json counter to match.
+    """
+    try:
+        storage = get_storage_path()
+    except RuntimeError:
+        return
+
+    feedback_log = storage / "feedback_log.jsonl"
+    if not feedback_log.exists():
+        print(f"\n{BOLD}Feedback Log Rotation{RESET}")
+        print(f"  {DIM}No feedback_log.jsonl found{RESET}")
+        return
+
+    # Count lines
+    with open(feedback_log, "r", encoding="utf-8") as f:
+        all_lines = f.readlines()
+
+    total_lines = len(all_lines)
+
+    print(f"\n{BOLD}Feedback Log Rotation{RESET}")
+    print(f"  Lines: {total_lines}/{FEEDBACK_LOG_MAX_LINES}")
+
+    if total_lines <= FEEDBACK_LOG_MAX_LINES:
+        print(f"  {GREEN}No rotation needed{RESET}")
+        return
+
+    # Archive the oldest lines
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_path = storage / f"feedback_log.jsonl.{timestamp}.bak"
+
+    archive_count = total_lines - FEEDBACK_LOG_KEEP_LINES
+    archive_lines = all_lines[:archive_count]
+    keep_lines = all_lines[archive_count:]
+
+    # Write archive
+    with open(archive_path, "w", encoding="utf-8") as f:
+        f.writelines(archive_lines)
+
+    # Overwrite with kept lines
+    with open(feedback_log, "w", encoding="utf-8") as f:
+        f.writelines(keep_lines)
+
+    print(f"  {YELLOW}Rotated: archived {archive_count} lines → {archive_path.name}{RESET}")
+    print(f"  {GREEN}Kept {len(keep_lines)} recent lines{RESET}")
+
+    # Reset vectorization counter to match
+    vec_log = storage / "vectorization_log.json"
+    if vec_log.exists():
+        try:
+            data = json.loads(vec_log.read_text())
+            old_count = data.get("last_processed_line", 0)
+            # Adjust: new line count is FEEDBACK_LOG_KEEP_LINES
+            data["last_processed_line"] = len(keep_lines)
+            vec_log.write_text(json.dumps(data, indent=2))
+            print(f"  {DIM}Reset vectorization counter: {old_count} → {len(keep_lines)}{RESET}")
+        except Exception:
+            pass
+
+
 def main():
     dry_run = "--dry-run" in sys.argv
 
@@ -132,6 +202,7 @@ def main():
 
     check_staleness(dry_run=dry_run)
     compact_database()
+    rotate_feedback_log()
 
     print(f"\n{GREEN}Maintenance complete.{RESET}\n")
 
