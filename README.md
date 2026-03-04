@@ -1,8 +1,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/tests-59%20passing-brightgreen?style=flat-square" alt="59 tests passing">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-4.0-blue?style=flat-square" alt="Version 4.0">
+  <img src="https://img.shields.io/badge/license-BSL--1.1-blue?style=flat-square" alt="BSL 1.1 License">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue?style=flat-square" alt="Version 1.0.0">
 </p>
 
 <h1 align="center">SmartAssist</h1>
@@ -394,7 +394,9 @@ python -m pytest tests/ -v
 
 ## License
 
-MIT
+[Business Source License 1.1](LICENSE) — free for individual and personal use.
+Commercial embedding or hosted service use requires a [commercial license](mailto:joey@rahme.dev).
+Converts to Apache-2.0 on 2030-03-03.
 
 ---
 

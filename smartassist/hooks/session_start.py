@@ -91,8 +91,12 @@ def format_lessons_for_session():
         return f"# RLHF Note: Could not load lessons ({str(e)})"
 
 
-if __name__ == "__main__":
+def main():
     lessons = format_lessons_for_session()
     if lessons:
         print(lessons)
+
+
+if __name__ == "__main__":
+    main()
     sys.exit(0)

@@ -326,6 +326,10 @@ def capture_commit_lessons():
         print(f"   {icon} [{lesson['category']}] {lesson['response'][:70]}")
 
 
-if __name__ == "__main__":
+def main():
     capture_commit_lessons()
+
+
+if __name__ == "__main__":
+    main()
     sys.exit(0)

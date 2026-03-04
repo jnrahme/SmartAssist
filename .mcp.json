@@ -1,0 +1,6 @@
+{
+  "smartassist": {
+    "command": "smartassist",
+    "args": ["serve"]
+  }
+}

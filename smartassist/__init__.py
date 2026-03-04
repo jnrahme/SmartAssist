@@ -1,3 +1,8 @@
 """SmartAssist — Portable RAG learning system for Claude Code."""
 
-__version__ = "1.0.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("smartassist")
+except PackageNotFoundError:
+    __version__ = "1.0.0"

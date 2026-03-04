@@ -12,6 +12,7 @@ Usage:
     smartassist analyze       Show usage analytics
     smartassist dashboard     Generate HTML dashboard
     smartassist seed          Seed database from CLAUDE.md conventions
+    smartassist version       Show version information
 """
 
 import sys
@@ -202,6 +203,13 @@ def cmd_seed():
     return 0
 
 
+def cmd_version():
+    """Show version information."""
+    from smartassist import __version__
+    print(f"smartassist {__version__}")
+    return 0
+
+
 def main():
     commands = {
         "init": cmd_init,
@@ -213,7 +221,11 @@ def main():
         "analyze": cmd_analyze,
         "dashboard": cmd_dashboard,
         "seed": cmd_seed,
+        "version": cmd_version,
     }
+
+    if len(sys.argv) >= 2 and sys.argv[1] in ("-V", "--version"):
+        return cmd_version()
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
         print("SmartAssist - Portable RAG learning system for Claude Code\n")
@@ -228,6 +240,7 @@ def main():
         print(f"  {'analyze':<15} Show usage analytics")
         print(f"  {'dashboard':<15} Generate HTML dashboard")
         print(f"  {'seed':<15} Seed database from CLAUDE.md conventions")
+        print(f"  {'version':<15} Show version information")
         return 0
 
     cmd = sys.argv[1]

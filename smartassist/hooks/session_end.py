@@ -77,6 +77,10 @@ def capture_session_learning():
         print(f"# RLHF Note: Could not capture session learning ({str(e)})")
 
 
-if __name__ == "__main__":
+def main():
     capture_session_learning()
+
+
+if __name__ == "__main__":
+    main()
     sys.exit(0)

@@ -1,0 +1,11 @@
+{
+  "name": "smartassist",
+  "version": "1.0.0",
+  "description": "Portable RAG learning system for Claude Code — learns from your coding patterns and injects relevant lessons into context automatically",
+  "author": {
+    "name": "Joey Rahme"
+  },
+  "repository": "https://github.com/jnrahme/SmartAssist",
+  "homepage": "https://github.com/jnrahme/SmartAssist",
+  "keywords": ["claude-code", "claude", "mcp", "rag", "rlhf", "learning"]
+}
