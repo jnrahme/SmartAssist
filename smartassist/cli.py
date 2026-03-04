@@ -3,6 +3,7 @@
 SmartAssist CLI - Portable RAG learning system for Claude Code.
 
 Usage:
+    smartassist setup         Configure Claude Code (MCP server + hooks + init)
     smartassist init          Initialize SmartAssist in current project
     smartassist serve         Start MCP server (stdio)
     smartassist health        Run health checks
@@ -203,6 +204,109 @@ def cmd_seed():
     return 0
 
 
+def cmd_setup():
+    """Configure Claude Code to use SmartAssist (MCP server + hooks + init)."""
+    claude_dir = Path.home() / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    summary = []
+
+    # --- 1a. Configure MCP server in ~/.claude/mcp.json ---
+    mcp_path = claude_dir / "mcp.json"
+    if mcp_path.exists():
+        mcp_config = json.loads(mcp_path.read_text())
+    else:
+        mcp_config = {}
+
+    mcp_config.setdefault("mcpServers", {})
+
+    if "smartassist" in mcp_config["mcpServers"]:
+        summary.append("MCP server: already configured")
+    else:
+        mcp_config["mcpServers"]["smartassist"] = {
+            "command": "smartassist",
+            "args": ["serve"],
+        }
+        mcp_path.write_text(json.dumps(mcp_config, indent=2) + "\n")
+        summary.append("MCP server: added to mcp.json")
+
+    # --- 1b. Configure hooks in ~/.claude/settings.json ---
+    settings_path = claude_dir / "settings.json"
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text())
+    else:
+        settings = {}
+
+    settings.setdefault("hooks", {})
+
+    hook_defs = [
+        {
+            "event": "UserPromptSubmit",
+            "matcher": None,
+            "command": "smartassist-prompt-inject",
+        },
+        {
+            "event": "SessionStart",
+            "matcher": "startup",
+            "command": "smartassist-session-start",
+        },
+        {
+            "event": "PreToolUse",
+            "matcher": "Bash",
+            "command": "smartassist-commit-hook",
+        },
+        {
+            "event": "PostToolUse",
+            "matcher": "mcp__smartassist__rag_search",
+            "command": "smartassist-show-lessons",
+        },
+        {
+            "event": "SessionEnd",
+            "matcher": "other",
+            "command": "smartassist-session-end",
+        },
+    ]
+
+    for hook_def in hook_defs:
+        event = hook_def["event"]
+        settings["hooks"].setdefault(event, [])
+
+        # Check if this SmartAssist hook already exists (nested hooks format)
+        already_present = any(
+            hook_def["command"] in inner.get("command", "")
+            for group in settings["hooks"][event]
+            for inner in group.get("hooks", [])
+        )
+
+        if already_present:
+            summary.append(f"Hook {event}: already configured ({hook_def['command']})")
+        else:
+            hook_group = {
+                "hooks": [
+                    {"type": "command", "command": hook_def["command"]}
+                ],
+            }
+            if hook_def["matcher"]:
+                hook_group["matcher"] = hook_def["matcher"]
+            settings["hooks"][event].append(hook_group)
+            summary.append(f"Hook {event}: added ({hook_def['command']})")
+
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+
+    # --- 1c. Run init to create .claude/smartassist/ in cwd ---
+    print("--- Initializing project data ---")
+    cmd_init()
+
+    # --- 1d. Print summary ---
+    print("\n--- SmartAssist Setup Summary ---")
+    for line in summary:
+        print(f"  {line}")
+
+    print("\nNext steps:")
+    print("  smartassist seed       Seed lessons from CLAUDE.md")
+    print("  smartassist health     Verify everything works")
+    return 0
+
+
 def cmd_version():
     """Show version information."""
     from smartassist import __version__
@@ -212,6 +316,7 @@ def cmd_version():
 
 def main():
     commands = {
+        "setup": cmd_setup,
         "init": cmd_init,
         "serve": cmd_serve,
         "health": cmd_health,
@@ -231,6 +336,7 @@ def main():
         print("SmartAssist - Portable RAG learning system for Claude Code\n")
         print("Usage: smartassist <command> [options]\n")
         print("Commands:")
+        print(f"  {'setup':<15} Configure Claude Code (MCP server + hooks + init)")
         print(f"  {'init':<15} Initialize SmartAssist in current project")
         print(f"  {'serve':<15} Start MCP server (stdio)")
         print(f"  {'health':<15} Run health checks")

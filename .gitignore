@@ -16,3 +16,6 @@ htmlcov/
 .DS_Store
 .netlify/
 uv.lock
+.env
+.env.local
+.env.*.local

@@ -12,9 +12,9 @@ Run `smartassist version` to check. If it fails, proceed to Step 2. If it succee
 ## Step 2: Install the package
 
 Ask the user which method they prefer, then run the appropriate command:
-- `pipx install smartassist` (recommended — isolated environment)
-- `pip install smartassist`
-- `uv pip install smartassist`
+- `pipx install git+https://github.com/jnrahme/SmartAssist.git` (recommended — isolated environment)
+- `pip install git+https://github.com/jnrahme/SmartAssist.git`
+- `uv pip install git+https://github.com/jnrahme/SmartAssist.git`
 
 ## Step 3: Initialize SmartAssist
 
