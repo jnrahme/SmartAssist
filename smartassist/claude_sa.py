@@ -35,77 +35,36 @@ def _kill_existing_session():
     )
 
 
+def _tmux(*args):
+    subprocess.run(["tmux", *args], check=True)
+
+
+def _tmux_quiet(*args):
+    subprocess.run(["tmux", *args], capture_output=True)
+
+
 def _launch_tmux(log_file: Path) -> int:
     cwd = os.getcwd()
     _kill_existing_session()
 
-    subprocess.run(
-        [
-            "tmux",
-            "new-session",
-            "-d",
-            "-s",
-            SESSION_NAME,
-            "-x",
-            "200",
-            "-y",
-            "50",
-        ],
-        check=True,
-    )
+    env = os.environ.copy()
+    env["TERM"] = "xterm-256color"
 
-    subprocess.run(
-        [
-            "tmux",
-            "send-keys",
-            "-t",
-            SESSION_NAME,
-            f"cd {cwd} && claude",
-            "Enter",
-        ],
-        check=True,
-    )
-
-    subprocess.run(
-        [
-            "tmux",
-            "split-window",
-            "-h",
-            "-t",
-            SESSION_NAME,
-            "-l",
-            f"{MONITOR_WIDTH_PCT}%",
-        ],
-        check=True,
-    )
+    _tmux("new-session", "-d", "-s", SESSION_NAME, "-x", "200", "-y", "50")
+    _tmux("send-keys", "-t", SESSION_NAME, f"cd {cwd} && claude", "Enter")
+    _tmux("split-window", "-h", "-t", SESSION_NAME, "-l", f"{MONITOR_WIDTH_PCT}%")
 
     monitor_cmd = (
-        f"clear && "
-        f"printf '\\033[1;36m SmartAssist RAG Monitor \\033[0m\\n' && "
-        f"printf '\\033[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\n' && "
+        f"export TERM=xterm-256color && clear && "
+        f"printf '\\n' && "
+        f"printf '  \\033[1;38;5;75m\\033[0m \\033[1;37mSmartAssist RAG Monitor\\033[0m\\n' && "
+        f"printf '  \\033[38;5;240m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n' && "
+        f"printf '  \\033[38;5;240mLessons • Feedback • Reinforcement\\033[0m\\n' && "
+        f"printf '\\n' && "
         f"tail -f {log_file}"
     )
-    subprocess.run(
-        [
-            "tmux",
-            "send-keys",
-            "-t",
-            SESSION_NAME,
-            monitor_cmd,
-            "Enter",
-        ],
-        check=True,
-    )
-
-    subprocess.run(
-        [
-            "tmux",
-            "select-pane",
-            "-t",
-            f"{SESSION_NAME}:0.0",
-        ],
-        check=True,
-    )
+    _tmux("send-keys", "-t", SESSION_NAME, monitor_cmd, "Enter")
+    _tmux("select-pane", "-t", f"{SESSION_NAME}:0.0")
 
     os.execvp("tmux", ["tmux", "attach-session", "-t", SESSION_NAME])
     return 0
