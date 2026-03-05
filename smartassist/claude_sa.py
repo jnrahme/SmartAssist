@@ -60,7 +60,7 @@ def _launch_tmux(log_file: Path) -> int:
             "send-keys",
             "-t",
             SESSION_NAME,
-            f"cd {cwd} && claude",
+            f"cd {cwd} && claude; tmux kill-session -t {SESSION_NAME}",
             "Enter",
         ],
         check=True,
