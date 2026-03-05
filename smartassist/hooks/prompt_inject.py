@@ -25,6 +25,9 @@ from smartassist.lesson_feedback import (
     save_last_injection,
     load_session_state,
     save_session_state,
+    reinforce_recent_lessons,
+    create_lesson_from_feedback,
+    log_comparison_entry,
     DEFAULT_BOOST,
 )
 
@@ -43,6 +46,12 @@ FEEDBACK_SIGNALS = {
     ":(": "negative", ":-(": "negative",
     "thumbs_up": "positive", "thumbs up": "positive",
     "thumbs_down": "negative", "thumbs down": "negative",
+    "thumbs-up": "positive", "thumbs-down": "negative",
+    "thumb-up": "positive", "thumb-down": "negative",
+    "thumb up": "positive", "thumb down": "negative",
+    "thumb_up": "positive", "thumb_down": "negative",
+    "👍": "positive", "👎": "negative",
+    "+1": "positive", "-1": "negative",
 }
 
 # ── Stop words ───────────────────────────────────────────────────────────
@@ -87,7 +96,7 @@ SYNONYMS = {
 }
 
 # ── Max age for injection staleness ──────────────────────────────────────
-MAX_INJECTION_AGE = 300  # 5 minutes
+MAX_INJECTION_AGE = 900  # 15 minutes
 
 
 def tokenize(text):
@@ -302,6 +311,10 @@ def detect_feedback_signal(message):
     # Prefix match — signal at start, rest is context
     for signal, sentiment in sorted(FEEDBACK_SIGNALS.items(), key=lambda x: -len(x[0])):
         if stripped.startswith(signal) and len(stripped) > len(signal):
+            # Word boundary check: char after signal must be whitespace
+            char_after = stripped[len(signal)]
+            if char_after not in (' ', '\t', '\n'):
+                continue
             rest = stripped[len(signal):].strip()
             if rest:
                 # Preserve original case for context
@@ -364,69 +377,41 @@ def _reconstruct_injected_lessons(storage_path):
     return reconstructed
 
 
-def build_rich_feedback_context(sentiment, user_context, storage_path):
-    """Build rich context for Claude to make per-lesson feedback decisions.
-
-    Replaces the old build_lesson_instructions() with a structured decision framework
-    that shows Claude the actual lessons, their scores, and lets it decide per-lesson.
-    """
-    lessons = []
-    if storage_path:
-        lessons = _reconstruct_injected_lessons(storage_path)
-
-    if sentiment == "positive":
-        mood = "POSITIVE"
-        guidance = "The user is happy with your recent actions. Reinforce what worked."
+def build_rich_feedback_context(sentiment, user_context, reinforcement_results):
+    """Build context for Claude — instruct compare_lesson when context is available."""
+    action = "boosted" if sentiment == "positive" else "demoted"
+    if reinforcement_results:
+        id_summaries = []
+        for lid, old_b, new_b, retired in reinforcement_results:
+            suffix = " RETIRED" if retired else ""
+            id_summaries.append(f"{lid} {old_b:.1f}→{new_b:.1f}x{suffix}")
+        summary = f"Auto-reinforced {len(reinforcement_results)} lesson(s) ({action} {', '.join(id_summaries)})."
     else:
-        mood = "NEGATIVE"
-        guidance = "The user is unhappy with your recent actions. Identify what went wrong."
+        summary = f"No recent lessons to reinforce (0 lesson(s) {action})."
 
-    parts = [f"FEEDBACK SIGNAL: {mood}", guidance, ""]
+    parts = [summary]
 
-    if user_context:
-        parts.append(f'User context: "{user_context}"')
-        parts.append("")
-
-    if lessons:
-        parts.append("RECENTLY INJECTED LESSONS:")
-        parts.append(f"{'ID':<6} {'Category':<14} {'Boost':>6} {'Ups':>4} {'Downs':>5} {'Conf':>6}  Lesson")
-        parts.append(f"{'-'*6} {'-'*14} {'-'*6} {'-'*4} {'-'*5} {'-'*6}  {'-'*40}")
-        for l in lessons:
-            parts.append(
-                f"{l['id']:<6} {l['category']:<14} {l['boost']:>5.1f}x {l['ups']:>4} {l['downs']:>5} "
-                f"{l['confidence']:>5.0%}  {l['lesson'][:60]}"
-            )
-        parts.append("")
-        parts.append("DECISION FRAMEWORK — evaluate EACH lesson above:")
-        parts.append(f"  RULE 1: If lesson was {'helpful' if sentiment == 'positive' else 'harmful/irrelevant'} → "
-                     f"call `{'boost_lesson' if sentiment == 'positive' else 'demote_lesson'}(lesson_id)`")
-        parts.append(f"  RULE 2: If lesson was NOT relevant to what just happened → SKIP (do nothing)")
-        parts.append(f"  RULE 3: If two+ lessons overlap or say the same thing → "
-                     f"call `merge_lessons(lesson_ids, new_lesson, category)`")
-        parts.append(f"  RULE 4: If the feedback is about something NOT covered by any lesson above → "
-                     f"call `create_lesson(lesson, category, sentiment, intensity, context)`")
-        parts.append("")
-        parts.append("CONSTRAINTS:")
-        parts.append("  - Max 5 tool calls total for this feedback round")
-        parts.append("  - Lessons with confidence <20% are unreliable — consider demoting or merging")
-        parts.append("  - Lessons with boost >=2.5x are already highly valued — only boost if clearly relevant")
+    if user_context and len(user_context.strip()) >= 15:
+        parts.append(f'User {sentiment} feedback: "{user_context}"')
+        parts.append(
+            "ACTION REQUIRED: Before responding to the user, you MUST call the "
+            "`compare_lesson` tool (mcp__smartassist__compare_lesson). "
+            "Convert the feedback above into an imperative, project-specific lesson "
+            "(>30 chars, with action verb). Use your recent conversation for context. "
+            "Parameters: lesson=<your lesson>, category=<best fit>, "
+            f'sentiment="{sentiment}", context="{user_context}". '
+            "After calling the tool, acknowledge the feedback briefly."
+        )
     else:
-        parts.append("NO LESSONS WERE RECENTLY INJECTED — create a new lesson instead.")
-        parts.append("")
-        parts.append("Call `create_lesson` with:")
-        parts.append("  - lesson: Imperative statement (>30 chars) with action verb, project-specific")
-        parts.append("  - category: One of: testing, code_edit, git, architecture, pr_review, security, debugging")
-        parts.append(f'  - sentiment: "{sentiment}"')
-        parts.append("  - intensity: 1-5")
-        parts.append("  - context: Brief context about what happened")
-
-    parts.append("")
-    parts.append("After making your tool calls, briefly acknowledge the feedback to the user.")
+        if user_context:
+            parts.append(f'User feedback: "{user_context}"')
+        parts.append("No action needed from you — just acknowledge briefly.")
 
     return "\n".join(parts)
 
 
-def write_to_live_log_feedback(storage_path, signal_text, sentiment, user_context=""):
+def write_to_live_log_feedback(storage_path, signal_text, sentiment,
+                               user_context="", reinforcement_results=None):
     """Write feedback detection event to rag_live.log for the monitor terminal."""
     live_log = storage_path / "rag_live.log"
     now = datetime.now().strftime("%H:%M:%S")
@@ -434,10 +419,6 @@ def write_to_live_log_feedback(storage_path, signal_text, sentiment, user_contex
     prompt_count, inject_count = read_counter(storage_path)
     prompt_count += 1
     write_counter(storage_path, prompt_count, inject_count)
-
-    # Count lessons for display
-    lessons = _reconstruct_injected_lessons(storage_path)
-    lesson_count = len(lessons)
 
     lines = []
     lines.append("")
@@ -451,7 +432,18 @@ def write_to_live_log_feedback(storage_path, signal_text, sentiment, user_contex
     if user_context:
         lines.append(f"  Context: \"{user_context}\"")
 
-    lines.append(f"  \033[90m{lesson_count} lesson(s) sent to Claude for per-lesson decisions\033[0m")
+    if reinforcement_results:
+        action_label = "BOOST" if sentiment == "positive" else "DEMOTE"
+        for lid, old_b, new_b, retired in reinforcement_results:
+            suffix = " → RETIRED" if retired else ""
+            action_color = "\033[32m" if sentiment == "positive" else "\033[31m"
+            lines.append(f"  {action_color}{action_label}: {lid} {old_b:.1f}x → {new_b:.1f}x{suffix}\033[0m")
+    else:
+        lines.append(f"  \033[90m0 lesson(s) reinforced\033[0m")
+
+    if user_context and len(user_context.strip()) >= 15:
+        lines.append(f"  \033[36m→ A/B comparison: hook logged, Claude will draft via compare_lesson\033[0m")
+
     lines.append("")
 
     try:
@@ -472,16 +464,38 @@ def main():
     # ── Check for feedback signals before length filter ──────────────
     sentiment, user_context = detect_feedback_signal(user_message) if user_message else (None, None)
     if sentiment:
+        # Hook-level reinforcement — no Claude involvement needed
+        reinforcement_results = reinforce_recent_lessons(sentiment)
+
+        # Hook-level lesson creation (production — unchanged)
+        created_id, created_lesson = None, None
+        if user_context:
+            created_id, created_lesson = create_lesson_from_feedback(
+                user_context, sentiment, reinforcement_results,
+            )
+
         try:
             storage_path = get_storage_path()
+
+            # Log hook's result for A/B comparison
+            if user_context and len(user_context.strip()) >= 15:
+                log_comparison_entry(
+                    storage_path, "hook", sentiment, user_context,
+                    created_lesson, created_lesson is not None,
+                )
+
             write_to_live_log_feedback(
                 storage_path, user_message.strip(), sentiment,
                 user_context=user_context,
+                reinforcement_results=reinforcement_results,
             )
         except RuntimeError:
             storage_path = None
 
-        context = build_rich_feedback_context(sentiment, user_context, storage_path)
+        # Don't reveal hook's lesson to Claude (unbiased comparison)
+        context = build_rich_feedback_context(
+            sentiment, user_context, reinforcement_results,
+        )
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",

@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemAlign Integration — Future Roadmap</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --bg-card: #131a27;
+    --bg-card-alt: #162032;
+    --border: #1e2d44;
+    --text: #e6edf3;
+    --text-dim: #94a3b8;
+    --text-muted: #64748b;
+    --blue: #38bdf8;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --cyan: #22d3ee;
+    --yellow: #fbbf24;
+    --gradient-1: linear-gradient(135deg, #a78bfa 0%, #f472b6 100%);
+    --gradient-2: linear-gradient(135deg, #34d399 0%, #38bdf8 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 24px 100px;
+  }
+  h1 {
+    font-size: 36px;
+    font-weight: 800;
+    background: var(--gradient-1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .subtitle { color: var(--text-dim); font-size: 18px; margin-bottom: 48px; }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 48px 0 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--purple);
+  }
+  h3 { font-size: 18px; font-weight: 600; margin: 24px 0 12px; color: var(--text); }
+  p { margin-bottom: 14px; color: var(--text-dim); }
+  strong { color: var(--text); }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 16px 0;
+  }
+  .card h3 { margin-top: 0; }
+  .card-purple { border-left: 3px solid var(--purple); }
+  .card-green { border-left: 3px solid var(--green); }
+  .card-blue { border-left: 3px solid var(--blue); }
+  .card-orange { border-left: 3px solid var(--orange); }
+  .card-red { border-left: 3px solid var(--red); }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .badge-blue { background: rgba(56,189,248,0.15); color: var(--blue); }
+  .badge-green { background: rgba(52,211,153,0.15); color: var(--green); }
+  .badge-orange { background: rgba(251,146,60,0.15); color: var(--orange); }
+  .badge-red { background: rgba(248,113,113,0.15); color: var(--red); }
+  .badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+  .badge-cyan { background: rgba(34,211,238,0.15); color: var(--cyan); }
+  .badge-yellow { background: rgba(251,191,36,0.15); color: var(--yellow); }
+  code {
+    background: rgba(167,139,250,0.1);
+    color: var(--cyan);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 16px 0;
+    color: var(--text-dim);
+  }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th, td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  th {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  td { color: var(--text-dim); }
+  ul, ol { margin: 10px 0 10px 24px; }
+  li { margin: 8px 0; color: var(--text-dim); }
+  li strong { color: var(--text); }
+  .tldr {
+    background: linear-gradient(135deg, rgba(167,139,250,0.08), rgba(244,114,182,0.08));
+    border: 1px solid rgba(167,139,250,0.2);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 24px 0;
+  }
+  .tldr h3 { color: var(--purple); margin-top: 0; }
+  .diagram {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin: 20px 0;
+    font-family: 'SF Mono', monospace;
+    font-size: 13px;
+    line-height: 1.9;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--text-muted);
+  }
+  .diagram .b { color: var(--blue); }
+  .diagram .g { color: var(--green); }
+  .diagram .o { color: var(--orange); }
+  .diagram .r { color: var(--red); }
+  .diagram .p { color: var(--purple); }
+  .diagram .c { color: var(--cyan); }
+  .diagram .pk { color: var(--pink); }
+  .vs-table td:nth-child(2) { color: var(--orange); }
+  .vs-table td:nth-child(3) { color: var(--green); }
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 32px 0 16px;
+  }
+  .phase-num {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .phase-1 { background: rgba(167,139,250,0.15); color: var(--purple); }
+  .phase-2 { background: rgba(52,211,153,0.15); color: var(--green); }
+  .phase-3 { background: rgba(56,189,248,0.15); color: var(--blue); }
+  .phase-4 { background: rgba(251,146,60,0.15); color: var(--orange); }
+  .insight {
+    background: rgba(167,139,250,0.06);
+    border-left: 3px solid var(--purple);
+    padding: 16px 20px;
+    margin: 16px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .insight p { margin: 0; }
+  .footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<h1>MemAlign Integration</h1>
+<p class="subtitle">How MemAlign's dual-memory system upgrades SmartAssist from pattern matching to cognitive alignment</p>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="tldr">
+  <h3>TL;DR</h3>
+  <p>SmartAssist already has the building blocks of MemAlign — lessons (semantic memory), feedback logs (episodic memory), and RAG injection (working memory). But our implementation is crude: keyword matching, static text, no principle extraction. MemAlign replaces this with <strong>cognitive-style memory</strong> that extracts actionable principles from natural language, stores edge-case examples, and constructs optimal context per query — all for $0.03 per alignment cycle. It's the brain upgrade our feedback loop needs.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>What is MemAlign?</h2>
+
+<div class="card card-purple">
+  <h3>A Dual-Memory System for LLM Alignment</h3>
+  <p>MemAlign (from Meta, integrated into MLflow/Databricks) aligns LLM behavior with human feedback using a <strong>dual-memory architecture inspired by human cognition</strong>. Instead of retraining the model, it builds a memory layer that captures expert preferences and uses them at inference time.</p>
+  <p>Key insight: <strong>a single natural-language explanation captures more signal than dozens of binary labels.</strong> When you say <code>:) good use of theme colors instead of hardcoded values</code>, that sentence contains intent, constraints, and guidance that a simple thumbs-up can't express.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>The Three Memory Types</h2>
+
+<div class="card card-green">
+  <h3><span class="badge badge-green">Semantic Memory</span> Generalizable Principles</h3>
+  <p>Stores distilled, reusable rules extracted from expert feedback. Not the raw feedback text — the <strong>actionable principle</strong> behind it.</p>
+  <table>
+    <tr><th>Raw Feedback</th><th>Extracted Principle</th></tr>
+    <tr><td><code>:) good use of theme colors instead of hardcoded values</code></td><td>"Always use semantic color tokens from the project's theme system. Hardcoded hex values create maintenance debt and break theme switching."</td></tr>
+    <tr><td><code>:( you should have run the tests before committing</code></td><td>"Run yarn test --findRelatedTests on all changed files before every commit. Never commit untested code."</td></tr>
+    <tr><td><code>:) nice, you figured out which file to test</code></td><td>"When writing tests, identify the correct test file by matching the source file's path pattern before creating new test files."</td></tr>
+  </table>
+  <p>Notice how the extracted principles are <strong>richer and more actionable</strong> than our current hook-generated lessons, which are just regex-transformed versions of the raw text.</p>
+</div>
+
+<div class="card card-blue">
+  <h3><span class="badge badge-blue">Episodic Memory</span> Edge-Case Examples</h3>
+  <p>Stores <strong>specific instances</strong> where the system failed or succeeded in unusual ways. These are concrete anchors for situations that resist generalization.</p>
+  <table>
+    <tr><th>Episode</th><th>Why It's Stored</th></tr>
+    <tr><td>"Claude used <code>ignoredTags</code> instead of <code>ignoredDomTags</code> for react-native-render-html v6"</td><td>API version mismatch — can't be captured as a general principle</td></tr>
+    <tr><td>"Claude deleted the hook instead of refactoring it when told to 'remove this hook'"</td><td>Ambiguous instruction handling — edge case in interpretation</td></tr>
+    <tr><td>"Claude mocked internal code instead of mocking at the HTTP boundary"</td><td>Testing anti-pattern — needs a concrete before/after example</td></tr>
+  </table>
+  <p>We currently <strong>don't store episodic memory at all</strong>. Our <code>feedback_log.jsonl</code> has timestamps and signals but not the conversation context or the specific mistake.</p>
+</div>
+
+<div class="card card-orange">
+  <h3><span class="badge badge-orange">Working Memory</span> Dynamic Context Construction</h3>
+  <p>At inference time, MemAlign constructs a <strong>task-specific context</strong> by combining:</p>
+  <ul>
+    <li><strong>All relevant semantic principles</strong> (filtered by topic similarity)</li>
+    <li><strong>Most similar episodic examples</strong> (retrieved by embedding distance)</li>
+  </ul>
+  <p>This is what our RAG injection does — but MemAlign does it with <strong>semantic similarity</strong> instead of keyword matching, and includes both principles AND concrete examples.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>SmartAssist Today vs SmartAssist + MemAlign</h2>
+
+<table class="vs-table">
+  <tr>
+    <th>Capability</th>
+    <th>SmartAssist Today</th>
+    <th>With MemAlign</th>
+  </tr>
+  <tr>
+    <td><strong>Principle extraction</strong></td>
+    <td>Regex transforms raw feedback text</td>
+    <td>LLM extracts actionable principles from natural language</td>
+  </tr>
+  <tr>
+    <td><strong>Episodic memory</strong></td>
+    <td>None — feedback log has signals but no context</td>
+    <td>Stores specific failure/success examples with full context</td>
+  </tr>
+  <tr>
+    <td><strong>Working memory construction</strong></td>
+    <td>Keyword extraction → vector search → top-k inject</td>
+    <td>Semantic similarity across principles + relevant episodes</td>
+  </tr>
+  <tr>
+    <td><strong>Learning speed</strong></td>
+    <td>Thompson Sampling needs 10+ signals per category</td>
+    <td>Visible improvement with 2-10 examples</td>
+  </tr>
+  <tr>
+    <td><strong>Lesson quality</strong></td>
+    <td>Hook: regex pipeline (fast but crude)<br>Claude: LLM-crafted (good but untested)</td>
+    <td>MemAlign: distilled principles from expert feedback (best)</td>
+  </tr>
+  <tr>
+    <td><strong>Cost per alignment</strong></td>
+    <td>$0 (hook) / ~$0.01 (Claude via compare_lesson)</td>
+    <td>~$0.03 per alignment stage (50 examples)</td>
+  </tr>
+  <tr>
+    <td><strong>Contradiction handling</strong></td>
+    <td>Manual merge_lessons</td>
+    <td>Experts can delete/overwrite outdated records directly</td>
+  </tr>
+  <tr>
+    <td><strong>Model flexibility</strong></td>
+    <td>Tied to Claude</td>
+    <td>Model-agnostic — works with any LLM</td>
+  </tr>
+</table>
+
+<div class="insight">
+  <p><strong>Key insight:</strong> The A/B comparison feature we just built (hook vs Claude lesson quality) is actually the perfect setup for MemAlign. Once we have comparison data, MemAlign can use those human-judged pairs as alignment examples — teaching the system which lesson style is better, automatically.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>Integration Architecture</h2>
+
+<div class="diagram"><span class="p">┌─────────────────────────────────────────────────────────────────┐</span>
+<span class="p">│              SmartAssist + MemAlign Architecture                 │</span>
+<span class="p">└─────────────────────────────────────────────────────────────────┘</span>
+
+  User feedback: <span class="g">":) good use of theme colors instead of hardcoded values"</span>
+        │
+        ▼
+  <span class="o">┌────────────────────────────────────┐</span>
+  <span class="o">│  MemAlign Alignment Stage           │</span>  <span class="r">← REPLACES hook regex pipeline</span>
+  <span class="o">│                                    │</span>
+  <span class="o">│  Input: raw feedback + conversation │</span>
+  <span class="o">│                                    │</span>
+  <span class="o">│  1. Extract principle:              │</span>
+  <span class="o">│     "Use semantic color tokens      │</span>
+  <span class="o">│      from theme instead of          │</span>
+  <span class="o">│      hardcoded hex values"          │</span>
+  <span class="o">│                                    │</span>
+  <span class="o">│  2. Check for edge case:            │</span>
+  <span class="o">│     Is this a general rule or       │</span>
+  <span class="o">│     a specific situation?           │</span>
+  <span class="o">└──────────┬─────────┬───────────────┘</span>
+             │         │
+    <span class="g">principle</span>     <span class="b">episode (if edge case)</span>
+             │         │
+             ▼         ▼
+  <span class="g">┌──────────────┐</span>  <span class="b">┌──────────────────┐</span>
+  <span class="g">│   Semantic    │</span>  <span class="b">│    Episodic       │</span>
+  <span class="g">│   Memory      │</span>  <span class="b">│    Memory         │</span>
+  <span class="g">│              │</span>  <span class="b">│                  │</span>
+  <span class="g">│ curated_     │</span>  <span class="b">│ episodes.jsonl   │</span>  <span class="r">← NEW file</span>
+  <span class="g">│ lessons.json │</span>  <span class="b">│                  │</span>
+  <span class="g">│ (principles) │</span>  <span class="b">│ (concrete cases) │</span>
+  <span class="g">└──────┬───────┘</span>  <span class="b">└────────┬─────────┘</span>
+         │                    │
+         └────────┬───────────┘
+                  │
+                  ▼
+  <span class="o">┌────────────────────────────────────┐</span>
+  <span class="o">│  Working Memory Construction        │</span>  <span class="r">← REPLACES keyword RAG</span>
+  <span class="o">│                                    │</span>
+  <span class="o">│  For each new prompt:              │</span>
+  <span class="o">│  1. Retrieve relevant principles   │</span>
+  <span class="o">│  2. Retrieve similar episodes      │</span>
+  <span class="o">│  3. Construct optimal context      │</span>
+  <span class="o">│  4. Inject into additionalContext  │</span>
+  <span class="o">└────────────────────────────────────┘</span>
+                  │
+                  ▼
+         Claude sees: <span class="c">principles + concrete examples</span>
+         (not just lesson text, but WHY and WHEN)</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>What Changes in Our Code</h2>
+
+<div class="card card-purple">
+  <h3>1. Lesson Creation: Regex → MemAlign Principle Extraction</h3>
+  <p>Currently in <code>prompt_inject.py</code>, <code>create_lesson_from_feedback()</code> uses regex transforms (contractions, imperative form, quality gates). With MemAlign, this becomes an LLM call that extracts a principle:</p>
+  <pre># Before (current):
+lesson = _context_to_lesson(user_context, sentiment)
+# Returns: "Use theme colors instead of hardcoded values"
+
+# After (MemAlign):
+from memalign import SemanticMemory
+
+semantic = SemanticMemory(storage_path)
+principle = semantic.extract_principle(
+    feedback=user_context,
+    conversation_context=recent_messages,  # NEW: uses full context
+    sentiment=sentiment,
+)
+# Returns: "Always use semantic color tokens from the project's theme
+#           system (semanticColors.basic.text.primary) instead of
+#           hardcoded hex values. This ensures theme switching works
+#           and reduces maintenance when the design system updates."</pre>
+  <p>The principle is <strong>richer, more specific, and includes the WHY</strong> — because MemAlign has access to the conversation context, not just the feedback string.</p>
+</div>
+
+<div class="card card-blue">
+  <h3>2. New: Episodic Memory Storage</h3>
+  <p>When feedback relates to a specific edge case (not a generalizable rule), store the full episode:</p>
+  <pre># New file: episodes.jsonl
+{
+  "timestamp": "2026-03-05T16:00:00",
+  "type": "failure",
+  "context": "Claude used ignoredTags instead of ignoredDomTags",
+  "resolution": "react-native-render-html v6 renamed the prop",
+  "lesson": "Always check TypeScript definitions for the installed version",
+  "category": "code_edit",
+  "embedding": [0.023, -0.156, ...]  // for semantic retrieval
+}</pre>
+</div>
+
+<div class="card card-green">
+  <h3>3. RAG Injection: Keywords → Semantic Working Memory</h3>
+  <p>Currently <code>prompt_inject.py</code> extracts keywords and does vector search. With MemAlign:</p>
+  <pre># Before (current):
+keywords = extract_keywords(user_message)
+results = vector_search(keywords, top_k=5)
+inject(results)
+
+# After (MemAlign):
+from memalign import WorkingMemory
+
+wm = WorkingMemory(semantic_store, episodic_store)
+context = wm.construct(
+    query=user_message,
+    task_type=detect_task_type(user_message),  # testing, git, code_edit...
+)
+# context contains:
+#   - Top principles relevant to this task
+#   - Most similar past episodes (successes and failures)
+#   - Formatted for optimal LLM consumption
+inject(context)</pre>
+</div>
+
+<div class="card card-orange">
+  <h3>4. A/B Comparison → MemAlign Training Data</h3>
+  <p>The <code>lesson_comparison.jsonl</code> file we just built becomes MemAlign's training input. Each pair (hook lesson vs Claude lesson) is a human-judgeable alignment example:</p>
+  <pre># Feed comparison pairs into MemAlign alignment stage
+from memalign import align
+
+align(
+    examples=load_comparison_pairs(),  # from lesson_comparison.jsonl
+    judge_feedback=human_preferences,  # which lesson was better?
+    memory=semantic_store,
+)
+# MemAlign learns WHICH lesson style produces better principles
+# and improves future extractions automatically</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>The A/B Comparison Connection</h2>
+
+<div class="insight">
+  <p><strong>This is why the A/B comparison feature matters beyond just "which is better".</strong></p>
+  <p>Right now we're building <code>compare_lesson</code> to log hook vs Claude lesson pairs. Once we have 20-50 pairs with human judgments ("this one is better because..."), those become MemAlign alignment examples. MemAlign uses those examples to learn our preferences and produce better principles going forward.</p>
+  <p>The pipeline becomes: <strong>A/B data → MemAlign alignment → better lessons → better A/B data → better alignment</strong>. A self-improving loop.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>Rollout Plan</h2>
+
+<div class="phase-header">
+  <div class="phase-num phase-1">1</div>
+  <h3 style="margin:0">Prerequisites <span class="badge badge-purple">Now</span></h3>
+</div>
+<div class="card">
+  <ul>
+    <li><strong>Fix MCP server connectivity</strong> — needed for compare_lesson to work</li>
+    <li><strong>Collect 20-50 A/B comparison pairs</strong> — MemAlign needs examples to align from</li>
+    <li><strong>Integrate ShieldCortex</strong> — security layer should be in place before expanding memory</li>
+  </ul>
+</div>
+
+<div class="phase-header">
+  <div class="phase-num phase-2">2</div>
+  <h3 style="margin:0">Add Episodic Memory <span class="badge badge-green">Week 1-2</span></h3>
+</div>
+<div class="card">
+  <ul>
+    <li>Create <code>episodes.jsonl</code> storage format</li>
+    <li>Modify <code>prompt_inject.py</code> to capture conversation context on feedback</li>
+    <li>Classify feedback as "principle" (semantic) vs "edge case" (episodic)</li>
+    <li>Add episode retrieval to RAG injection pipeline</li>
+  </ul>
+</div>
+
+<div class="phase-header">
+  <div class="phase-num phase-3">3</div>
+  <h3 style="margin:0">Replace Lesson Extraction with MemAlign <span class="badge badge-blue">Week 3-4</span></h3>
+</div>
+<div class="card">
+  <ul>
+    <li>Install MLflow + MemAlign: <code>pip install mlflow</code></li>
+    <li>Replace <code>_context_to_lesson()</code> regex pipeline with MemAlign principle extraction</li>
+    <li>Feed A/B comparison data into MemAlign alignment stage</li>
+    <li>A/B test: MemAlign principles vs old regex lessons vs Claude lessons (3-way)</li>
+  </ul>
+</div>
+
+<div class="phase-header">
+  <div class="phase-num phase-4">4</div>
+  <h3 style="margin:0">Semantic Working Memory <span class="badge badge-orange">Week 5-6</span></h3>
+</div>
+<div class="card">
+  <ul>
+    <li>Replace keyword-based RAG injection with MemAlign working memory construction</li>
+    <li>Combine semantic principles + episodic examples in injected context</li>
+    <li>Measure: injection relevance rate, false positive rate, user satisfaction</li>
+    <li>Deprecate old keyword extraction pipeline if MemAlign outperforms</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>Cost Analysis</h2>
+
+<table>
+  <tr><th>Component</th><th>Cost</th><th>Notes</th></tr>
+  <tr>
+    <td>MemAlign alignment stage</td>
+    <td><strong>$0.03</strong> per 50 examples</td>
+    <td>Run weekly with new A/B data</td>
+  </tr>
+  <tr>
+    <td>Principle extraction (per feedback)</td>
+    <td><strong>~$0.005</strong></td>
+    <td>One LLM call per feedback signal</td>
+  </tr>
+  <tr>
+    <td>Working memory construction</td>
+    <td><strong>$0</strong></td>
+    <td>Local embedding similarity — no API calls</td>
+  </tr>
+  <tr>
+    <td>MLflow (open source)</td>
+    <td><strong>$0</strong></td>
+    <td>Self-hosted, no license needed</td>
+  </tr>
+  <tr>
+    <td style="font-weight:700;">Monthly estimate (50 feedbacks/month)</td>
+    <td style="font-weight:700;">~$0.28</td>
+    <td>Essentially free</td>
+  </tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>How MemAlign + ShieldCortex Work Together</h2>
+
+<div class="diagram">  User feedback
+       │
+       ▼
+  <span class="r">ShieldCortex</span> ── scan for injection / credentials
+       │
+       │ <span class="g">allowed</span>
+       ▼
+  <span class="p">MemAlign</span> ── extract principle + classify (semantic vs episodic)
+       │
+       ├──→ <span class="g">Semantic Memory</span> (principles)
+       └──→ <span class="b">Episodic Memory</span> (edge cases)
+              │
+              │  On next prompt:
+              ▼
+  <span class="p">MemAlign Working Memory</span> ── construct optimal context
+       │
+       ▼
+  <span class="c">Claude sees: security-scanned, cognitively-organized context</span></div>
+
+<p><strong>ShieldCortex guards the input. MemAlign organizes the knowledge. SmartAssist manages the lifecycle.</strong> Three layers, each doing what it's best at.</p>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<h2>Risks</h2>
+
+<table>
+  <tr><th>Risk</th><th>Impact</th><th>Mitigation</th></tr>
+  <tr>
+    <td><strong>Principle extraction quality varies</strong></td>
+    <td><span class="badge badge-orange">Medium</span></td>
+    <td>Keep A/B comparison running — compare MemAlign principles vs hook/Claude</td>
+  </tr>
+  <tr>
+    <td><strong>Latency increase on feedback processing</strong></td>
+    <td><span class="badge badge-orange">Medium</span></td>
+    <td>Extract principles async (fire-and-forget like current vectorization)</td>
+  </tr>
+  <tr>
+    <td><strong>MLflow dependency is heavy</strong></td>
+    <td><span class="badge badge-yellow">Low</span></td>
+    <td>Can use MemAlign concepts without MLflow — the dual-memory pattern is the value</td>
+  </tr>
+  <tr>
+    <td><strong>Need 20+ examples before MemAlign is useful</strong></td>
+    <td><span class="badge badge-yellow">Low</span></td>
+    <td>Collect via A/B comparison feature we already built</td>
+  </tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="footer">
+  <p>Document created: 2026-03-05 | SmartAssist v1.0</p>
+  <p>References: <a href="https://mlflow.org/blog/memalign" style="color:var(--purple)">MemAlign on MLflow</a> | <a href="https://www.databricks.com/blog/memalign-building-better-llm-judges-human-feedback-scalable-memory" style="color:var(--purple)">Databricks Blog</a></p>
+</div>
+
+</body>
+</html>

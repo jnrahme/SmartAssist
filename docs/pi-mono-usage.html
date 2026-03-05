@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartAssist + Pi Mono: Local Development Playbook</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #111b2f;
+      --border: #22314f;
+      --text: #e5edf7;
+      --text-dim: #9fb0c8;
+      --accent: #22c55e;
+      --accent-2: #38bdf8;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 100% -10%, rgba(56,189,248,0.15), transparent 55%),
+        radial-gradient(900px 500px at -10% 0%, rgba(34,197,94,0.12), transparent 50%),
+        var(--bg);
+      line-height: 1.6;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 40px 20px 80px; }
+    .hero {
+      background: linear-gradient(130deg, rgba(56,189,248,0.18), rgba(34,197,94,0.12));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 26px 24px;
+      margin-bottom: 24px;
+    }
+    .hero h1 { margin: 0 0 8px; font-size: 30px; }
+    .hero p { margin: 0; color: var(--text-dim); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 18px;
+    }
+    h2 { margin: 0 0 10px; font-size: 21px; color: var(--accent-2); }
+    h3 { margin: 16px 0 8px; font-size: 16px; color: var(--accent); }
+    p, li { color: var(--text-dim); }
+    code {
+      background: rgba(148,163,184,0.12);
+      border: 1px solid rgba(148,163,184,0.22);
+      border-radius: 6px;
+      padding: 1px 6px;
+      color: var(--text);
+    }
+    pre {
+      margin: 10px 0 0;
+      background: #0a1428;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow-x: auto;
+      color: #d7e8ff;
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-block;
+      margin-right: 6px;
+      margin-top: 6px;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(56,189,248,0.08);
+      color: var(--text);
+    }
+    .warn { color: var(--warn); }
+    .danger { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>SmartAssist + Pi Mono</h1>
+      <p>How to use <code>pi</code> as a local coding worker to accelerate SmartAssist while keeping quality gates strict.</p>
+      <span class="badge">Local First</span>
+      <span class="badge">Fast Iterations</span>
+      <span class="badge">Deterministic Verification</span>
+    </section>
+
+    <section class="card">
+      <h2>1. Why Use Pi Mono Here</h2>
+      <p>Pi is best for repetitive engineering work: scanning files, drafting focused patches, generating tests, and checking documentation drift. Keep architecture decisions and final acceptance human-driven.</p>
+      <ul>
+        <li><strong>You:</strong> architecture, behavior decisions, final merge/push.</li>
+        <li><strong>Pi:</strong> scoped implementation, refactors, test scaffolding, audits.</li>
+        <li><strong>Gate:</strong> compile + tests before push to main.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>2. Setup</h2>
+      <h3>Install and Verify</h3>
+      <pre><code>npm install -g @mariozechner/pi-coding-agent
+pi --version
+pi --help</code></pre>
+
+      <h3>Provider Key (example: OpenAI)</h3>
+      <pre><code>export OPENAI_API_KEY="your_key"
+pi --provider openai --model gpt-4o-mini "summarize this repository"</code></pre>
+
+      <h3>SmartAssist Local Push Gate</h3>
+      <pre><code>bash scripts/install-git-hooks.sh
+bash scripts/pre-push-main.sh</code></pre>
+      <p>This repo now has a <code>pre-push</code> hook that runs compile + test checks before any push.</p>
+    </section>
+
+    <section class="card">
+      <h2>3. Daily Workflow</h2>
+      <h3>Step A: Ask Pi for a Scoped Change</h3>
+      <pre><code>pi --provider openai --model gpt-4o \
+"Refactor smartassist/hooks/vectorize_learnings.py for clarity only.
+No behavior changes. Update tests if needed."</code></pre>
+
+      <h3>Step B: Verify Immediately</h3>
+      <pre><code>python3 -m compileall -q smartassist tests
+uv run pytest -q</code></pre>
+
+      <h3>Step C: Repeat in Small Batches</h3>
+      <p>Use small, testable diffs. Avoid large multi-file rewrites unless absolutely necessary.</p>
+    </section>
+
+    <section class="card">
+      <h2>4. Prompt Templates That Work Well</h2>
+      <h3>Audit Only (read-focused)</h3>
+      <pre><code>pi --tools read,grep,find,ls -p \
+"Audit smartassist/mcp_server.py for regressions and dead code.
+Return findings with file:line only."</code></pre>
+
+      <h3>Implement + Test</h3>
+      <pre><code>pi -p "Implement this bug fix in smartassist/tools/maintenance.py.
+Add regression tests in tests/test_feedback_lesson.py."</code></pre>
+
+      <h3>Docs Drift Sync</h3>
+      <pre><code>pi -p "Compare docs/v2-system-design.html with current behavior in mcp_server.py.
+Patch only incorrect statements."</code></pre>
+    </section>
+
+    <section class="card">
+      <h2>5. Guardrails</h2>
+      <ul>
+        <li>Always require explicit file scope in prompts.</li>
+        <li>Do not trust output without running your gate.</li>
+        <li>Prefer small iterations over one large patch.</li>
+        <li>Use <code>git push --dry-run origin HEAD:main</code> to test flow safely.</li>
+      </ul>
+      <p class="warn">Speed comes from tighter loops, not skipping verification.</p>
+    </section>
+
+    <section class="card">
+      <h2>6. Troubleshooting</h2>
+      <h3>Permission denied on push (403)</h3>
+      <p>Fix GitHub credentials/token for the correct account before testing push behavior.</p>
+
+      <h3>Hook not running</h3>
+      <pre><code>bash scripts/install-git-hooks.sh
+cat .git/hooks/pre-push</code></pre>
+
+      <h3>Failing gate</h3>
+      <p class="danger">Do not bypass with <code>--no-verify</code> while stabilizing SmartAssist.</p>
+    </section>
+  </div>
+</body>
+</html>

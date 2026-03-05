@@ -19,3 +19,4 @@ uv.lock
 .env
 .env.local
 .env.*.local
+qa-artifacts/

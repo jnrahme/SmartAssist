@@ -30,11 +30,17 @@ from smartassist.lesson_feedback import (
     load_lesson_scores,
     save_lesson_scores,
     _get_or_create_score,
+    _add_to_curated,
+    _remove_from_curated,
+    log_comparison_entry,
     DEFAULT_BOOST,
     BOOST_INCREMENT,
     DEMOTE_DECREMENT,
     BOOST_CAP,
     BOOST_FLOOR,
+    MAX_CURATED_LESSONS,
+    ACTION_VERBS,
+    GENERIC_STARTS,
 )
 
 # Suppress noisy logs from dependencies during MCP startup
@@ -51,16 +57,30 @@ _cross_encoder = None
 # Results above this distance are too irrelevant to return.
 MAX_DISTANCE = 1.30
 
-# Corpus capacity limit
-MAX_CURATED_LESSONS = 300
+VALID_CATEGORIES = {"testing", "code_edit", "git", "architecture", "pr_review", "security", "debugging"}
+
 
 
 def _get_storage():
-    return get_storage_path()
+    try:
+        return get_storage_path()
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"SmartAssist data directory not found. "
+            f"Run 'smartassist setup' in your project root, or set "
+            f"SMARTASSIST_DATA_DIR in your MCP server config "
+            f"(~/.claude/mcp.json → smartassist → env). Original: {e}"
+        )
 
 
 def _get_db():
-    return get_db_path()
+    try:
+        return get_db_path()
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"SmartAssist database not found. "
+            f"Run 'smartassist setup' in your project root. Original: {e}"
+        )
 
 
 def _usage_log_path():
@@ -217,6 +237,42 @@ def _update_thompson_for_lesson(lesson_id, storage, success=True):
         pass
 
 
+def _write_to_live_log(storage, action, message):
+    """Append a tool action result to rag_live.log for the monitor terminal."""
+    try:
+        live_log = storage / "rag_live.log"
+        now = datetime.now().strftime("%H:%M:%S")
+        color = {
+            "boost": "\033[32m",    # green
+            "demote": "\033[31m",   # red
+            "merge": "\033[33m",    # yellow
+            "create": "\033[36m",   # cyan
+            "retire": "\033[31m",   # red
+        }.get(action, "\033[0m")
+        line = f"  {color}{action.upper()}: {message}\033[0m\n"
+        with open(live_log, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
+def _load_curated_lessons(storage):
+    """Load curated lessons list; return [] if missing/unreadable."""
+    curated_path = storage / "curated_lessons.json"
+    if not curated_path.exists():
+        return []
+    try:
+        lessons = json.loads(curated_path.read_text())
+        return lessons if isinstance(lessons, list) else []
+    except Exception:
+        return []
+
+
+def _curated_lesson_ids(storage):
+    """Return set of curated lesson IDs."""
+    return {l.get("id") for l in _load_curated_lessons(storage)}
+
+
 def _update_feedback_metrics(storage, action_type):
     """Increment action count in feedback_metrics.json."""
     metrics_path = storage / "feedback_metrics.json"
@@ -232,53 +288,6 @@ def _update_feedback_metrics(storage, action_type):
         metrics[action_type] = metrics.get(action_type, 0) + 1
         metrics["last_updated"] = datetime.now().isoformat()
         metrics_path.write_text(json.dumps(metrics, indent=2))
-    except Exception:
-        pass
-
-
-def _add_to_curated(storage, lesson_text, category):
-    """Append lesson to curated_lessons.json. Returns (new_id, None) or (None, error_msg).
-
-    Creates file if missing. Enforces MAX_CURATED_LESSONS cap.
-    """
-    curated_path = storage / "curated_lessons.json"
-    try:
-        if curated_path.exists():
-            lessons = json.loads(curated_path.read_text())
-        else:
-            lessons = []
-    except Exception:
-        lessons = []
-
-    if len(lessons) >= MAX_CURATED_LESSONS:
-        return None, f"Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
-
-    # Generate next ID
-    existing_ids = {l.get("id", "") for l in lessons}
-    max_num = 0
-    for lid in existing_ids:
-        if lid.startswith("L") and lid[1:].isdigit():
-            max_num = max(max_num, int(lid[1:]))
-    new_id = f"L{max_num + 1:03d}"
-
-    lessons.append({
-        "id": new_id,
-        "lesson": lesson_text,
-        "category": category,
-    })
-    curated_path.write_text(json.dumps(lessons, indent=2))
-    return new_id, None
-
-
-def _remove_from_curated(storage, lesson_id):
-    """Remove lesson from curated_lessons.json by ID. No-op if missing."""
-    curated_path = storage / "curated_lessons.json"
-    if not curated_path.exists():
-        return
-    try:
-        lessons = json.loads(curated_path.read_text())
-        lessons = [l for l in lessons if l.get("id") != lesson_id]
-        curated_path.write_text(json.dumps(lessons, indent=2))
     except Exception:
         pass
 
@@ -547,7 +556,7 @@ def rag_feedback(
     except Exception as e:
         return f"Error loading feedback system: {e}"
 
-    valid_categories = {"testing", "code_edit", "git", "architecture", "pr_review", "security"}
+    valid_categories = VALID_CATEGORIES
     cat = category.lower().strip() if category else ""
 
     if cat and cat not in valid_categories:
@@ -587,21 +596,6 @@ def rag_feedback(
         return f"Feedback recorded: {'helpful' if helpful else 'not helpful'}"
 
 
-VALID_CATEGORIES = {"testing", "code_edit", "git", "architecture", "pr_review", "security", "debugging"}
-
-ACTION_VERBS = {
-    "use", "never", "always", "avoid", "prefer", "check", "run", "ensure",
-    "include", "test", "verify", "add", "remove", "replace", "apply", "call",
-    "import", "export", "wrap", "split", "move", "keep", "delete", "update",
-    "follow", "mock", "assert", "validate", "configure", "set", "create",
-}
-
-GENERIC_STARTS = {
-    "good job", "be careful", "remember to", "nice work", "well done",
-    "great job", "bad job", "try to", "make sure to",
-}
-
-
 @mcp.tool()
 def create_lesson(
     lesson: str,
@@ -636,7 +630,11 @@ def create_lesson(
         return f"Invalid sentiment '{sentiment}'. Must be 'positive' or 'negative'."
 
     # ── Quality gate: intensity ───────────────────────────────────────
-    intensity = max(1, min(5, int(intensity)))
+    try:
+        intensity = int(intensity)
+    except (TypeError, ValueError):
+        return f"Invalid intensity '{intensity}'. Must be an integer from 1 to 5."
+    intensity = max(1, min(5, intensity))
 
     # ── Quality gate: lesson length ───────────────────────────────────
     lesson = lesson.strip() if lesson else ""
@@ -664,8 +662,12 @@ def create_lesson(
     except Exception as e:
         return f"Error accessing storage: {e}"
 
-    signal = "thumbs_up" if sentiment == "positive" else "correction"
+    # ── V2: Dual-path write — add to curated first to avoid partial state ─
+    new_id, cap_error = _add_to_curated(storage_path, lesson, cat)
+    if cap_error:
+        return f"Cannot create lesson: {cap_error}"
 
+    signal = "thumbs_up" if sentiment == "positive" else "correction"
     feedback_entry = {
         "timestamp": time.time(),
         "signal": signal,
@@ -676,20 +678,16 @@ def create_lesson(
         "correction": lesson,
         "context": context or "create_lesson MCP tool",
     }
-
     feedback_log = storage_path / "feedback_log.jsonl"
     try:
         with open(feedback_log, "a", encoding="utf-8") as f:
             f.write(json.dumps(feedback_entry) + "\n")
     except Exception as e:
+        # Roll back curated write if feedback log append fails.
+        _remove_from_curated(storage_path, new_id)
         return f"Error writing feedback: {e}"
 
-    # ── V2: Dual-path write — also add to curated_lessons.json ────────
-    new_id, cap_error = _add_to_curated(storage_path, lesson, cat)
-    if cap_error:
-        curated_msg = f" (Note: {cap_error})"
-    else:
-        curated_msg = f" [ID: {new_id}]"
+    curated_msg = f" [ID: {new_id}]"
 
     # ── Thompson Sampling update ──────────────────────────────────────
     try:
@@ -720,7 +718,83 @@ def create_lesson(
     _log_usage("create_lesson", lesson[:100], 1, latency)
 
     icon = "+" if sentiment == "positive" else "!"
-    return f"Lesson recorded {icon} [{cat}] {lesson[:80]}{'...' if len(lesson) > 80 else ''}{curated_msg}"
+    result = f"Lesson recorded {icon} [{cat}] {lesson[:80]}{'...' if len(lesson) > 80 else ''}{curated_msg}"
+    try:
+        _write_to_live_log(storage_path, "create", result)
+    except Exception:
+        pass
+    return result
+
+
+@mcp.tool()
+def compare_lesson(
+    lesson: str,
+    category: str,
+    sentiment: str = "positive",
+    context: str = "",
+) -> str:
+    """Draft a lesson for quality comparison (does NOT store to knowledge base).
+
+    Called when the hook detects feedback with context. Your lesson will be
+    compared against the hook's automated version to evaluate which path
+    produces better lessons.
+
+    Same requirements as create_lesson — imperative, project-specific, >30 chars.
+
+    Args:
+        lesson: Imperative statement (>30 chars) with an action verb.
+        category: One of: testing, code_edit, git, architecture, pr_review, security, debugging
+        sentiment: "positive" or "negative"
+        context: The user's original feedback context (passed through from the hook)
+    """
+    # ── Quality gate: category ────────────────────────────────────────
+    cat = category.lower().strip() if category else ""
+    if cat not in VALID_CATEGORIES:
+        return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
+
+    # ── Quality gate: lesson length ───────────────────────────────────
+    lesson = lesson.strip() if lesson else ""
+    if len(lesson) < 30:
+        try:
+            storage = _get_storage()
+            log_comparison_entry(storage, "claude", sentiment, context, lesson, False)
+        except Exception:
+            pass
+        return f"Lesson too short ({len(lesson)} chars). Must be at least 30 characters."
+
+    # ── Quality gate: reject generic starts ───────────────────────────
+    lesson_lower = lesson.lower()
+    for generic in GENERIC_STARTS:
+        if lesson_lower.startswith(generic):
+            try:
+                storage = _get_storage()
+                log_comparison_entry(storage, "claude", sentiment, context, lesson, False)
+            except Exception:
+                pass
+            return f"Lesson starts with generic phrase '{generic}'."
+
+    # ── Quality gate: must contain action verb ────────────────────────
+    has_verb = any(f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
+                    for verb in ACTION_VERBS)
+    if not has_verb:
+        try:
+            storage = _get_storage()
+            log_comparison_entry(storage, "claude", sentiment, context, lesson, False)
+        except Exception:
+            pass
+        return (
+            f"Lesson must contain an action verb. Include one of: "
+            f"{', '.join(sorted(list(ACTION_VERBS)[:10]))}..."
+        )
+
+    # ── Log to comparison file (no curated write, no vectorization) ───
+    try:
+        storage = _get_storage()
+        log_comparison_entry(storage, "claude", sentiment, context, lesson, True)
+    except Exception:
+        pass
+
+    return f"Comparison logged [{cat}] {lesson[:80]}{'...' if len(lesson) > 80 else ''} (not stored — A/B only)"
 
 
 @mcp.tool()
@@ -737,13 +811,19 @@ def boost_lesson(lesson_id: str) -> str:
     lesson_id = lesson_id.strip().upper()
 
     scores = load_lesson_scores()
-    entry = _get_or_create_score(scores, lesson_id)
+    existing = scores.get(lesson_id, {})
 
-    if entry.get("retired", False):
+    if existing.get("retired", False):
         return f"Cannot boost {lesson_id}: lesson is retired."
 
-    if entry.get("blocked", False):
+    if existing.get("blocked", False):
         return f"Cannot boost {lesson_id}: lesson is blocked. Unblock first."
+
+    storage = _get_storage()
+    if lesson_id not in _curated_lesson_ids(storage):
+        return f"Cannot boost {lesson_id}: lesson not found in curated lessons."
+
+    entry = _get_or_create_score(scores, lesson_id)
 
     entry["ups"] += 1
     old_boost = entry["boost"]
@@ -752,7 +832,6 @@ def boost_lesson(lesson_id: str) -> str:
 
     # Thompson Sampling update
     try:
-        storage = _get_storage()
         _update_thompson_for_lesson(lesson_id, storage, success=True)
         _update_feedback_metrics(storage, "boosts")
         _update_feedback_metrics(storage, "positive_signals")
@@ -762,20 +841,13 @@ def boost_lesson(lesson_id: str) -> str:
     latency = (time.time() - t0) * 1000
     _log_usage("boost_lesson", lesson_id, 0, latency)
 
-    # Check if lesson exists in curated
-    warning = ""
+    result = (f"Boosted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+              f"(ups: {entry['ups']}, downs: {entry['downs']})")
     try:
-        storage = _get_storage()
-        curated_path = storage / "curated_lessons.json"
-        if curated_path.exists():
-            curated = json.loads(curated_path.read_text())
-            if not any(l.get("id") == lesson_id for l in curated):
-                warning = f" (Warning: {lesson_id} not found in curated lessons)"
+        _write_to_live_log(_get_storage(), "boost", result)
     except Exception:
         pass
-
-    return (f"Boosted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
-            f"(ups: {entry['ups']}, downs: {entry['downs']}){warning}")
+    return result
 
 
 @mcp.tool()
@@ -793,13 +865,19 @@ def demote_lesson(lesson_id: str) -> str:
     lesson_id = lesson_id.strip().upper()
 
     scores = load_lesson_scores()
-    entry = _get_or_create_score(scores, lesson_id)
+    existing = scores.get(lesson_id, {})
 
-    if entry.get("blocked", False):
+    if existing.get("blocked", False):
         return f"Cannot demote {lesson_id}: lesson is already blocked."
 
-    if entry.get("retired", False):
+    if existing.get("retired", False):
         return f"Cannot demote {lesson_id}: lesson is already retired."
+
+    storage = _get_storage()
+    if lesson_id not in _curated_lesson_ids(storage):
+        return f"Cannot demote {lesson_id}: lesson not found in curated lessons."
+
+    entry = _get_or_create_score(scores, lesson_id)
 
     entry["downs"] += 1
     old_boost = entry["boost"]
@@ -819,14 +897,12 @@ def demote_lesson(lesson_id: str) -> str:
     # Remove from curated if auto-retired
     if auto_retired:
         try:
-            storage = _get_storage()
             _remove_from_curated(storage, lesson_id)
         except Exception:
             pass
 
     # Thompson Sampling update
     try:
-        storage = _get_storage()
         _update_thompson_for_lesson(lesson_id, storage, success=False)
         _update_feedback_metrics(storage, "demotes")
         _update_feedback_metrics(storage, "negative_signals")
@@ -841,26 +917,23 @@ def demote_lesson(lesson_id: str) -> str:
     if entry.get("ups", 0) >= 5:
         warning = f" (Warning: this lesson has {entry['ups']} positive feedbacks — consider merging instead)"
 
-    # Check if lesson exists in curated
-    curated_warning = ""
-    if not auto_retired:
+    if auto_retired:
+        result = (f"RETIRED {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+                  f"(ups: {entry['ups']}, downs: {entry['downs']}) — "
+                  f"removed from corpus (never had positive feedback)")
         try:
-            storage = _get_storage()
-            curated_path = storage / "curated_lessons.json"
-            if curated_path.exists():
-                curated = json.loads(curated_path.read_text())
-                if not any(l.get("id") == lesson_id for l in curated):
-                    curated_warning = f" (Warning: {lesson_id} not found in curated lessons)"
+            _write_to_live_log(_get_storage(), "retire", result)
         except Exception:
             pass
-
-    if auto_retired:
-        return (f"RETIRED {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
-                f"(ups: {entry['ups']}, downs: {entry['downs']}) — "
-                f"removed from corpus (never had positive feedback)")
+        return result
     else:
-        return (f"Demoted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
-                f"(ups: {entry['ups']}, downs: {entry['downs']}){warning}{curated_warning}")
+        result = (f"Demoted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+                  f"(ups: {entry['ups']}, downs: {entry['downs']}){warning}")
+        try:
+            _write_to_live_log(_get_storage(), "demote", result)
+        except Exception:
+            pass
+        return result
 
 
 @mcp.tool()
@@ -881,6 +954,8 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     ids = [lid.strip().upper() for lid in lesson_ids.split(",") if lid.strip()]
     if len(ids) < 2:
         return "Merge requires at least 2 lesson IDs (comma-separated)."
+    if len(set(ids)) != len(ids):
+        return "Merge requires unique lesson IDs (no duplicates)."
 
     # Validate category
     cat = category.lower().strip() if category else ""
@@ -934,10 +1009,23 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
         combined_ups += entry.get("ups", 0)
         max_boost = max(max_boost, entry.get("boost", DEFAULT_BOOST))
 
-    # Add new consolidated lesson
-    new_id, cap_error = _add_to_curated(storage, new_lesson, cat)
-    if cap_error:
-        return f"Cannot merge: {cap_error}"
+    # Build merged curated corpus with monotonic ID generation based on the
+    # pre-merge corpus (prevents ID reuse like L001 after removals).
+    max_num = 0
+    for lid in curated_ids:
+        if isinstance(lid, str) and lid.startswith("L") and lid[1:].isdigit():
+            max_num = max(max_num, int(lid[1:]))
+    new_id = f"L{max_num + 1:03d}"
+
+    merged_curated = [l for l in curated if l.get("id") not in ids]
+    if len(merged_curated) >= MAX_CURATED_LESSONS:
+        return f"Cannot merge: Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
+    merged_curated.append({
+        "id": new_id,
+        "lesson": new_lesson,
+        "category": cat,
+    })
+    curated_path.write_text(json.dumps(merged_curated, indent=2))
 
     # Set score for new lesson
     new_entry = _get_or_create_score(scores, new_id)
@@ -953,10 +1041,6 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
         source_entry["retired_at"] = datetime.now().isoformat()
 
     save_lesson_scores(scores)
-
-    # Remove sources from curated
-    for lid in ids:
-        _remove_from_curated(storage, lid)
 
     # Write to feedback_log for vectorization
     feedback_entry = {
@@ -992,9 +1076,14 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     latency = (time.time() - t0) * 1000
     _log_usage("merge_lessons", f"{ids} -> {new_id}", 0, latency)
 
-    return (f"Merged {', '.join(ids)} → {new_id} [{cat}] "
-            f"{new_lesson[:60]}{'...' if len(new_lesson) > 60 else ''} "
-            f"(ups: {combined_ups}, boost: {max_boost:.1f}x)")
+    result = (f"Merged {', '.join(ids)} → {new_id} [{cat}] "
+              f"{new_lesson[:60]}{'...' if len(new_lesson) > 60 else ''} "
+              f"(ups: {combined_ups}, boost: {max_boost:.1f}x)")
+    try:
+        _write_to_live_log(storage, "merge", result)
+    except Exception:
+        pass
+    return result
 
 
 def serve():

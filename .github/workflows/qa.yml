@@ -1,0 +1,51 @@
+name: QA Harness
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  qa-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run QA harness (dry-run)
+        run: bash scripts/qa_autodiagnose.sh --dry-run --max-attempts 2
+
+      - name: Validate QA script tests
+        run: uv run pytest -q tests/test_qa_workflow.py
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-artifacts
+          path: qa-artifacts/**
+
+      - name: Publish QA summary
+        if: always()
+        run: |
+          latest_dir=$(ls -td qa-artifacts/qa-* | head -n 1 || true)
+          if [ -n "${latest_dir:-}" ] && [ -f "$latest_dir/summary.txt" ]; then
+            echo "## QA Harness Summary" >> "$GITHUB_STEP_SUMMARY"
+            cat "$latest_dir/summary.txt" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## QA Harness Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "No summary file generated." >> "$GITHUB_STEP_SUMMARY"
+          fi

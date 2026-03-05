@@ -294,9 +294,11 @@ stateDiagram-v2
   <tr><td>Stale injection (>5 min)</td><td><code>_reconstruct_injected_lessons()</code> returns <code>[]</code>. Claude defaults to create.</td></tr>
   <tr><td>Demote lesson with ups=0 to 0.0</td><td>Auto-retired. Removed from curated. Marked in scores with timestamp + reason.</td></tr>
   <tr><td>Demote lesson with ups&gt;0 to 0.0</td><td>NOT auto-retired. Was helpful sometimes. Stays in curated at floor.</td></tr>
-  <tr><td>feedback_log.jsonl >10K lines</td><td>Maintenance rotates: archive oldest, keep 5K recent, reset vectorization counter.</td></tr>
+  <tr><td>feedback_log.jsonl >10K lines</td><td>Maintenance rotates: archive oldest, keep 5K recent, then remaps <code>total_vectorized</code> into the truncated file (legacy <code>last_processed_line</code> mirrored for compatibility).</td></tr>
   <tr><td>Boost blocked/retired lesson</td><td>Rejected with clear error message. Must unblock first.</td></tr>
+  <tr><td>Boost/Demote unknown lesson ID</td><td>Rejected: lesson must exist in <code>curated_lessons.json</code> (prevents orphan score records).</td></tr>
   <tr><td>Merge with missing source IDs</td><td>Error listing which IDs are missing. No partial merge.</td></tr>
+  <tr><td>Merge with duplicate IDs</td><td>Rejected with "unique lesson IDs" validation error.</td></tr>
 </table>
 
 <!-- ═══════════ DATA FLOW ═══════════ -->

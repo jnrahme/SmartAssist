@@ -5,7 +5,9 @@ per-lesson scores, last injection state, and feedback commands.
 """
 
 import json
+import re
 import time
+from datetime import datetime
 from pathlib import Path
 
 from smartassist.config import get_storage_path
@@ -15,6 +17,7 @@ BOOST_INCREMENT = 0.3
 DEMOTE_DECREMENT = 0.4
 BOOST_CAP = 3.0
 BOOST_FLOOR = 0.0
+MAX_CURATED_LESSONS = 300
 
 
 def _scores_path() -> Path:
@@ -168,6 +171,318 @@ def apply_feedback(command):
         return True, f"Blocked {lesson_id} permanently (use 'u {lesson_id}' to unblock)"
 
     return False, f"Unknown command: {command}"
+
+
+def _remove_from_curated(storage_path, lesson_id):
+    """Remove lesson from curated_lessons.json by ID. No-op if missing."""
+    curated_path = storage_path / "curated_lessons.json"
+    if not curated_path.exists():
+        return
+    try:
+        lessons = json.loads(curated_path.read_text())
+        lessons = [l for l in lessons if l.get("id") != lesson_id]
+        curated_path.write_text(json.dumps(lessons, indent=2))
+    except Exception:
+        pass
+
+
+def reinforce_recent_lessons(sentiment, max_age=900):
+    """Auto-boost or demote all recently injected lessons.
+
+    Called directly by the hook — no Claude involvement needed.
+
+    Returns list of (lesson_id, old_boost, new_boost, retired) tuples.
+    Returns [] if no recent injection or stale.
+    """
+    last = load_last_injection()
+    if not last:
+        return []
+
+    # Staleness check
+    injection_time = last.get("_timestamp", 0)
+    if injection_time and (time.time() - injection_time) > max_age:
+        return []
+
+    scores = load_lesson_scores()
+    storage_path = get_storage_path()
+    results = []
+
+    for key, lesson_id in last.items():
+        if key.startswith("_"):
+            continue
+
+        entry = _get_or_create_score(scores, lesson_id)
+
+        # Skip blocked/retired lessons
+        if entry.get("blocked", False) or entry.get("retired", False):
+            continue
+
+        old_boost = entry["boost"]
+
+        if sentiment == "positive":
+            entry["ups"] += 1
+            entry["boost"] = min(entry["boost"] + BOOST_INCREMENT, BOOST_CAP)
+            retired = False
+        else:
+            entry["downs"] += 1
+            entry["boost"] = max(entry["boost"] - DEMOTE_DECREMENT, BOOST_FLOOR)
+            # Auto-retire: boost at 0.0 AND never been helpful
+            retired = False
+            if entry["boost"] <= BOOST_FLOOR and entry.get("ups", 0) == 0:
+                entry["blocked"] = True
+                entry["retired"] = True
+                entry["retired_reason"] = "auto-retired: boost 0.0 with 0 positive feedback"
+                entry["retired_at"] = datetime.now().isoformat()
+                retired = True
+                _remove_from_curated(storage_path, lesson_id)
+
+        results.append((lesson_id, old_boost, entry["boost"], retired))
+
+    save_lesson_scores(scores)
+    return results
+
+
+def _add_to_curated(storage_path, lesson_text, category):
+    """Append lesson to curated_lessons.json. Returns (new_id, None) or (None, error_msg).
+
+    Creates file if missing. Enforces MAX_CURATED_LESSONS cap.
+    """
+    curated_path = storage_path / "curated_lessons.json"
+    try:
+        if curated_path.exists():
+            lessons = json.loads(curated_path.read_text())
+        else:
+            lessons = []
+    except Exception:
+        return None, "Cannot read curated_lessons.json (invalid JSON). Fix file before adding lessons."
+
+    if len(lessons) >= MAX_CURATED_LESSONS:
+        return None, f"Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
+
+    existing_ids = {l.get("id", "") for l in lessons}
+    max_num = 0
+    for lid in existing_ids:
+        if lid.startswith("L") and lid[1:].isdigit():
+            max_num = max(max_num, int(lid[1:]))
+    new_id = f"L{max_num + 1:03d}"
+
+    lessons.append({
+        "id": new_id,
+        "lesson": lesson_text,
+        "category": category,
+    })
+    curated_path.write_text(json.dumps(lessons, indent=2))
+    return new_id, None
+
+
+# ── Shared quality-gate constants (used by both hook path and MCP tools) ──
+
+ACTION_VERBS = {
+    # existing 31 verbs
+    "use", "never", "always", "avoid", "prefer", "check", "run", "ensure",
+    "include", "test", "verify", "add", "remove", "replace", "apply", "call",
+    "import", "export", "wrap", "split", "move", "keep", "delete", "update",
+    "follow", "mock", "assert", "validate", "configure", "set", "create",
+    # new additions
+    "don't", "do", "handle", "implement", "extract", "document", "define",
+    "initialize",
+}
+
+GENERIC_STARTS = {
+    "good job", "be careful", "remember to", "nice work", "well done",
+    "great job", "bad job", "try to", "make sure to",
+}
+
+# ── Feedback transforms: (prefix, replacement) ───────────────────────────
+# Matched longest-first. Only one prefix stripped per input.
+
+_FEEDBACK_TRANSFORMS = [
+    # "use of X" patterns — preserve the verb as "Use X"
+    ("good use of ",      "Use "),
+    ("great use of ",     "Use "),
+    ("nice use of ",      "Use "),
+    ("excellent use of ", "Use "),
+    # "job on X" patterns — strip completely
+    ("good job on ",  ""),
+    ("great job on ", ""),
+    ("nice job on ",  ""),
+    ("good job ",     ""),
+    ("great job ",    ""),
+    ("nice job ",     ""),
+    # "i like/love" patterns — strip, remaining text has the verb
+    ("i like how you ",  ""),
+    ("i liked how you ", ""),
+    ("i like the ",      ""),
+    ("i liked the ",     ""),
+    ("love how you ",    ""),
+    ("love the ",        ""),
+    # bare adjectives — strip
+    ("good ",      ""),
+    ("great ",     ""),
+    ("nice ",      ""),
+    ("excellent ", ""),
+    ("bad ",       ""),
+    ("poor ",      ""),
+    ("terrible ",  ""),
+]
+
+# ── Contraction normalization ─────────────────────────────────────────────
+
+_CONTRACTIONS = {
+    "dont":     "don't",
+    "cant":     "can't",
+    "shouldnt": "shouldn't",
+    "wouldnt":  "wouldn't",
+    "isnt":     "isn't",
+    "hasnt":    "hasn't",
+    "didnt":    "didn't",
+    "doesnt":   "doesn't",
+    "couldnt":  "couldn't",
+    "wont":     "won't",
+}
+
+
+def _context_to_lesson(user_context):
+    """Convert user feedback context to an imperative lesson statement.
+
+    Pipeline:
+      1. Strip praise/complaint prefixes (preserving verbs where possible)
+      2. Normalize contractions ("dont" → "don't")
+      3. Sanitize conversational wrapping + capitalize + strip emojis
+      4. Quality gate: length >= 30
+      5. Quality gate: no generic starts
+      6. Quality gate: must contain action verb
+
+    Returns None if the result fails any quality gate.
+    """
+    from smartassist.tools.cleanup_and_vectorize import sanitize_to_lesson
+
+    text = user_context.strip()
+    lower = text.lower()
+
+    # 1. Apply praise/complaint transforms (longest prefix first)
+    for prefix, replacement in sorted(_FEEDBACK_TRANSFORMS, key=lambda t: len(t[0]), reverse=True):
+        if lower.startswith(prefix):
+            text = replacement + text[len(prefix):]
+            break
+
+    # 2. Normalize contractions ("dont" → "don't")
+    for informal, formal in _CONTRACTIONS.items():
+        text = re.sub(r'\b' + informal + r'\b', formal, text, flags=re.IGNORECASE)
+
+    # 3. Strip conversational wrapping + capitalize + strip emojis
+    text = sanitize_to_lesson(text)
+
+    # 4. Quality gate: length
+    if len(text) < 30:
+        return None
+
+    # 5. Quality gate: no generic starts
+    text_lower = text.lower()
+    for generic in GENERIC_STARTS:
+        if text_lower.startswith(generic):
+            return None
+
+    # 6. Quality gate: must contain action verb
+    has_verb = any(
+        f" {verb} " in f" {text_lower} " or text_lower.startswith(f"{verb} ")
+        for verb in ACTION_VERBS
+    )
+    if not has_verb:
+        return None
+
+    return text
+
+
+def _infer_category(reinforcement_results, storage_path):
+    """Infer lesson category from boosted lessons via majority vote."""
+    if not reinforcement_results:
+        return "code_edit"
+
+    curated_path = storage_path / "curated_lessons.json"
+    curated_map = {}
+    if curated_path.exists():
+        try:
+            lessons = json.loads(curated_path.read_text())
+            curated_map = {l.get("id", ""): l.get("category", "") for l in lessons}
+        except Exception:
+            pass
+
+    counts = {}
+    for lid, _, _, _ in reinforcement_results:
+        cat = curated_map.get(lid, "")
+        if cat:
+            counts[cat] = counts.get(cat, 0) + 1
+
+    if counts:
+        return max(counts, key=counts.get)
+    return "code_edit"
+
+
+def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
+    """Create a lesson directly from user feedback context. No Claude involvement.
+
+    Returns (new_id, lesson_text) or (None, None) if context is too vague.
+    """
+    lesson_text = _context_to_lesson(user_context)
+    if not lesson_text:
+        return None, None
+
+    storage_path = get_storage_path()
+    category = _infer_category(reinforcement_results, storage_path)
+
+    new_id, error = _add_to_curated(storage_path, lesson_text, category)
+    if error:
+        return None, None
+
+    # Write to feedback_log.jsonl
+    signal = "thumbs_up" if sentiment == "positive" else "correction"
+    feedback_entry = {
+        "timestamp": time.time(),
+        "signal": signal,
+        "category": category,
+        "intensity": 3,
+        "query": "",
+        "response": "",
+        "correction": lesson_text,
+        "context": f"hook-created from feedback: {user_context}",
+    }
+    feedback_log = storage_path / "feedback_log.jsonl"
+    try:
+        with open(feedback_log, "a", encoding="utf-8") as f:
+            f.write(json.dumps(feedback_entry) + "\n")
+    except Exception:
+        pass
+
+    return new_id, lesson_text
+
+
+def log_comparison_entry(storage_path, source, sentiment, feedback_context,
+                         lesson_text, passed_gates):
+    """Log a lesson draft to the comparison file for A/B analysis.
+
+    Args:
+        storage_path: Path to the data directory.
+        source: "hook" or "claude"
+        sentiment: "positive" or "negative"
+        feedback_context: The user's original feedback context string.
+        lesson_text: The lesson text (or None if gates failed).
+        passed_gates: Whether it passed quality gates.
+    """
+    entry = {
+        "timestamp": time.time(),
+        "source": source,
+        "sentiment": sentiment,
+        "feedback_context": feedback_context,
+        "lesson_text": lesson_text,
+        "passed_gates": passed_gates,
+    }
+    comparison_log = storage_path / "lesson_comparison.jsonl"
+    try:
+        with open(comparison_log, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
 
 
 def format_scores_table(scores=None):

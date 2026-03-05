@@ -385,6 +385,47 @@ Each layer adds specificity. CLAUDE.md says *what*. Skills say *how*. SmartAssis
 python -m pytest tests/ -v
 ```
 
+### Push Safety Gate (Local + CI)
+
+Before pushing to `main`, run the same checks locally that CI enforces:
+
+```bash
+bash scripts/pre-push-main.sh
+```
+
+Install a local git `pre-push` hook once:
+
+```bash
+bash scripts/install-git-hooks.sh
+```
+
+This repository also includes GitHub Actions PR checks at
+`.github/workflows/pr-checks.yml`:
+- Python compile validation (`python -m compileall`)
+- Full test suite (`uv run pytest -q`)
+
+### QA Autodiagnose Harness (MCP + Claude + E2E)
+
+Run the automated QA workflow locally:
+
+```bash
+# full mode (requires smartassist + claude CLIs available)
+bash scripts/qa_autodiagnose.sh
+
+# deterministic local check for harness logic
+bash scripts/qa_autodiagnose.sh --dry-run --max-attempts 2
+```
+
+Key scripts:
+- `scripts/qa_preflight.sh` — config and environment checks
+- `scripts/qa_mcp_protocol.sh` — MCP startup + required tool contract probe
+- `scripts/qa_claude_headless_smoke.sh` — headless Claude smoke check
+- `scripts/qa_autodiagnose.sh` — staged retries, diagnostics, and metrics capture
+
+Output artifacts are written to `qa-artifacts/qa-<timestamp>/`:
+- `metrics.jsonl` — per-stage pass/fail + durations
+- `summary.json` / `summary.txt` — final status and aggregate metrics
+
 59 tests covering:
 - **test_cleanup.py** (46 tests) — All 20+ filter functions, sanitization, normalization
 - **test_thompson_sampling.py** (7 tests) — Reliability scoring, persistence, decay

@@ -5,17 +5,338 @@ Extracts project conventions as baseline lessons for the RLHF system.
 Run once (or after major CLAUDE.md updates) to populate the knowledge base.
 """
 
+import os
+import re
 import sys
 import json
 import subprocess
 from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional
 
 from smartassist.config import get_storage_path
 from smartassist.feedback_system import FeedbackCapture, FeedbackCategory, FeedbackSignal
 
 
-def create_lessons():
-    """Extract lessons from project conventions and return as feedback entries."""
+# ── Markdown parsing ─────────────────────────────────────────────────────
+
+@dataclass
+class MarkdownSection:
+    """A parsed section from a markdown file."""
+    header: str
+    level: int
+    parent_header: Optional[str]
+    body: str
+    bullets: List[str] = field(default_factory=list)
+    code_blocks: List[dict] = field(default_factory=list)
+
+
+def find_claudemd(start_path: Optional[str] = None) -> Optional[Path]:
+    """Walk up from start_path (or cwd) to find CLAUDE.md."""
+    current = Path(start_path) if start_path else Path.cwd()
+    # Ensure we start from a directory
+    if current.is_file():
+        current = current.parent
+    for _ in range(50):  # safety limit
+        candidate = current / "CLAUDE.md"
+        if candidate.is_file():
+            return candidate
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
+def extract_bullets(text: str) -> List[str]:
+    """Extract bullet lines (- or *) from text, handling multi-line continuations."""
+    bullets = []
+    current_bullet = None
+    for line in text.split("\n"):
+        stripped = line.rstrip()
+        # New bullet
+        match = re.match(r"^[\s]*[-*]\s+(.+)", stripped)
+        if match:
+            if current_bullet is not None:
+                bullets.append(current_bullet.strip())
+            current_bullet = match.group(1)
+        elif current_bullet is not None and stripped and not stripped.startswith("#"):
+            # Continuation line (indented or just text following a bullet)
+            if re.match(r"^\s{2,}", line) and not re.match(r"^\s*[-*]\s", stripped):
+                current_bullet += " " + stripped.strip()
+            else:
+                bullets.append(current_bullet.strip())
+                current_bullet = None
+        elif current_bullet is not None and not stripped:
+            # Blank line ends current bullet
+            bullets.append(current_bullet.strip())
+            current_bullet = None
+    if current_bullet is not None:
+        bullets.append(current_bullet.strip())
+    return bullets
+
+
+def extract_code_blocks(text: str) -> List[dict]:
+    """Extract fenced code blocks with language tags."""
+    blocks = []
+    pattern = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
+    for match in pattern.finditer(text):
+        lang = match.group(1) or "text"
+        code = match.group(2).strip()
+        if code:
+            blocks.append({"language": lang, "code": code})
+    return blocks
+
+
+def parse_markdown_sections(content: str) -> List[MarkdownSection]:
+    """Split markdown by ATX (###) and setext (===/---) headers.
+
+    Returns list of MarkdownSection with header, level, parent tracking,
+    bullets, and code blocks.
+    """
+    lines = content.split("\n")
+    sections: List[MarkdownSection] = []
+    # Stack of (level, header) for parent tracking
+    header_stack: List[tuple] = []
+
+    i = 0
+    current_header = None
+    current_level = 0
+    current_body_lines: List[str] = []
+
+    def _flush():
+        nonlocal current_header, current_body_lines
+        if current_header is not None:
+            body = "\n".join(current_body_lines)
+            # Find parent: walk stack for nearest lower level
+            parent = None
+            for lvl, hdr in reversed(header_stack):
+                if lvl < current_level:
+                    parent = hdr
+                    break
+            section = MarkdownSection(
+                header=current_header,
+                level=current_level,
+                parent_header=parent,
+                body=body,
+                bullets=extract_bullets(body),
+                code_blocks=extract_code_blocks(body),
+            )
+            sections.append(section)
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Check for setext header (next line is === or ---)
+        if i + 1 < len(lines):
+            next_line = lines[i + 1].rstrip()
+            if re.match(r"^={3,}\s*$", next_line) and line.strip():
+                _flush()
+                current_header = line.strip()
+                current_level = 1
+                header_stack.append((current_level, current_header))
+                current_body_lines = []
+                i += 2
+                continue
+            if re.match(r"^-{3,}\s*$", next_line) and line.strip():
+                _flush()
+                current_header = line.strip()
+                current_level = 2
+                header_stack.append((current_level, current_header))
+                current_body_lines = []
+                i += 2
+                continue
+
+        # Check for ATX header
+        atx = re.match(r"^(#{1,6})\s+(.+)", line)
+        if atx:
+            _flush()
+            current_level = len(atx.group(1))
+            current_header = atx.group(2).strip()
+            header_stack.append((current_level, current_header))
+            current_body_lines = []
+            i += 1
+            continue
+
+        # Regular body line
+        if current_header is not None:
+            current_body_lines.append(line)
+        i += 1
+
+    _flush()
+    return sections
+
+
+# ── Category mapping ─────────────────────────────────────────────────────
+
+_CATEGORY_KEYWORDS = {
+    FeedbackCategory.TESTING: ["test", "jest", "mock", "e2e", "coverage", "detox"],
+    FeedbackCategory.GIT: ["git", "commit", "branch"],
+    FeedbackCategory.CODE_EDIT: ["style", "lint", "format", "component", "code quality",
+                                  "code edit", "pattern", "import"],
+    FeedbackCategory.ARCHITECTURE: ["architecture", "structure", "directory", "project structure"],
+    FeedbackCategory.SECURITY: ["security", "auth", "credential", "firebase"],
+    FeedbackCategory.DEBUGGING: ["debug", "error", "crash", "crashlytics"],
+    FeedbackCategory.PR_REVIEW: ["pr", "review", "pull request"],
+}
+
+
+def _keyword_matches(text: str, keywords: list) -> bool:
+    """Check if any keyword matches in text using word-boundary-aware matching."""
+    lower = text.lower()
+    for kw in keywords:
+        # Multi-word keywords: simple substring match
+        if " " in kw:
+            if kw in lower:
+                return True
+        elif len(kw) <= 3:
+            # Very short keywords: require full word boundary to avoid
+            # false positives (e.g. "pr" matching "practices")
+            if re.search(rf"\b{re.escape(kw)}\b", lower):
+                return True
+        else:
+            # Longer keywords: word boundary at start, allow prefix match
+            # e.g. "test" matches "Testing", "auth" matches "Authentication"
+            if re.search(rf"\b{re.escape(kw)}", lower):
+                return True
+    return False
+
+
+def map_section_to_category(section: MarkdownSection) -> FeedbackCategory:
+    """Map a section to a FeedbackCategory by checking header keywords."""
+    # Check section header first, then parent header
+    for text in [section.header, section.parent_header or ""]:
+        for cat, keywords in _CATEGORY_KEYWORDS.items():
+            if _keyword_matches(text, keywords):
+                return cat
+    return FeedbackCategory.CODE_EDIT
+
+
+# ── Lesson generation ────────────────────────────────────────────────────
+
+_ACTION_VERBS = re.compile(
+    r"\b(use|never|always|avoid|run|prefer|ensure|don't|do not|must|should"
+    r"|check|install|import|export|follow|include|exclude|set|add|remove"
+    r"|replace|create|delete|keep|place|put|wrap|call|mock|test)\b",
+    re.IGNORECASE,
+)
+
+_INTENSITY_HIGH = re.compile(r"\b(never|always|must|critical|important|banned?)\b", re.IGNORECASE)
+_INTENSITY_MED = re.compile(r"\b(should|avoid|prefer|recommended)\b", re.IGNORECASE)
+
+
+def is_actionable_bullet(text: str) -> bool:
+    """Return True if bullet contains actionable instruction."""
+    # Filter short text
+    if len(text) < 30:
+        return False
+    # Filter version info lines like "React Native 0.77.1"
+    if re.match(r"^\*\*\w+\*\*\s+\d+\.\d+", text):
+        return False
+    if re.match(r"^\*\*[\w\s]+\*\*\s*([-:]|for\s)", text):
+        # Description-style: "**Thing** - description" or "**Thing**: description"
+        # Only keep if it also has action verbs
+        if not _ACTION_VERBS.search(text):
+            return False
+    # Has action verbs or inline code
+    if _ACTION_VERBS.search(text):
+        return True
+    if "`" in text:
+        return True
+    return False
+
+
+def estimate_intensity(text: str) -> int:
+    """Estimate lesson intensity from 1-5."""
+    if _INTENSITY_HIGH.search(text):
+        return 5
+    if _INTENSITY_MED.search(text):
+        return 4
+    return 3
+
+
+def generate_bad_response(bullet: str) -> str:
+    """Generate a plausible bad response from a bullet instruction."""
+    lower = bullet.lower()
+
+    # "instead of X" pattern
+    match = re.search(r"instead of\s+(.+?)(?:\.|$)", lower)
+    if match:
+        return match.group(1).strip().capitalize()
+
+    # "not X" / "don't X" pattern
+    match = re.search(r"(?:not|don't|do not|never)\s+(.+?)(?:\.|,|$)", lower)
+    if match:
+        bad = match.group(1).strip()
+        # Turn "use npm" into "Used npm"
+        if bad.startswith("use "):
+            return "Used " + bad[4:]
+        return bad.capitalize()
+
+    return "Did not follow project conventions"
+
+
+def bullet_to_lesson(
+    bullet: str,
+    section: MarkdownSection,
+    category: FeedbackCategory,
+) -> Optional[dict]:
+    """Convert an actionable bullet into a lesson dict."""
+    if not is_actionable_bullet(bullet):
+        return None
+
+    # Clean bullet text — strip leading bold markers for cleaner lesson text
+    clean = re.sub(r"^\*\*[\w\s]+\*\*\s*[-:]\s*", "", bullet).strip()
+    if not clean:
+        clean = bullet
+
+    return {
+        "signal": "correction",
+        "category": category.value,
+        "intensity": estimate_intensity(bullet),
+        "query": f"Working on: {section.header}",
+        "response": generate_bad_response(bullet),
+        "correction": clean,
+        "context": f"From CLAUDE.md section: {section.header}"
+                   + (f" > {section.parent_header}" if section.parent_header else ""),
+    }
+
+
+def code_block_to_lesson(
+    language: str,
+    code: str,
+    section: MarkdownSection,
+    category: FeedbackCategory,
+) -> Optional[dict]:
+    """Convert bash/shell command blocks to lessons."""
+    if language not in ("bash", "shell", "sh", "zsh"):
+        return None
+    # Extract the actual commands (skip comments)
+    commands = [
+        line.strip()
+        for line in code.split("\n")
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not commands:
+        return None
+
+    command_text = " && ".join(commands[:3])  # limit to first 3 commands
+    return {
+        "signal": "correction",
+        "category": category.value,
+        "intensity": 3,
+        "query": f"Run commands for: {section.header}",
+        "response": "Used wrong command or skipped this step",
+        "correction": f"Use: {command_text}",
+        "context": f"From CLAUDE.md section: {section.header}",
+    }
+
+
+# ── Main entry points ────────────────────────────────────────────────────
+
+def create_hardcoded_lessons():
+    """Original hardcoded lessons for bt-mobile-app (fallback)."""
     lessons = []
 
     # ── Testing lessons ──────────────────────────────────────────────
@@ -201,6 +522,47 @@ def create_lessons():
         "context": "Firebase analytics must go through centralized utility for type safety and consistency.",
     })
 
+    return lessons
+
+
+def create_lessons() -> list:
+    """Dynamically parse CLAUDE.md if found, else fall back to hardcoded lessons."""
+    claudemd = find_claudemd()
+    if claudemd is None:
+        print("No CLAUDE.md found, using hardcoded lessons")
+        return create_hardcoded_lessons()
+
+    print(f"Parsing CLAUDE.md: {claudemd}")
+    content = claudemd.read_text(encoding="utf-8")
+    sections = parse_markdown_sections(content)
+
+    lessons = []
+    seen_corrections = set()  # dedup by correction text
+
+    for section in sections:
+        category = map_section_to_category(section)
+
+        # Process bullets
+        for bullet in section.bullets:
+            lesson = bullet_to_lesson(bullet, section, category)
+            if lesson and lesson["correction"] not in seen_corrections:
+                seen_corrections.add(lesson["correction"])
+                lessons.append(lesson)
+
+        # Process code blocks
+        for block in section.code_blocks:
+            lesson = code_block_to_lesson(
+                block["language"], block["code"], section, category,
+            )
+            if lesson and lesson["correction"] not in seen_corrections:
+                seen_corrections.add(lesson["correction"])
+                lessons.append(lesson)
+
+    if not lessons:
+        print("No actionable lessons found in CLAUDE.md, using hardcoded lessons")
+        return create_hardcoded_lessons()
+
+    print(f"Extracted {len(lessons)} lessons from CLAUDE.md")
     return lessons
 
 

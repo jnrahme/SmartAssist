@@ -15,7 +15,6 @@ Usage:
 import json
 import sys
 import time
-import shutil
 from datetime import datetime
 
 from smartassist.config import get_storage_path, get_db_path, EMBEDDING_DIM
@@ -176,16 +175,19 @@ def rotate_feedback_log():
     print(f"  {YELLOW}Rotated: archived {archive_count} lines → {archive_path.name}{RESET}")
     print(f"  {GREEN}Kept {len(keep_lines)} recent lines{RESET}")
 
-    # Reset vectorization counter to match
+    # Reset vectorization counter to match the truncated log.
     vec_log = storage / "vectorization_log.json"
     if vec_log.exists():
         try:
             data = json.loads(vec_log.read_text())
-            old_count = data.get("last_processed_line", 0)
-            # Adjust: new line count is FEEDBACK_LOG_KEEP_LINES
-            data["last_processed_line"] = len(keep_lines)
+            old_count = data.get("total_vectorized", data.get("last_processed_line", 0))
+            # Remap processed count into the new truncated file coordinates.
+            remapped_count = max(0, min(len(keep_lines), old_count - archive_count))
+            data["total_vectorized"] = remapped_count
+            # Keep legacy key for backward compatibility with older tooling.
+            data["last_processed_line"] = remapped_count
             vec_log.write_text(json.dumps(data, indent=2))
-            print(f"  {DIM}Reset vectorization counter: {old_count} → {len(keep_lines)}{RESET}")
+            print(f"  {DIM}Reset vectorization counter: {old_count} → {remapped_count}{RESET}")
         except Exception:
             pass
 

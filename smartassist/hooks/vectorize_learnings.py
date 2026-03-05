@@ -49,7 +49,10 @@ def get_unvectorized_feedback() -> Tuple[List[Dict], int]:
     if vectorization_log.exists():
         with open(vectorization_log, "r") as f:
             vectorized_data = json.load(f)
-            last_vectorized_count = vectorized_data.get("total_vectorized", 0)
+            last_vectorized_count = vectorized_data.get(
+                "total_vectorized",
+                vectorized_data.get("last_processed_line", 0),
+            )
     else:
         last_vectorized_count = 0
 
@@ -64,6 +67,7 @@ def get_unvectorized_feedback() -> Tuple[List[Dict], int]:
                     except json.JSONDecodeError:
                         continue
 
+    last_vectorized_count = max(0, min(last_vectorized_count, len(all_feedback)))
     new_feedback = all_feedback[last_vectorized_count:]
     return new_feedback, len(all_feedback)
 
