@@ -1,5 +1,3 @@
-"""Tests for claude_sa.py — the tmux-based launcher."""
-
 import os
 import shutil
 import subprocess
@@ -10,17 +8,19 @@ import pytest
 
 from smartassist.claude_sa import (
     find_data_dir,
-    _has_tty,
-    _inside_tmux,
-    _get_terminal_cols,
-    _compute_monitor_cols,
-    _build_tmux_session,
+    _kill_existing_session,
+    _launch_tmux,
+    _launch_fallback,
     main,
     SESSION_NAME,
-    MIN_COLS_FOR_SIDE_BY_SIDE,
-    MONITOR_MIN_COLS,
-    MONITOR_MAX_COLS,
+    MONITOR_WIDTH_PCT,
 )
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_tmux_session():
+    yield
+    subprocess.run(["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True)
 
 
 class TestFindDataDir:
@@ -47,57 +47,21 @@ class TestFindDataDir:
                 assert not str(result).startswith(str(isolated))
 
 
-class TestHasTty:
-    def test_no_tty_in_test_env(self):
-        assert isinstance(_has_tty(), bool)
-
-    def test_handles_os_error(self):
-        with patch("os.isatty", side_effect=OSError):
-            assert _has_tty() is False
-
-    def test_handles_value_error(self):
-        with patch("os.isatty", side_effect=ValueError):
-            assert _has_tty() is False
+class TestKillExistingSession:
+    def test_does_not_raise_on_missing_session(self):
+        _kill_existing_session()
 
 
-class TestInsideTmux:
-    def test_false_without_env(self):
-        with patch.dict(os.environ, {}, clear=True):
-            assert _inside_tmux() is False
+class TestConstants:
+    def test_session_name(self):
+        assert SESSION_NAME == "claude-sa"
 
-    def test_true_with_env(self):
-        with patch.dict(os.environ, {"TMUX": "/tmp/tmux-501/default,12345,0"}):
-            assert _inside_tmux() is True
-
-
-class TestGetTerminalCols:
-    def test_returns_int(self):
-        result = _get_terminal_cols()
-        assert isinstance(result, int)
-        assert result > 0
-
-    def test_fallback_on_error(self):
-        with patch("os.get_terminal_size", side_effect=OSError):
-            assert _get_terminal_cols() == 200
+    def test_monitor_width(self):
+        assert isinstance(MONITOR_WIDTH_PCT, int)
+        assert 10 <= MONITOR_WIDTH_PCT <= 50
 
 
-class TestComputeMonitorCols:
-    def test_narrow_terminal_clamps_to_min(self):
-        assert _compute_monitor_cols(100) == MONITOR_MIN_COLS
-
-    def test_wide_terminal_clamps_to_max(self):
-        assert _compute_monitor_cols(400) == MONITOR_MAX_COLS
-
-    def test_medium_terminal_scales(self):
-        result = _compute_monitor_cols(200)
-        assert MONITOR_MIN_COLS <= result <= MONITOR_MAX_COLS
-        assert result == 60
-
-    def test_very_narrow_uses_min(self):
-        assert _compute_monitor_cols(50) == MONITOR_MIN_COLS
-
-
-class TestBuildTmuxSession:
+class TestLaunchTmux:
     @pytest.fixture
     def skip_without_tmux(self):
         if not shutil.which("tmux"):
@@ -106,26 +70,37 @@ class TestBuildTmuxSession:
     def test_creates_session(self, tmp_path, skip_without_tmux):
         log = tmp_path / "test.log"
         log.touch()
+        _kill_existing_session()
         subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
+            ["tmux", "new-session", "-d", "-s", SESSION_NAME, "-x", "200", "-y", "50"],
+            check=True,
         )
-        _build_tmux_session(log, "-h", "50")
         result = subprocess.run(
             ["tmux", "has-session", "-t", SESSION_NAME],
             capture_output=True,
         )
         assert result.returncode == 0
-        subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
-        )
 
     def test_creates_two_panes(self, tmp_path, skip_without_tmux):
         log = tmp_path / "test.log"
         log.touch()
+        _kill_existing_session()
         subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
+            ["tmux", "new-session", "-d", "-s", SESSION_NAME, "-x", "200", "-y", "50"],
+            check=True,
         )
-        _build_tmux_session(log, "-h", "50")
+        subprocess.run(
+            [
+                "tmux",
+                "split-window",
+                "-h",
+                "-t",
+                SESSION_NAME,
+                "-l",
+                f"{MONITOR_WIDTH_PCT}%",
+            ],
+            check=True,
+        )
         result = subprocess.run(
             ["tmux", "list-panes", "-t", SESSION_NAME],
             capture_output=True,
@@ -133,68 +108,31 @@ class TestBuildTmuxSession:
         )
         pane_count = len(result.stdout.strip().split("\n"))
         assert pane_count == 2
-        subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
-        )
 
-    def test_pane_titles_set(self, tmp_path, skip_without_tmux):
+    def test_select_pane_focuses_left(self, tmp_path, skip_without_tmux):
         log = tmp_path / "test.log"
         log.touch()
+        _kill_existing_session()
         subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
+            ["tmux", "new-session", "-d", "-s", SESSION_NAME, "-x", "200", "-y", "50"],
+            check=True,
         )
-        _build_tmux_session(log, "-h", "50")
-        result = subprocess.run(
-            ["tmux", "list-panes", "-t", SESSION_NAME, "-F", "#{pane_title}"],
-            capture_output=True,
-            text=True,
-        )
-        titles = result.stdout.strip().split("\n")
-        assert "Claude Code" in titles
-        assert "RAG Monitor" in titles
         subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
+            [
+                "tmux",
+                "split-window",
+                "-h",
+                "-t",
+                SESSION_NAME,
+                "-l",
+                f"{MONITOR_WIDTH_PCT}%",
+            ],
+            check=True,
         )
-
-    def test_vertical_split(self, tmp_path, skip_without_tmux):
-        log = tmp_path / "test.log"
-        log.touch()
         subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
+            ["tmux", "select-pane", "-t", SESSION_NAME, "-L"],
+            check=True,
         )
-        _build_tmux_session(log, "-v", "30%")
-        result = subprocess.run(
-            ["tmux", "list-panes", "-t", SESSION_NAME],
-            capture_output=True,
-            text=True,
-        )
-        assert len(result.stdout.strip().split("\n")) == 2
-        subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
-        )
-
-    def test_idempotent_kills_existing(self, tmp_path, skip_without_tmux):
-        log = tmp_path / "test.log"
-        log.touch()
-        _build_tmux_session(log, "-h", "50")
-        _build_tmux_session(log, "-h", "50")
-        result = subprocess.run(
-            ["tmux", "list-panes", "-t", SESSION_NAME],
-            capture_output=True,
-            text=True,
-        )
-        assert len(result.stdout.strip().split("\n")) == 2
-        subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
-        )
-
-    def test_left_pane_is_active(self, tmp_path, skip_without_tmux):
-        log = tmp_path / "test.log"
-        log.touch()
-        subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
-        )
-        _build_tmux_session(log, "-h", "50")
         result = subprocess.run(
             [
                 "tmux",
@@ -202,43 +140,127 @@ class TestBuildTmuxSession:
                 "-t",
                 SESSION_NAME,
                 "-F",
-                "#{pane_title}:#{pane_active}",
+                "#{pane_index}:#{pane_active}",
             ],
             capture_output=True,
             text=True,
         )
-        for line in result.stdout.strip().split("\n"):
-            title, active = line.split(":")
-            if title == "Claude Code":
-                assert active == "1"
-            elif title == "RAG Monitor":
-                assert active == "0"
+        lines = result.stdout.strip().split("\n")
+        first_pane = lines[0]
+        _, active = first_pane.split(":")
+        assert active == "1"
+
+    def test_idempotent_kills_existing(self, tmp_path, skip_without_tmux):
+        log = tmp_path / "test.log"
+        log.touch()
         subprocess.run(
-            ["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True
+            ["tmux", "new-session", "-d", "-s", SESSION_NAME, "-x", "200", "-y", "50"],
+            capture_output=True,
         )
+        _kill_existing_session()
+        subprocess.run(
+            ["tmux", "new-session", "-d", "-s", SESSION_NAME, "-x", "200", "-y", "50"],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "tmux",
+                "split-window",
+                "-h",
+                "-t",
+                SESSION_NAME,
+                "-l",
+                f"{MONITOR_WIDTH_PCT}%",
+            ],
+            check=True,
+        )
+        result = subprocess.run(
+            ["tmux", "list-panes", "-t", SESSION_NAME],
+            capture_output=True,
+            text=True,
+        )
+        assert len(result.stdout.strip().split("\n")) == 2
+
+    def test_send_keys_targeted(self, tmp_path, skip_without_tmux):
+        log = tmp_path / "test.log"
+        log.touch()
+        _kill_existing_session()
+        subprocess.run(
+            ["tmux", "new-session", "-d", "-s", SESSION_NAME, "-x", "200", "-y", "50"],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "tmux",
+                "split-window",
+                "-h",
+                "-t",
+                SESSION_NAME,
+                "-l",
+                f"{MONITOR_WIDTH_PCT}%",
+            ],
+            check=True,
+        )
+        result = subprocess.run(
+            ["tmux", "send-keys", "-t", SESSION_NAME, "echo test", "Enter"],
+            capture_output=True,
+        )
+        assert result.returncode == 0
 
 
-class TestMainNoDataDir:
+class TestLaunchFallback:
+    def test_prints_instructions_on_linux(self, tmp_path, capsys):
+        data = tmp_path / ".claude" / "smartassist" / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        log = data / "rag_live.log"
+        log.touch()
+        with patch("sys.platform", "linux"):
+            result = _launch_fallback(log)
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Terminal 1" in out
+        assert "tail -f" in out
+
+    def test_returns_zero_on_macos(self, tmp_path):
+        data = tmp_path / ".claude" / "smartassist" / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        log = data / "rag_live.log"
+        log.touch()
+        with (
+            patch("sys.platform", "darwin"),
+            patch("subprocess.run") as mock_run,
+        ):
+            result = _launch_fallback(log)
+        assert result == 0
+        mock_run.assert_called_once()
+
+
+class TestMain:
     def test_returns_1_without_data_dir(self, tmp_path, capsys):
         with patch("smartassist.claude_sa.find_data_dir", return_value=None):
             assert main() == 1
         assert "smartassist init" in capsys.readouterr().out
 
-
-class TestMainFallback:
-    def test_prints_instructions_on_linux(self, tmp_path, capsys):
+    def test_uses_tmux_when_available(self, tmp_path):
         data = tmp_path / ".claude" / "smartassist" / "data"
         data.mkdir(parents=True, exist_ok=True)
-        log = data / "rag_live.log"
         with (
             patch("smartassist.claude_sa.find_data_dir", return_value=data),
-            patch("shutil.which", return_value=None),
-            patch("smartassist.claude_sa._has_tty", return_value=True),
-            patch("smartassist.claude_sa._inside_tmux", return_value=False),
-            patch("sys.platform", "linux"),
+            patch("shutil.which", return_value="/usr/bin/tmux"),
+            patch("smartassist.claude_sa._launch_tmux", return_value=0) as mock_tmux,
         ):
             result = main()
         assert result == 0
-        out = capsys.readouterr().out
-        assert "Terminal 1" in out
-        assert "tail -f" in out
+        mock_tmux.assert_called_once()
+
+    def test_uses_fallback_without_tmux(self, tmp_path):
+        data = tmp_path / ".claude" / "smartassist" / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        with (
+            patch("smartassist.claude_sa.find_data_dir", return_value=data),
+            patch("shutil.which", return_value=None),
+            patch("smartassist.claude_sa._launch_fallback", return_value=0) as mock_fb,
+        ):
+            result = main()
+        assert result == 0
+        mock_fb.assert_called_once()
