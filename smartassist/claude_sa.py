@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 SESSION_NAME = "claude-sa"
-MONITOR_WIDTH_PCT = 35
+MONITOR_COLS = 30
 
 
 def find_data_dir() -> Path | None:
@@ -74,7 +74,7 @@ def _launch_tmux(log_file: Path) -> int:
             "-t",
             SESSION_NAME,
             "-l",
-            f"{MONITOR_WIDTH_PCT}%",
+            str(MONITOR_COLS),
         ],
         check=True,
     )

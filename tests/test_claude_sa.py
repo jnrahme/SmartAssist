@@ -13,7 +13,7 @@ from smartassist.claude_sa import (
     _launch_fallback,
     main,
     SESSION_NAME,
-    MONITOR_WIDTH_PCT,
+    MONITOR_COLS,
 )
 
 
@@ -57,8 +57,8 @@ class TestConstants:
         assert SESSION_NAME == "claude-sa"
 
     def test_monitor_width(self):
-        assert isinstance(MONITOR_WIDTH_PCT, int)
-        assert 10 <= MONITOR_WIDTH_PCT <= 50
+        assert isinstance(MONITOR_COLS, int)
+        assert 10 <= MONITOR_COLS <= 50
 
 
 class TestLaunchTmux:
@@ -97,7 +97,7 @@ class TestLaunchTmux:
                 "-t",
                 SESSION_NAME,
                 "-l",
-                f"{MONITOR_WIDTH_PCT}%",
+                str(MONITOR_COLS),
             ],
             check=True,
         )
@@ -125,7 +125,7 @@ class TestLaunchTmux:
                 "-t",
                 SESSION_NAME,
                 "-l",
-                f"{MONITOR_WIDTH_PCT}%",
+                str(MONITOR_COLS),
             ],
             check=True,
         )
@@ -170,7 +170,7 @@ class TestLaunchTmux:
                 "-t",
                 SESSION_NAME,
                 "-l",
-                f"{MONITOR_WIDTH_PCT}%",
+                str(MONITOR_COLS),
             ],
             check=True,
         )
@@ -197,7 +197,7 @@ class TestLaunchTmux:
                 "-t",
                 SESSION_NAME,
                 "-l",
-                f"{MONITOR_WIDTH_PCT}%",
+                str(MONITOR_COLS),
             ],
             check=True,
         )
