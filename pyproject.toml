@@ -45,6 +45,7 @@ smartassist-session-start = "smartassist.hooks.session_start:main"
 smartassist-session-end = "smartassist.hooks.session_end:main"
 smartassist-commit-hook = "smartassist.hooks.commit_hook:main"
 smartassist-show-lessons = "smartassist.hooks.show_lessons:main"
+smartassist-monitor = "smartassist.monitor:main"
 
 [tool.setuptools.packages.find]
 include = ["smartassist*"]

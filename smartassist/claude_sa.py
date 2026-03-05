@@ -28,6 +28,22 @@ def find_data_dir() -> Path | None:
     return None
 
 
+def _auto_setup() -> bool:
+    try:
+        subprocess.run(
+            ["smartassist", "setup"],
+            check=True,
+            timeout=60,
+        )
+        return find_data_dir() is not None
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ):
+        return False
+
+
 def _kill_existing_session():
     subprocess.run(
         ["tmux", "kill-session", "-t", SESSION_NAME],
@@ -79,12 +95,7 @@ def _launch_tmux(log_file: Path) -> int:
         check=True,
     )
 
-    monitor_cmd = (
-        f"clear && "
-        f"printf '\\033[1;36m SmartAssist RAG Monitor \\033[0m\\n' && "
-        f"printf '\\033[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\n' && "
-        f"tail -f {log_file}"
-    )
+    monitor_cmd = f"smartassist-monitor {log_file}"
     subprocess.run(
         [
             "tmux",
@@ -130,8 +141,14 @@ end tell
 def main() -> int:
     data_dir = find_data_dir()
     if data_dir is None:
-        print("No .claude/smartassist/ found. Run 'smartassist init' first.")
-        return 1
+        print("Running first-time setup...")
+        if not _auto_setup():
+            print("Setup failed. Run 'smartassist setup' manually.")
+            return 1
+        data_dir = find_data_dir()
+        if data_dir is None:
+            print("Setup completed but no data directory found.")
+            return 1
 
     log_file = data_dir / "rag_live.log"
     log_file.touch()

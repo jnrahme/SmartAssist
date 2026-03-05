@@ -9,6 +9,7 @@ import pytest
 from smartassist.claude_sa import (
     find_data_dir,
     _kill_existing_session,
+    _auto_setup,
     _launch_tmux,
     _launch_fallback,
     main,
@@ -236,10 +237,13 @@ class TestLaunchFallback:
 
 
 class TestMain:
-    def test_returns_1_without_data_dir(self, tmp_path, capsys):
-        with patch("smartassist.claude_sa.find_data_dir", return_value=None):
+    def test_returns_1_when_setup_fails(self, tmp_path, capsys):
+        with (
+            patch("smartassist.claude_sa.find_data_dir", return_value=None),
+            patch("smartassist.claude_sa._auto_setup", return_value=False),
+        ):
             assert main() == 1
-        assert "smartassist init" in capsys.readouterr().out
+        assert "setup" in capsys.readouterr().out.lower()
 
     def test_uses_tmux_when_available(self, tmp_path):
         data = tmp_path / ".claude" / "smartassist" / "data"
@@ -264,3 +268,51 @@ class TestMain:
             result = main()
         assert result == 0
         mock_fb.assert_called_once()
+
+    def test_auto_setup_runs_when_no_data_dir(self, tmp_path):
+        data = tmp_path / ".claude" / "smartassist" / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        call_count = 0
+
+        def find_data_dir_side_effect():
+            nonlocal call_count
+            call_count += 1
+            return None if call_count == 1 else data
+
+        with (
+            patch(
+                "smartassist.claude_sa.find_data_dir",
+                side_effect=find_data_dir_side_effect,
+            ),
+            patch("smartassist.claude_sa._auto_setup", return_value=True) as mock_setup,
+            patch("shutil.which", return_value="/usr/bin/tmux"),
+            patch("smartassist.claude_sa._launch_tmux", return_value=0),
+        ):
+            result = main()
+        assert result == 0
+        mock_setup.assert_called_once()
+
+
+class TestMonitor:
+    def test_check_hooks_returns_dict(self):
+        from smartassist.monitor import _check_hooks
+
+        result = _check_hooks()
+        assert isinstance(result, dict)
+        assert len(result) == 5
+
+    def test_check_mcp_returns_bool(self):
+        from smartassist.monitor import _check_mcp
+
+        assert isinstance(_check_mcp(), bool)
+
+    def test_monitor_prints_status(self, capsys):
+        from smartassist.monitor import main as monitor_main
+
+        with patch("sys.argv", ["smartassist-monitor"]):
+            result = monitor_main()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "SmartAssist Monitor" in out
+        assert "MCP" in out
+        assert "Hooks" in out
