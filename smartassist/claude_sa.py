@@ -35,7 +35,14 @@ def _auto_setup() -> bool:
             check=True,
             timeout=60,
         )
-        return find_data_dir() is not None
+        if find_data_dir() is None:
+            return False
+        subprocess.run(
+            ["smartassist", "seed"],
+            check=False,
+            timeout=60,
+        )
+        return True
     except (
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
@@ -152,7 +159,6 @@ def main() -> int:
 
     log_file = data_dir / "rag_live.log"
     log_file.touch()
-    log_file.write_text("")
 
     if shutil.which("tmux"):
         return _launch_tmux(log_file)
