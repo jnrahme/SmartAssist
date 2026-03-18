@@ -9,6 +9,7 @@ Falls back to separate terminals if tmux is unavailable.
 """
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -58,8 +59,14 @@ def _kill_existing_session():
     )
 
 
+def _escape_applescript(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _launch_tmux(log_file: Path) -> int:
     cwd = os.getcwd()
+    quoted_cwd = shlex.quote(cwd)
+    quoted_session = shlex.quote(SESSION_NAME)
     _kill_existing_session()
 
     subprocess.run(
@@ -83,7 +90,7 @@ def _launch_tmux(log_file: Path) -> int:
             "send-keys",
             "-t",
             SESSION_NAME,
-            f"cd {cwd} && claude; tmux kill-session -t {SESSION_NAME}",
+            f"cd {quoted_cwd} && claude; tmux kill-session -t {quoted_session}",
             "Enter",
         ],
         check=True,
@@ -127,13 +134,21 @@ def _launch_tmux(log_file: Path) -> int:
 def _launch_fallback(log_file: Path) -> int:
     if sys.platform == "darwin":
         cwd = os.getcwd()
+        claude_cmd = _escape_applescript(
+            f"cd {shlex.quote(cwd)} && clear && claude"
+        )
+        monitor_cmd = _escape_applescript(
+            "clear && echo 'SmartAssist RAG Monitor' && "
+            "echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '' && "
+            f"tail -f {shlex.quote(str(log_file))}"
+        )
         applescript = f"""
 tell application "Terminal"
     activate
-    do script "cd {cwd} && clear && claude" in front window
+    do script "{claude_cmd}" in front window
     tell application "System Events" to keystroke "t" using command down
     delay 0.3
-    do script "clear && echo 'SmartAssist RAG Monitor' && echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '' && tail -f {log_file}" in front window
+    do script "{monitor_cmd}" in front window
     tell application "System Events" to keystroke "[" using command down
 end tell
 """

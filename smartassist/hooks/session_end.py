@@ -43,7 +43,7 @@ def capture_session_learning():
         feedback_log = storage_path / "feedback_log.jsonl"
         total = 0
         if feedback_log.exists():
-            with open(feedback_log) as f:
+            with open(feedback_log, encoding="utf-8") as f:
                 total = sum(1 for line in f if line.strip())
         print(f"\nTotal feedback events: {total}")
 
@@ -60,7 +60,7 @@ def capture_session_learning():
         }
 
         session_log = storage_path / "session_log.jsonl"
-        with open(session_log, 'a') as f:
+        with open(session_log, 'a', encoding='utf-8') as f:
             f.write(json.dumps(session_data) + '\n')
 
         # Trigger vectorization of new learnings

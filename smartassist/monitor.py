@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+from smartassist.claude_config import get_mcp_status
+
 HOOKS_FILE = Path.home() / ".claude" / "settings.json"
 EXPECTED_HOOKS = {
     "UserPromptSubmit": "smartassist-prompt-inject",
@@ -41,17 +43,7 @@ def _check_hooks() -> dict[str, bool]:
 
 
 def _check_mcp() -> bool:
-    claude_json = Path.home() / ".claude.json"
-    try:
-        data = json.loads(claude_json.read_text())
-        if "smartassist" in data.get("mcpServers", {}):
-            return True
-        for project in data.get("projects", {}).values():
-            if "smartassist" in project.get("mcpServers", {}):
-                return True
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    return False
+    return get_mcp_status()["registered"]
 
 
 def main() -> int:

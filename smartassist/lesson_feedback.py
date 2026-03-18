@@ -5,12 +5,22 @@ per-lesson scores, last injection state, and feedback commands.
 """
 
 import json
+import logging
 import re
+import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
-from smartassist.config import get_storage_path
+log = logging.getLogger(__name__)
+
+from smartassist.config import (
+    get_storage_path,
+    atomic_write_json,
+    locked_update_json,
+    spawn_managed,
+)
 
 DEFAULT_BOOST = 1.0
 BOOST_INCREMENT = 0.3
@@ -42,7 +52,7 @@ def load_lesson_scores():
 
 def save_lesson_scores(data):
     """Write lesson scores to disk."""
-    _scores_path().write_text(json.dumps(data, indent=2))
+    atomic_write_json(_scores_path(), data)
 
 
 def load_last_injection():
@@ -61,7 +71,7 @@ def save_last_injection(results):
     """
     mapping = {str(i + 1): r["id"] for i, r in enumerate(results)}
     mapping["_timestamp"] = time.time()
-    _injection_path().write_text(json.dumps(mapping, indent=2))
+    atomic_write_json(_injection_path(), mapping)
 
 
 def load_session_state(session_id):
@@ -80,13 +90,13 @@ def load_session_state(session_id):
 
 def save_session_state(session_id, injected_ids):
     """Write session dedup state."""
-    _session_state_path().write_text(json.dumps({
+    atomic_write_json(_session_state_path(), {
         "session_id": session_id,
         "injected_ids": sorted(injected_ids),
-    }, indent=2))
+    })
 
 
-def _get_or_create_score(scores, lesson_id):
+def get_or_create_score(scores, lesson_id):
     """Get existing score entry or create default.
 
     New V2 fields (retired, retired_reason, retired_at) are backwards-compatible:
@@ -147,10 +157,13 @@ def apply_feedback(command):
 
     slot_key = str(slot_num)
     if slot_key not in last:
-        return False, f"No lesson at slot #{slot_num} (last injection had {len(last)} lessons)"
+        visible_slots = sum(1 for key in last if not key.startswith("_"))
+        return False, (
+            f"No lesson at slot #{slot_num} (last injection had {visible_slots} lessons)"
+        )
 
     lesson_id = last[slot_key]
-    entry = _get_or_create_score(scores, lesson_id)
+    entry = get_or_create_score(scores, lesson_id)
 
     if action == "+":
         entry["ups"] += 1
@@ -173,15 +186,25 @@ def apply_feedback(command):
     return False, f"Unknown command: {command}"
 
 
-def _remove_from_curated(storage_path, lesson_id):
+def remove_from_curated(storage_path, lesson_id):
     """Remove lesson from curated_lessons.json by ID. No-op if missing."""
     curated_path = storage_path / "curated_lessons.json"
     if not curated_path.exists():
         return
     try:
-        lessons = json.loads(curated_path.read_text())
-        lessons = [l for l in lessons if l.get("id") != lesson_id]
-        curated_path.write_text(json.dumps(lessons, indent=2))
+        def _remove(lessons):
+            if not isinstance(lessons, list):
+                return lessons
+            return [l for l in lessons if l.get("id") != lesson_id]
+        locked_update_json(curated_path, _remove, default=[])
+    except Exception as exc:
+        log.warning("Failed to remove %s from curated_lessons.json: %s", lesson_id, exc)
+
+
+def _trigger_full_revectorization():
+    """Rebuild LanceDB from the curated lesson corpus after structural changes."""
+    try:
+        spawn_managed([sys.executable, "-m", "smartassist.tools.cleanup_and_vectorize"])
     except Exception:
         pass
 
@@ -206,12 +229,13 @@ def reinforce_recent_lessons(sentiment, max_age=900):
     scores = load_lesson_scores()
     storage_path = get_storage_path()
     results = []
+    needs_rebuild = False
 
     for key, lesson_id in last.items():
         if key.startswith("_"):
             continue
 
-        entry = _get_or_create_score(scores, lesson_id)
+        entry = get_or_create_score(scores, lesson_id)
 
         # Skip blocked/retired lessons
         if entry.get("blocked", False) or entry.get("retired", False):
@@ -234,45 +258,57 @@ def reinforce_recent_lessons(sentiment, max_age=900):
                 entry["retired_reason"] = "auto-retired: boost 0.0 with 0 positive feedback"
                 entry["retired_at"] = datetime.now().isoformat()
                 retired = True
-                _remove_from_curated(storage_path, lesson_id)
+                remove_from_curated(storage_path, lesson_id)
+                needs_rebuild = True
 
         results.append((lesson_id, old_boost, entry["boost"], retired))
 
     save_lesson_scores(scores)
+    if needs_rebuild:
+        _trigger_full_revectorization()
     return results
 
 
-def _add_to_curated(storage_path, lesson_text, category):
+def add_to_curated(storage_path, lesson_text, category):
     """Append lesson to curated_lessons.json. Returns (new_id, None) or (None, error_msg).
 
     Creates file if missing. Enforces MAX_CURATED_LESSONS cap.
+    Uses file locking to prevent concurrent-write races (C3 fix).
     """
     curated_path = storage_path / "curated_lessons.json"
-    try:
-        if curated_path.exists():
-            lessons = json.loads(curated_path.read_text())
-        else:
+
+    result_holder = {}
+
+    def _add(lessons):
+        if not isinstance(lessons, list):
             lessons = []
+        if len(lessons) >= MAX_CURATED_LESSONS:
+            result_holder["error"] = f"Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
+            return None  # skip write
+
+        existing_ids = {l.get("id", "") for l in lessons}
+        max_num = 0
+        for lid in existing_ids:
+            if lid.startswith("L") and lid[1:].isdigit():
+                max_num = max(max_num, int(lid[1:]))
+        new_id = f"L{max_num + 1:03d}"
+        result_holder["new_id"] = new_id
+
+        lessons.append({
+            "id": new_id,
+            "lesson": lesson_text,
+            "category": category,
+        })
+        return lessons
+
+    try:
+        locked_update_json(curated_path, _add, default=[])
     except Exception:
         return None, "Cannot read curated_lessons.json (invalid JSON). Fix file before adding lessons."
 
-    if len(lessons) >= MAX_CURATED_LESSONS:
-        return None, f"Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
-
-    existing_ids = {l.get("id", "") for l in lessons}
-    max_num = 0
-    for lid in existing_ids:
-        if lid.startswith("L") and lid[1:].isdigit():
-            max_num = max(max_num, int(lid[1:]))
-    new_id = f"L{max_num + 1:03d}"
-
-    lessons.append({
-        "id": new_id,
-        "lesson": lesson_text,
-        "category": category,
-    })
-    curated_path.write_text(json.dumps(lessons, indent=2))
-    return new_id, None
+    if "error" in result_holder:
+        return None, result_holder["error"]
+    return result_holder.get("new_id"), None
 
 
 # ── Shared quality-gate constants (used by both hook path and MCP tools) ──
@@ -431,7 +467,7 @@ def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
     storage_path = get_storage_path()
     category = _infer_category(reinforcement_results, storage_path)
 
-    new_id, error = _add_to_curated(storage_path, lesson_text, category)
+    new_id, error = add_to_curated(storage_path, lesson_text, category)
     if error:
         return None, None
 

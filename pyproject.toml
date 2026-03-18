@@ -23,9 +23,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "mcp>=1.0.0",
-    "sentence-transformers>=3.0.0",
-    "lancedb>=0.15.0",
+    "mcp>=1.0.0,<2",
+    "sentence-transformers>=3.0.0,<4",
+    "lancedb>=0.15.0,<1",
 ]
 
 [project.urls]

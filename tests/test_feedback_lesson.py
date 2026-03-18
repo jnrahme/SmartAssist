@@ -6,7 +6,7 @@ Covers:
   - Reconstructing injected lessons
   - boost_lesson, demote_lesson, merge_lessons MCP tools
   - create_lesson dual-path write
-  - _add_to_curated / _remove_from_curated helpers
+  - add_to_curated / remove_from_curated helpers
   - Auto-retire lifecycle
   - Feedback metrics tracking
   - Feedback log rotation
@@ -42,9 +42,9 @@ from smartassist.mcp_server import (
 from smartassist.lesson_feedback import (
     load_lesson_scores,
     save_lesson_scores,
-    _get_or_create_score,
-    _add_to_curated,
-    _remove_from_curated,
+    get_or_create_score,
+    add_to_curated,
+    remove_from_curated,
     reinforce_recent_lessons,
     create_lesson_from_feedback,
     log_comparison_entry,
@@ -379,6 +379,31 @@ class TestReinforceRecentLessons:
         assert "L001" not in ids
         assert "L002" in ids
 
+    @patch("smartassist.lesson_feedback.spawn_managed")
+    def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
+        storage = set_data_dir / "data"
+        (storage / "curated_lessons.json").write_text(json.dumps([
+            {"id": "L001", "lesson": "bad lesson", "category": "testing"},
+        ]))
+        save_last_injection([{"id": "L001"}])
+        save_lesson_scores({
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        })
+
+        reinforce_recent_lessons("negative")
+
+        mock_spawn.assert_called_once()
+        cmd = mock_spawn.call_args.args[0]
+        assert cmd[-1] == "smartassist.tools.cleanup_and_vectorize"
+
     def test_returns_empty_no_injection(self, set_data_dir):
         """No last_injection.json → []."""
         results = reinforce_recent_lessons("positive")
@@ -655,6 +680,14 @@ class TestCompareLessonTool:
         )
         assert "Comparison logged" in result
         assert "not stored" in result.lower()
+
+    def test_rejects_invalid_sentiment(self, set_data_dir):
+        result = compare_lesson(
+            lesson=self.VALID_LESSON,
+            category="code_edit",
+            sentiment="neutral",
+        )
+        assert "invalid sentiment" in result.lower()
 
     def test_logs_failed_gate_to_comparison(self, set_data_dir):
         storage = set_data_dir / "data"
@@ -951,6 +984,22 @@ class TestDemoteLessonTool:
         assert "L001" not in ids
         assert "L002" in ids
 
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
+        storage = set_data_dir / "data"
+        (storage / "curated_lessons.json").write_text(json.dumps([
+            {"id": "L001", "lesson": "bad lesson", "category": "testing"},
+        ]))
+        scores = {"L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
+                           "retired": False, "retired_reason": "", "retired_at": None}}
+        save_lesson_scores(scores)
+
+        demote_lesson("L001")
+
+        mock_spawn.assert_called_once()
+        cmd = mock_spawn.call_args.args[0]
+        assert cmd[-1] == "smartassist.tools.cleanup_and_vectorize"
+
     def test_no_auto_retire_with_ups(self, set_data_dir):
         """Lesson with ups > 0 should NOT be auto-retired even at 0.0 boost."""
         storage = set_data_dir / "data"
@@ -1026,8 +1075,8 @@ class TestMergeLessonsTool:
         (storage / "curated_lessons.json").write_text(json.dumps(lessons))
         return storage
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_two_lessons(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_two_lessons(self, mock_spawn, set_data_dir):
         curated = [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
@@ -1039,8 +1088,8 @@ class TestMergeLessonsTool:
         assert "L001" in result
         assert "L002" in result
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_removes_sources_from_curated(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_removes_sources_from_curated(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(set_data_dir, [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
@@ -1055,8 +1104,8 @@ class TestMergeLessonsTool:
         assert "L002" not in ids
         assert "L003" in ids
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_adds_new_lesson_to_curated(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_adds_new_lesson_to_curated(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(set_data_dir, [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
@@ -1067,8 +1116,8 @@ class TestMergeLessonsTool:
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert any(self.VALID_MERGED in l["lesson"] for l in curated)
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_combines_scores(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_combines_scores(self, mock_spawn, set_data_dir):
         self._seed_curated(set_data_dir, [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
@@ -1091,8 +1140,8 @@ class TestMergeLessonsTool:
         assert new_score["ups"] == 8  # 5 + 3
         assert new_score["boost"] == 2.0  # max(2.0, 1.5)
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_marks_sources_superseded(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_marks_sources_superseded(self, mock_spawn, set_data_dir):
         self._seed_curated(set_data_dir, [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
@@ -1118,8 +1167,8 @@ class TestMergeLessonsTool:
         result = merge_lessons("L001,L001", self.VALID_MERGED, "code_edit")
         assert "unique lesson ids" in result.lower()
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_works_at_capacity(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_works_at_capacity(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         lessons = [{"id": f"L{i:03d}", "lesson": f"lesson {i}", "category": "testing"}
                    for i in range(1, MAX_CURATED_LESSONS + 1)]
@@ -1172,8 +1221,8 @@ class TestMergeLessonsTool:
                                "code_edit")
         assert "action verb" in result.lower()
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_writes_to_feedback_log(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_writes_to_feedback_log(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(set_data_dir, [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
@@ -1186,17 +1235,19 @@ class TestMergeLessonsTool:
         assert entry["signal"] == "merge"
         assert "Merged from" in entry["context"]
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_fires_vectorization(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_fires_vectorization(self, mock_spawn, set_data_dir):
         self._seed_curated(set_data_dir, [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
         ])
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
-        mock_popen.assert_called_once()
+        mock_spawn.assert_called_once()
+        cmd = mock_spawn.call_args.args[0]
+        assert cmd[-1] == "smartassist.tools.cleanup_and_vectorize"
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_merge_updates_metrics(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_updates_metrics(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(set_data_dir, [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
             {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
@@ -1215,8 +1266,8 @@ class TestCreateLessonV2:
     VALID_LESSON = "Always use semantic colors from theme instead of hardcoded hex values"
     VALID_CATEGORY = "code_edit"
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_dual_path_write(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_dual_path_write(self, mock_spawn, set_data_dir):
         """create_lesson should write to both feedback_log AND curated_lessons."""
         storage = set_data_dir / "data"
         result = create_lesson(
@@ -1233,15 +1284,15 @@ class TestCreateLessonV2:
         assert len(curated) == 1
         assert curated[0]["lesson"] == self.VALID_LESSON
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_auto_generates_id(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_auto_generates_id(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert curated[0]["id"] == "L001"
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_increments_id(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_increments_id(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text(json.dumps([
             {"id": "L005", "lesson": "existing", "category": "testing"},
@@ -1250,8 +1301,8 @@ class TestCreateLessonV2:
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert curated[-1]["id"] == "L006"
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_cap_enforcement(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_cap_enforcement(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         # Seed with MAX_CURATED_LESSONS lessons
         lessons = [{"id": f"L{i:03d}", "lesson": f"lesson {i}", "category": "testing"}
@@ -1263,8 +1314,8 @@ class TestCreateLessonV2:
         feedback_log = storage / "feedback_log.jsonl"
         assert not feedback_log.exists() or feedback_log.read_text().strip() == ""
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_updates_feedback_metrics(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_updates_feedback_metrics(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
         metrics = json.loads((storage / "feedback_metrics.json").read_text())
@@ -1301,8 +1352,8 @@ class TestCreateLessonV2:
         )
         assert "generic" in result.lower()
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_stores_to_feedback_log(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_stores_to_feedback_log(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         create_lesson(
             lesson=self.VALID_LESSON,
@@ -1317,21 +1368,21 @@ class TestCreateLessonV2:
         assert len(entries) == 1
         assert entries[0]["correction"] == self.VALID_LESSON
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_fires_vectorization(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_fires_vectorization(self, mock_spawn, set_data_dir):
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
-        mock_popen.assert_called_once()
+        mock_spawn.assert_called_once()
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_updates_thompson_positive(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_updates_thompson_positive(self, mock_spawn, set_data_dir):
         with patch("smartassist.mcp_server._get_thompson") as mock_get:
             mock_thompson = MagicMock()
             mock_get.return_value = mock_thompson
             create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY, sentiment="positive", intensity=4)
             mock_thompson.record_success.assert_called_once_with("code_edit", 4)
 
-    @patch("smartassist.mcp_server.subprocess.Popen")
-    def test_updates_thompson_negative(self, mock_popen, set_data_dir):
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_updates_thompson_negative(self, mock_spawn, set_data_dir):
         with patch("smartassist.mcp_server._get_thompson") as mock_get:
             mock_thompson = MagicMock()
             mock_get.return_value = mock_thompson
@@ -1346,11 +1397,11 @@ class TestCreateLessonV2:
 
 
 class TestAddToCurated:
-    """Test the _add_to_curated helper."""
+    """Test the add_to_curated helper."""
 
     def test_creates_file_if_missing(self, set_data_dir):
         storage = set_data_dir / "data"
-        new_id, error = _add_to_curated(storage, "Test lesson text here", "testing")
+        new_id, error = add_to_curated(storage, "Test lesson text here", "testing")
         assert new_id == "L001"
         assert error is None
         assert (storage / "curated_lessons.json").exists()
@@ -1360,7 +1411,7 @@ class TestAddToCurated:
         (storage / "curated_lessons.json").write_text(json.dumps([
             {"id": "L001", "lesson": "existing", "category": "testing"},
         ]))
-        new_id, error = _add_to_curated(storage, "New lesson here", "code_edit")
+        new_id, error = add_to_curated(storage, "New lesson here", "code_edit")
         assert new_id == "L002"
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 2
@@ -1371,7 +1422,7 @@ class TestAddToCurated:
                    for i in range(1, MAX_CURATED_LESSONS + 1)]
         (storage / "curated_lessons.json").write_text(json.dumps(lessons))
 
-        new_id, error = _add_to_curated(storage, "Over capacity lesson", "testing")
+        new_id, error = add_to_curated(storage, "Over capacity lesson", "testing")
         assert new_id is None
         assert "capacity" in error.lower()
 
@@ -1381,28 +1432,29 @@ class TestAddToCurated:
             {"id": "L010", "lesson": "existing", "category": "testing"},
             {"id": "L003", "lesson": "existing", "category": "testing"},
         ]))
-        new_id, _ = _add_to_curated(storage, "New lesson", "testing")
+        new_id, _ = add_to_curated(storage, "New lesson", "testing")
         assert new_id == "L011"
 
     def test_handles_empty_file(self, set_data_dir):
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text("[]")
-        new_id, _ = _add_to_curated(storage, "First lesson", "testing")
+        new_id, _ = add_to_curated(storage, "First lesson", "testing")
         assert new_id == "L001"
 
-    def test_returns_error_on_invalid_json(self, set_data_dir):
+    def test_recovers_from_invalid_json(self, set_data_dir):
+        """Corrupted JSON is treated as empty list and recovered (C3/C4 fix)."""
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text("{invalid")
-        new_id, error = _add_to_curated(storage, "First lesson", "testing")
-        assert new_id is None
-        assert "invalid json" in error.lower()
+        new_id, error = add_to_curated(storage, "First lesson that is long enough to pass the quality gate", "testing")
+        assert new_id == "L001"
+        assert error is None
 
 
 # ── TestRemoveFromCurated ─────────────────────────────────────────────────
 
 
 class TestRemoveFromCurated:
-    """Test the _remove_from_curated helper."""
+    """Test the remove_from_curated helper."""
 
     def test_removes_lesson(self, set_data_dir):
         storage = set_data_dir / "data"
@@ -1410,7 +1462,7 @@ class TestRemoveFromCurated:
             {"id": "L001", "lesson": "to remove", "category": "testing"},
             {"id": "L002", "lesson": "to keep", "category": "testing"},
         ]))
-        _remove_from_curated(storage, "L001")
+        remove_from_curated(storage, "L001")
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 1
         assert curated[0]["id"] == "L002"
@@ -1418,14 +1470,14 @@ class TestRemoveFromCurated:
     def test_noop_when_file_missing(self, set_data_dir):
         storage = set_data_dir / "data"
         # Should not raise
-        _remove_from_curated(storage, "L001")
+        remove_from_curated(storage, "L001")
 
     def test_noop_when_id_missing(self, set_data_dir):
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text(json.dumps([
             {"id": "L001", "lesson": "keep this", "category": "testing"},
         ]))
-        _remove_from_curated(storage, "L999")
+        remove_from_curated(storage, "L999")
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 1
 
@@ -1773,7 +1825,7 @@ class TestScoreSchemaV2:
 
     def test_new_score_has_retired_fields(self, set_data_dir):
         scores = {}
-        entry = _get_or_create_score(scores, "L001")
+        entry = get_or_create_score(scores, "L001")
         assert entry["retired"] is False
         assert entry["retired_reason"] == ""
         assert entry["retired_at"] is None

@@ -7,6 +7,7 @@ Usage:
     smartassist dashboard [--output PATH]
 """
 
+import html
 import json
 import webbrowser
 import sys
@@ -14,6 +15,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from collections import Counter
 
+from smartassist.claude_config import get_mcp_status as get_shared_mcp_status
 from smartassist.config import get_storage_path, get_db_path, EMBEDDING_DIM, EMBEDDING_MODEL
 
 
@@ -25,10 +27,12 @@ def get_db_stats():
         db = lancedb.connect(str(db_path))
         table = db.open_table("documents")
         count = table.count_rows()
-        results = table.search([0.0] * EMBEDDING_DIM).limit(count).to_list()
+        # Only fetch a sample instead of the full table (M15 scalability fix)
+        sample_size = min(count, 200)
+        results = table.search([0.0] * EMBEDDING_DIM).limit(sample_size).to_list()
         cats = Counter(r.get("category", "unknown") for r in results)
         sample = results[:20]
-        correction_pct = sum(1 for r in sample if r.get("text", "").startswith("[")) / len(sample) * 100
+        correction_pct = sum(1 for r in sample if r.get("text", "").startswith("[")) / len(sample) * 100 if sample else 0
 
         lessons = []
         for r in results:
@@ -228,17 +232,15 @@ def get_sync_status():
 
 def get_mcp_status():
     """Check MCP registration."""
-    mcp_config = Path.home() / ".claude" / "mcp.json"
-    if not mcp_config.exists():
+    status = get_shared_mcp_status()
+    if not status["registered"]:
         return {"registered": False}
-    with open(mcp_config) as f:
-        config = json.load(f)
-    servers = config.get("mcpServers", {})
-    for name in ["smartassist", "rag-knowledge"]:
-        if name in servers:
-            args = servers[name].get("args", [])
-            return {"registered": True, "entry": args[-1] if args else "?"}
-    return {"registered": False}
+    return {
+        "registered": True,
+        "entry": status.get("entry", "?"),
+        "source": status.get("source_label", "?"),
+        "duplicates": status.get("duplicate_sources", []),
+    }
 
 
 def generate_html(db_stats, feedback, scores, usage, sync, mcp):
@@ -247,18 +249,20 @@ def generate_html(db_stats, feedback, scores, usage, sync, mcp):
 
     cat_rows = ""
     for cat, cnt in db_stats["categories"].items():
+        safe_cat = html.escape(str(cat))
         pct = cnt / db_stats["count"] * 100 if db_stats["count"] else 0
-        cat_rows += f"<tr><td><strong>{cat}</strong></td><td>{cnt:,}</td><td>{pct:.1f}%</td></tr>"
+        cat_rows += f"<tr><td><strong>{safe_cat}</strong></td><td>{cnt:,}</td><td>{pct:.1f}%</td></tr>"
 
     score_rows = ""
     weak_count = 0
     for cat, score in scores.items():
+        safe_cat = html.escape(str(cat))
         pct = score * 100
         color = "#34d399" if score >= 0.7 else "#fbbf24" if score >= 0.5 else "#f87171"
         status = "WEAK" if score < 0.7 else "OK"
         if score < 0.7:
             weak_count += 1
-        score_rows += f'<tr><td><strong>{cat}</strong></td><td><div style="background:#1e2d44;border-radius:5px;overflow:hidden;height:10px;"><div style="width:{pct:.1f}%;height:100%;background:{color};"></div></div></td><td style="color:{color};font-weight:600;">{pct:.1f}% ({status})</td></tr>'
+        score_rows += f'<tr><td><strong>{safe_cat}</strong></td><td><div style="background:#1e2d44;border-radius:5px;overflow:hidden;height:10px;"><div style="width:{pct:.1f}%;height:100%;background:{color};"></div></div></td><td style="color:{color};font-weight:600;">{pct:.1f}% ({status})</td></tr>'
 
     checks = {
         "Vector Database": db_stats["healthy"],

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict
 from dataclasses import dataclass, asdict
 
-from smartassist.config import get_storage_path
+from smartassist.config import get_storage_path, atomic_write_json
 
 log = logging.getLogger(__name__)
 
@@ -74,12 +74,19 @@ class ThompsonSamplingModel:
         if not self.reliability_file.exists():
             return {}
 
-        with open(self.reliability_file, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(self.reliability_file, 'r') as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            log.warning("Could not load reliability scores from %s: %s", self.reliability_file, exc)
+            return {}
 
         reliabilities = {}
         for category, values in data.items():
-            reliabilities[category] = CategoryReliability(**values)
+            try:
+                reliabilities[category] = CategoryReliability(**values)
+            except TypeError as exc:
+                log.warning("Skipping malformed reliability entry for %s: %s", category, exc)
 
         return reliabilities
 
@@ -89,8 +96,7 @@ class ThompsonSamplingModel:
         for category, rel in self.reliabilities.items():
             data[category] = asdict(rel)
 
-        with open(self.reliability_file, 'w') as f:
-            json.dump(data, f, indent=2)
+        atomic_write_json(self.reliability_file, data)
 
     def _apply_decay(self, category: str):
         """Apply exponential decay to reliability scores"""
@@ -98,7 +104,8 @@ class ThompsonSamplingModel:
             return
 
         rel = self.reliabilities[category]
-        time_elapsed = time.time() - rel.last_updated
+        now = time.time()
+        time_elapsed = now - rel.last_updated
 
         # Calculate decay weight
         decay_weight = math.exp(-self.decay_lambda * time_elapsed)
@@ -109,6 +116,7 @@ class ThompsonSamplingModel:
         # Apply decay to alpha and beta (use max to prevent zero, not additive)
         rel.alpha = max(self.floor_weight, rel.alpha * decay_weight)
         rel.beta = max(self.floor_weight, rel.beta * decay_weight)
+        rel.last_updated = now
 
     def record_success(self, category: str, intensity: int = 5):
         """
@@ -171,14 +179,12 @@ class ThompsonSamplingModel:
         if category not in self.reliabilities:
             return 0.5  # Uninformed prior
 
-        self._apply_decay(category)
         return self.reliabilities[category].get_success_rate()
 
     def get_weak_categories(self, threshold: float = 0.70) -> list[str]:
         """Get categories with success rate below threshold"""
         weak = []
         for category, rel in self.reliabilities.items():
-            self._apply_decay(category)
             if rel.is_weak(threshold):
                 weak.append(category)
         return weak

@@ -25,6 +25,8 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from smartassist.claude_config import SERVER_NAMES, get_mcp_status, remove_legacy_mcp_servers
+
 
 def cmd_init():
     """Initialize SmartAssist in the current project."""
@@ -247,12 +249,29 @@ def _clean_stale_shell_aliases():
 
         lines = rc_path.read_text().splitlines(keepends=True)
         cleaned = []
-        for line in lines:
+        i = 0
+        while i < len(lines):
+            line = lines[i]
             stripped = line.strip()
-            if any(stripped.startswith(p) for p in all_patterns):
+
+            if any(stripped.startswith(p) for p in stale_patterns):
                 removed.append((rc_name, stripped))
-            else:
-                cleaned.append(line)
+                i += 1
+                continue
+
+            # Only remove legacy comment banners when they directly precede a
+            # stale alias line. Otherwise preserve user-authored comments.
+            next_stripped = lines[i + 1].strip() if i + 1 < len(lines) else ""
+            if (
+                stripped in comment_patterns
+                and any(next_stripped.startswith(p) for p in stale_patterns)
+            ):
+                removed.append((rc_name, stripped))
+                i += 1
+                continue
+
+            cleaned.append(line)
+            i += 1
 
         if len(cleaned) < len(lines):
             # Remove trailing blank lines left behind
@@ -392,9 +411,11 @@ def cmd_setup():
     print("Phase 2: Backing up config files...")
 
     mcp_path = claude_dir / "mcp.json"
+    claude_json_path = Path.home() / ".claude.json"
     settings_path = claude_dir / "settings.json"
 
     _backup_file(mcp_path, summary)
+    _backup_file(claude_json_path, summary)
     _backup_file(settings_path, summary)
     # Shell rc backup happens inside _clean_stale_shell_aliases if needed
 
@@ -411,7 +432,6 @@ def cmd_setup():
         log("Shell cleanup: no stale aliases found")
 
     # 3b. MCP server
-    data_dir = str(Path.cwd() / ".claude" / "smartassist")
     smartassist_path = shutil.which("smartassist")
     if smartassist_path:
         real_path = Path(smartassist_path).resolve()
@@ -427,13 +447,12 @@ def cmd_setup():
 
     claude_bin = shutil.which("claude")
     if claude_bin:
-        subprocess.run(
-            [claude_bin, "mcp", "remove", "smartassist", "-s", "user"],
-            capture_output=True,
-        )
+        for server_name in SERVER_NAMES:
+            subprocess.run(
+                [claude_bin, "mcp", "remove", server_name, "-s", "user"],
+                capture_output=True,
+            )
         env_args = [
-            "-e",
-            f"SMARTASSIST_DATA_DIR={data_dir}",
             "-e",
             f"HOME={Path.home()}",
             "-e",
@@ -457,6 +476,8 @@ def cmd_setup():
         result = subprocess.run(add_cmd, capture_output=True, text=True)
         if result.returncode == 0:
             log("MCP server: registered via 'claude mcp add -s user'")
+            if remove_legacy_mcp_servers():
+                log("MCP server: removed stale ~/.claude/mcp.json registration")
         else:
             log(
                 f"MCP server: 'claude mcp add' failed ({result.stderr.strip()}), "
@@ -474,14 +495,14 @@ def cmd_setup():
             "command": venv_python,
             "args": mcp_args,
             "env": {
-                "SMARTASSIST_DATA_DIR": data_dir,
                 "HOME": str(Path.home()),
                 "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:"
                 + str(Path.home() / ".local" / "bin"),
                 "TMPDIR": "/tmp",
             },
         }
-        mcp_path.write_text(json.dumps(mcp_config, indent=2) + "\n")
+        from smartassist.config import atomic_write_json
+        atomic_write_json(mcp_path, mcp_config)
         log("MCP server: added to ~/.claude/mcp.json (fallback)")
 
     # 3c. Hooks — remove-then-add strategy via _configure_hooks()
@@ -491,7 +512,8 @@ def cmd_setup():
         settings = {}
 
     _configure_hooks(settings, summary)
-    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    from smartassist.config import atomic_write_json
+    atomic_write_json(settings_path, settings)
 
     # 3d. Ensure ~/.local/bin in PATH
     local_bin = Path.home() / ".local" / "bin"
@@ -576,16 +598,26 @@ def cmd_uninstall():
     claude_dir = Path.home() / ".claude"
     removed = []
 
-    # Remove smartassist from mcp.json
-    mcp_path = claude_dir / "mcp.json"
-    if mcp_path.exists():
-        mcp_config = json.loads(mcp_path.read_text())
-        if "smartassist" in mcp_config.get("mcpServers", {}):
-            del mcp_config["mcpServers"]["smartassist"]
-            mcp_path.write_text(json.dumps(mcp_config, indent=2) + "\n")
-            removed.append("MCP server: removed from mcp.json")
-        else:
-            removed.append("MCP server: not found in mcp.json (already clean)")
+    mcp_status = get_mcp_status()
+    claude_bin = shutil.which("claude")
+
+    if claude_bin and any(entry["source"] == "user" for entry in mcp_status["entries"]):
+        for server_name in SERVER_NAMES:
+            subprocess.run(
+                [claude_bin, "mcp", "remove", server_name, "-s", "user"],
+                capture_output=True,
+                text=True,
+            )
+        removed.append("MCP server: removed from ~/.claude.json user config")
+    elif any(entry["source"] == "user" for entry in mcp_status["entries"]):
+        removed.append("MCP server: user config found but `claude` CLI unavailable")
+    else:
+        removed.append("MCP server: no user-scoped registration found")
+
+    if remove_legacy_mcp_servers():
+        removed.append("MCP server: removed from ~/.claude/mcp.json legacy config")
+    else:
+        removed.append("MCP server: no legacy mcp.json registration found")
 
     # Remove all SmartAssist hooks from settings.json
     settings_path = claude_dir / "settings.json"
@@ -611,7 +643,8 @@ def cmd_uninstall():
                 del hooks[event]
 
         settings["hooks"] = hooks
-        settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+        from smartassist.config import atomic_write_json
+        atomic_write_json(settings_path, settings)
         if hooks_removed:
             removed.append(f"Hooks: removed {hooks_removed} SmartAssist hooks")
         else:

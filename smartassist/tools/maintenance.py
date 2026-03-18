@@ -186,7 +186,8 @@ def rotate_feedback_log():
             data["total_vectorized"] = remapped_count
             # Keep legacy key for backward compatibility with older tooling.
             data["last_processed_line"] = remapped_count
-            vec_log.write_text(json.dumps(data, indent=2))
+            from smartassist.config import atomic_write_json
+            atomic_write_json(vec_log, data)
             print(f"  {DIM}Reset vectorization counter: {old_count} → {remapped_count}{RESET}")
         except Exception:
             pass

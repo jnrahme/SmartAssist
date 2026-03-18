@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from collections import Counter
 
+from smartassist.claude_config import get_mcp_status
 from smartassist.config import EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path
 
 # ANSI colors for terminal output
@@ -105,7 +106,9 @@ def check_database():
 
         ok(f"LanceDB operational - {BOLD}{count:,}{RESET} documents")
 
-        results = table.search([0.0] * EMBEDDING_DIM).limit(count).to_list()
+        # Sample instead of loading entire table (M15 scalability fix)
+        sample_size = min(count, 500)
+        results = table.search([0.0] * EMBEDDING_DIM).limit(sample_size).to_list()
         cats = Counter(r.get("category", "unknown") for r in results)
         general_pct = cats.get("general", 0) / count * 100
 
@@ -337,32 +340,20 @@ def check_mcp_registration():
     """Check if the MCP server is registered."""
     section("MCP SERVER")
 
-    mcp_config = Path.home() / ".claude" / "mcp.json"
-    if not mcp_config.exists():
-        fail("~/.claude/mcp.json not found")
+    status = get_mcp_status()
+    if not status["registered"]:
+        fail("SmartAssist MCP server not registered in Claude Code config")
         return False
 
-    with open(mcp_config) as f:
-        config = json.load(f)
-
-    servers = config.get("mcpServers", {})
-    # Check for either old or new server name
-    server_name = None
-    for name in ["smartassist", "rag-knowledge"]:
-        if name in servers:
-            server_name = name
-            break
-
-    if not server_name:
-        fail("SmartAssist server not registered in mcp.json")
-        return False
-
-    server = servers[server_name]
-    ok(f"MCP server registered: {server_name}")
+    ok(f"MCP server registered: {status['server_name']}")
+    info(f"Config: {status['source_label']}")
     info(f"Transport: stdio")
-    args = server.get("args", [])
-    if args:
-        info(f"Entry: {args[-1] if args else '?'}")
+    if status.get("entry"):
+        info(f"Entry: {status['entry']}")
+    if status["duplicate_sources"]:
+        warn("Multiple SmartAssist MCP registrations found")
+        for source in status["duplicate_sources"]:
+            info(f"Also found: {source}")
 
     return True
 

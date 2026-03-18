@@ -72,27 +72,24 @@ STOP_WORDS = {
 
 # ── Synonym expansion ────────────────────────────────────────────────────
 SYNONYMS = {
-    "test": {"testing", "tests", "jest", "mock", "mocks", "assertion"},
-    "tests": {"testing", "test", "jest", "mock"},
-    "testing": {"test", "tests", "jest", "mock"},
-    "style": {"styles", "styling", "color", "colors", "theme", "semantic"},
+    "test": {"testing", "tests", "mock", "mocks", "assertion"},
+    "tests": {"testing", "test", "mock"},
+    "testing": {"test", "tests", "mock"},
+    "style": {"styles", "styling", "color", "colors", "theme"},
     "styles": {"style", "styling", "color", "theme"},
-    "color": {"colors", "semantic", "theme", "hex", "style"},
-    "component": {"components", "react", "render", "jsx"},
-    "redux": {"store", "dispatch", "selector", "slice", "state"},
+    "color": {"colors", "theme", "hex", "style"},
+    "component": {"components", "render", "module"},
     "git": {"commit", "branch", "merge", "push"},
     "commit": {"git", "message", "branch"},
     "import": {"imports", "export", "module", "require"},
-    "type": {"types", "typescript", "interface", "generics"},
-    "typescript": {"types", "type", "interface"},
+    "type": {"types", "interface", "generics"},
     "error": {"errors", "catch", "throw", "exception", "handling"},
-    "mock": {"mocks", "jest", "testing", "spy"},
-    "hook": {"hooks", "useeffect", "usestate", "custom"},
-    "navigation": {"navigate", "route", "routes", "router", "screen"},
+    "mock": {"mocks", "testing", "spy"},
     "api": {"fetch", "request", "response", "endpoint", "http"},
-    "auth": {"authentication", "login", "cognito", "token", "session"},
-    "firebase": {"analytics", "crashlytics", "remoteconfig"},
-    "performance": {"optimize", "memo", "usememo", "usecallback", "flashlist"},
+    "auth": {"authentication", "login", "token", "session"},
+    "config": {"configuration", "settings", "options", "env"},
+    "deploy": {"deployment", "release", "ci", "cd", "pipeline"},
+    "performance": {"optimize", "cache", "latency", "benchmark"},
 }
 
 # ── Max age for injection staleness ──────────────────────────────────────
@@ -119,7 +116,8 @@ def build_idf(lessons):
         terms = set(tokenize(lesson["lesson"] + " " + lesson["category"]))
         for t in terms:
             doc_freq[t] = doc_freq.get(t, 0) + 1
-    return {t: log(n / df) for t, df in doc_freq.items()}
+    # Add-one smoothing keeps exact matches searchable even in tiny corpora.
+    return {t: 1.0 + log((n + 1) / (df + 1)) for t, df in doc_freq.items()}
 
 
 def search_lessons(query_tokens, lessons, idf, top_k=5, lesson_scores=None):
@@ -183,11 +181,26 @@ def read_counter(storage_path):
 def write_counter(storage_path, prompt_count, inject_count):
     counter_file = storage_path / "rag_prompt_counter.json"
     try:
-        counter_file.write_text(json.dumps({
+        from smartassist.config import atomic_write_json
+        atomic_write_json(counter_file, {
             "prompt_count": prompt_count,
             "inject_count": inject_count,
-        }))
+        })
     except Exception:
+        pass
+
+
+_MAX_LIVE_LOG_BYTES = 512 * 1024  # 512 KB
+
+
+def _rotate_live_log(live_log):
+    """Truncate rag_live.log when it exceeds _MAX_LIVE_LOG_BYTES."""
+    try:
+        if live_log.exists() and live_log.stat().st_size > _MAX_LIVE_LOG_BYTES:
+            # Keep the last half
+            data = live_log.read_bytes()
+            live_log.write_bytes(data[len(data) // 2:])
+    except OSError:
         pass
 
 
@@ -195,6 +208,7 @@ def write_to_live_log(storage_path, user_message, results, query_tokens=None,
                       expanded_tokens=None, deduped_results=None):
     """Write formatted output to rag_live.log for the monitor terminal."""
     live_log = storage_path / "rag_live.log"
+    _rotate_live_log(live_log)
     now = datetime.now().strftime("%H:%M:%S")
 
     prompt_count, inject_count = read_counter(storage_path)
@@ -281,7 +295,7 @@ def write_to_live_log(storage_path, user_message, results, query_tokens=None,
     lines.append("")
 
     try:
-        with open(live_log, "a") as f:
+        with open(live_log, "a", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
     except Exception:
         pass
@@ -447,7 +461,7 @@ def write_to_live_log_feedback(storage_path, signal_text, sentiment,
     lines.append("")
 
     try:
-        with open(live_log, "a") as f:
+        with open(live_log, "a", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
     except Exception:
         pass
@@ -562,8 +576,20 @@ def main():
         already_injected.update(new_ids)
         save_session_state(session_id, already_injected)
 
-    # V2: Include lesson IDs in injection format
-    injection_lessons = [f"[{r.get('id', '?')}] [{r['category']}] {r['lesson']}" for r in results]
+    # V2: Include lesson IDs in injection format (H2: sanitize lesson content)
+    def _sanitize(text):
+        """Strip characters that could be interpreted as prompt directives."""
+        # Remove common injection prefixes
+        for prefix in ("ignore ", "disregard ", "forget "):
+            if text.lower().startswith(prefix + "all ") or text.lower().startswith(prefix + "previous "):
+                text = text[len(prefix):]
+        # Collapse newlines (prevents multi-line injection payloads)
+        return text.replace("\n", " ").replace("\r", " ").strip()
+
+    injection_lessons = [
+        f"[{r.get('id', '?')}] [{r['category']}] {_sanitize(r['lesson'])}"
+        for r in results
+    ]
     context = "Project-specific lessons from our RAG knowledge base:\n"
     context += "\n".join(f"- {l}" for l in injection_lessons)
 

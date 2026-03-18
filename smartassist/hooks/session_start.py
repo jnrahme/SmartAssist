@@ -54,7 +54,7 @@ def format_lessons_for_session():
 
         lessons = _get_recent_negative_feedback(storage_path, weak_categories, max_lessons=5)
 
-        if not weak_categories and not lessons:
+        if not lessons:
             return ""
 
         output = []
@@ -87,8 +87,8 @@ def format_lessons_for_session():
 
         return "\n".join(output)
 
-    except Exception as e:
-        return f"# RLHF Note: Could not load lessons ({str(e)})"
+    except Exception:
+        return ""
 
 
 def main():

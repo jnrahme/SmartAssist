@@ -208,6 +208,32 @@ class TestLaunchTmux:
         )
         assert result.returncode == 0
 
+    def test_quotes_cwd_in_tmux_command(self, tmp_path):
+        log = tmp_path / "test.log"
+        log.touch()
+        calls = []
+
+        def fake_run(cmd, check=False, capture_output=False, text=False):
+            calls.append(cmd)
+
+            class Result:
+                returncode = 0
+                stdout = ""
+
+            return Result()
+
+        with (
+            patch("smartassist.claude_sa._kill_existing_session"),
+            patch("smartassist.claude_sa.os.getcwd", return_value="/tmp/space dir/project"),
+            patch("smartassist.claude_sa.subprocess.run", side_effect=fake_run),
+            patch("smartassist.claude_sa.os.execvp", side_effect=SystemExit(0)),
+        ):
+            with pytest.raises(SystemExit):
+                _launch_tmux(log)
+
+        send_keys_call = calls[1]
+        assert "cd '/tmp/space dir/project' && claude" in send_keys_call[4]
+
 
 class TestLaunchFallback:
     def test_prints_instructions_on_linux(self, tmp_path, capsys):
@@ -234,6 +260,33 @@ class TestLaunchFallback:
             result = _launch_fallback(log)
         assert result == 0
         mock_run.assert_called_once()
+
+    def test_quotes_paths_in_macos_applescript(self, tmp_path):
+        data = tmp_path / ".claude" / "smartassist" / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        log = data / "rag live.log"
+        log.touch()
+        calls = []
+
+        def fake_run(cmd, check=False):
+            calls.append(cmd)
+
+            class Result:
+                returncode = 0
+
+            return Result()
+
+        with (
+            patch("sys.platform", "darwin"),
+            patch("smartassist.claude_sa.os.getcwd", return_value="/tmp/space dir/project"),
+            patch("smartassist.claude_sa.subprocess.run", side_effect=fake_run),
+        ):
+            result = _launch_fallback(log)
+
+        assert result == 0
+        script = calls[0][2]
+        assert "cd '/tmp/space dir/project' && clear && claude" in script
+        assert "tail -f '/" in script
 
 
 class TestMain:

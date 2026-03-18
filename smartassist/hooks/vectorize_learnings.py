@@ -10,34 +10,13 @@ import re
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 
-from smartassist.config import EMBEDDING_MODEL, get_storage_path, get_db_path
+from smartassist.config import EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path
 
 # Minimum correction length to be useful for vectorization
 MIN_CORRECTION_LEN = 30
 
-# Patterns that indicate a non-actionable lesson
-SKIP_PATTERNS = [
-    r"^this has been addressed",
-    r"^done\b",
-    r"^fixed\b",
-    r"^resolved\b",
-    r"^acknowledged\b",
-    r"^nit:",
-    r"^lgtm",
-    r"^good catch",
-    r"^thanks",
-    r"^ok\b",
-    r"^yes\b",
-]
-
-
-def is_skip_pattern(text: str) -> bool:
-    """Check if text matches a non-actionable pattern."""
-    lower = text.lower().strip()
-    for pattern in SKIP_PATTERNS:
-        if re.match(pattern, lower):
-            return True
-    return False
+# Import shared patterns from the canonical source (L10 dedup fix)
+from smartassist.tools.cleanup_and_vectorize import SKIP_PATTERNS, is_skip_pattern  # noqa: E402
 
 
 def get_unvectorized_feedback() -> Tuple[List[Dict], int]:
@@ -136,7 +115,17 @@ def vectorize_new_learnings() -> bool:
 
         try:
             table = db.open_table("documents")
-            next_id = table.count_rows() + 1
+            row_count = table.count_rows()
+            existing_rows = []
+            if row_count:
+                # Reuse the same "scan all rows" approach used by health/dashboard
+                # so IDs stay monotonic even if earlier rows were deduplicated.
+                existing_rows = (
+                    table.search([0.0] * EMBEDDING_DIM)
+                    .limit(row_count)
+                    .to_list()
+                )
+            next_id = max((row.get("id", 0) for row in existing_rows), default=0) + 1
         except Exception:
             next_id = 1
 
@@ -154,7 +143,7 @@ def vectorize_new_learnings() -> bool:
                 pass
 
             data.append({
-                "id": next_id + i,
+                "id": next_id + len(data),
                 "text": text,
                 "vector": emb.tolist(),
                 "category": event.get("category", "unknown"),
@@ -210,8 +199,8 @@ def _update_vectorization_log(log_path, total_feedback: int, total_in_db: Option
     if total_in_db is not None:
         log_data["total_documents_in_rag"] = total_in_db
 
-    with open(log_path, "w") as f:
-        json.dump(log_data, f, indent=2)
+    from smartassist.config import atomic_write_json
+    atomic_write_json(log_path, log_data)
 
 
 if __name__ == "__main__":

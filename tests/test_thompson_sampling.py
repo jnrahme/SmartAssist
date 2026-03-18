@@ -1,7 +1,8 @@
 """Tests for smartassist.thompson_sampling."""
 
-import json
-from smartassist.thompson_sampling import ThompsonSamplingModel
+import time
+
+from smartassist.thompson_sampling import CategoryReliability, ThompsonSamplingModel
 
 
 class TestThompsonSampling:
@@ -68,3 +69,39 @@ class TestThompsonSampling:
         model2 = ThompsonSamplingModel(storage)
         score2 = model2.get_reliability("testing")
         assert abs(score1 - score2) < 1e-10
+
+    def test_corrupted_reliability_file_recovers(self, set_data_dir):
+        storage = set_data_dir / "data"
+        (set_data_dir / "data" / "reliability_scores.json").write_text("{bad json")
+
+        model = ThompsonSamplingModel(storage)
+
+        assert model.reliabilities == {}
+        assert model.get_reliability("testing") == 0.5
+
+    def test_get_reliability_does_not_mutate_state(self, set_data_dir):
+        storage = str(set_data_dir / "data")
+        model = ThompsonSamplingModel(storage)
+        model.reliabilities["testing"] = CategoryReliability(
+            category="testing",
+            alpha=10.0,
+            beta=2.0,
+            last_updated=time.time() - 86400 * 30,
+        )
+
+        before = (
+            model.reliabilities["testing"].alpha,
+            model.reliabilities["testing"].beta,
+            model.reliabilities["testing"].last_updated,
+        )
+
+        score = model.get_reliability("testing")
+
+        after = (
+            model.reliabilities["testing"].alpha,
+            model.reliabilities["testing"].beta,
+            model.reliabilities["testing"].last_updated,
+        )
+
+        assert score == 10.0 / 12.0
+        assert after == before

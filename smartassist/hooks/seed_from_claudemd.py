@@ -576,15 +576,16 @@ def seed_database():
     # Clear old seed data
     print("Clearing old seed data...")
     feedback_log.write_text("")
-    vectorization_log.write_text(json.dumps({
+    from smartassist.config import atomic_write_json
+    atomic_write_json(vectorization_log, {
         "total_vectorized": 0,
         "last_vectorization": None,
         "total_documents_in_rag": 0,
-    }))
+    })
 
     # Reset reliability scores
     reliability_file = storage_path / "reliability_scores.json"
-    reliability_file.write_text("{}")
+    atomic_write_json(reliability_file, {})
 
     # Clear old lesson files
     lessons_dir.mkdir(exist_ok=True)

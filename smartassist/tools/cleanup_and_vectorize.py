@@ -14,6 +14,7 @@ import sys
 import hashlib
 import re
 import time
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from smartassist.config import get_storage_path, get_db_path, EMBEDDING_MODEL
@@ -521,9 +522,30 @@ def format_text_for_vector(category: str, lesson: str) -> str:
 
 def load_curated_lessons(path) -> List[Dict]:
     """Load hand-crafted lessons from curated_lessons.json."""
-    with open(path, "r", encoding="utf-8") as f:
-        lessons = json.load(f)
-    return lessons
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lessons = json.load(f)
+        return lessons if isinstance(lessons, list) else []
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"Warning: could not load curated lessons from {path}: {exc}")
+        return []
+
+
+def _update_vectorization_log(storage_path, total_in_db: int):
+    """Mark the curated rebuild as the latest vectorization state."""
+    feedback_log = storage_path / "feedback_log.jsonl"
+    total_feedback = 0
+    if feedback_log.exists():
+        total_feedback = sum(1 for line in feedback_log.read_text().splitlines() if line.strip())
+
+    from smartassist.config import atomic_write_json
+
+    vectorization_log = storage_path / "vectorization_log.json"
+    atomic_write_json(vectorization_log, {
+        "total_vectorized": total_feedback,
+        "last_vectorization": datetime.now().isoformat(),
+        "total_documents_in_rag": total_in_db,
+    })
 
 
 def main():
@@ -606,6 +628,7 @@ def main():
     assert table.count_rows() == len(lessons), (
         f"Row count mismatch: {table.count_rows()} != {len(lessons)}"
     )
+    _update_vectorization_log(storage_path, table.count_rows())
 
     # Test searches
     test_queries = [

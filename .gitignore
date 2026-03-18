@@ -20,3 +20,6 @@ uv.lock
 .env.local
 .env.*.local
 qa-artifacts/
+
+# SmartAssist data
+.claude/smartassist/

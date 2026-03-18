@@ -15,24 +15,15 @@ from smartassist.config import get_storage_path, get_project_root
 
 
 def get_last_commit_info():
-    """Get info about the most recent commit."""
+    """Get info about the most recent commit (single git call)."""
     try:
         project_root = get_project_root()
-        msg = subprocess.check_output(
-            ["git", "log", "-1", "--pretty=format:%s"],
-            cwd=project_root, text=True
+        # Single git call instead of three (L19 perf fix)
+        raw = subprocess.check_output(
+            ["git", "log", "-1", "--pretty=format:%H%n%s%n%ct"],
+            cwd=project_root, text=True,
         ).strip()
-
-        sha = subprocess.check_output(
-            ["git", "log", "-1", "--pretty=format:%H"],
-            cwd=project_root, text=True
-        ).strip()
-
-        timestamp = subprocess.check_output(
-            ["git", "log", "-1", "--pretty=format:%ct"],
-            cwd=project_root, text=True
-        ).strip()
-
+        sha, msg, timestamp = raw.split("\n", 2)
         return {"sha": sha, "message": msg, "timestamp": int(timestamp)}
     except Exception:
         return None
@@ -113,7 +104,8 @@ def mark_captured(sha):
     # Keep only last 100
     data["captured_shas"] = shas[-100:]
     data["last_capture"] = time.time()
-    capture_log.write_text(json.dumps(data, indent=2))
+    from smartassist.config import atomic_write_json
+    atomic_write_json(capture_log, data)
 
 
 def extract_lessons_from_commit(commit_info, changed_files, diff_content):
@@ -184,67 +176,29 @@ def extract_lessons_from_commit(commit_info, changed_files, diff_content):
 
     # ── Lesson: detect anti-patterns in diff ─────────────────────────
     if diff_content:
-        # Check for console.log additions
-        console_logs = re.findall(r"^\+.*console\.(log|debug|warn)", diff_content, re.MULTILINE)
-        if console_logs:
+        # Check for debug statement additions (generic across JS/TS/Python)
+        debug_stmts = re.findall(
+            r"^\+.*(console\.(log|debug|warn)|print\(|debugger\b)",
+            diff_content, re.MULTILINE,
+        )
+        if debug_stmts:
             lessons.append({
                 "signal": "correction",
                 "category": FeedbackCategory.CODE_EDIT.value,
-                "intensity": 4,
+                "intensity": 3,
                 "query": "Commit code changes",
-                "response": f"Committed {len(console_logs)} console.log statement(s)",
-                "correction": "Remove console.log statements before committing. Use LOGGER for debug output.",
-                "context": "Project rule: never commit console.log debug statements.",
-            })
-
-        # Check for hardcoded colors
-        hardcoded_colors = re.findall(r"^\+.*['\"]#[0-9a-fA-F]{3,8}['\"]", diff_content, re.MULTILINE)
-        if hardcoded_colors:
-            lessons.append({
-                "signal": "correction",
-                "category": FeedbackCategory.CODE_EDIT.value,
-                "intensity": 4,
-                "query": "Style a component",
-                "response": f"Used {len(hardcoded_colors)} hardcoded color value(s) in committed code",
-                "correction": "Use semantic colors from theme instead of hardcoded hex values.",
-                "context": "Project bans hardcoded colors. Always use design tokens.",
-            })
-
-        # Check for snapshot tests
-        if "toMatchSnapshot" in diff_content or "toMatchInlineSnapshot" in diff_content:
-            lessons.append({
-                "signal": "correction",
-                "category": FeedbackCategory.TESTING.value,
-                "intensity": 5,
-                "query": "Write component tests",
-                "response": "Added snapshot test (toMatchSnapshot)",
-                "correction": "Use behavior testing: toBeVisible(), getByText(), fireEvent. No snapshots.",
-                "context": "Project bans snapshot tests completely.",
-            })
-
-        # Check for direct analytics() calls (outside utility)
-        analytics_calls = re.findall(r"^\+.*analytics\(\)", diff_content, re.MULTILINE)
-        analytics_in_util = any("firebaseAnalytics" in f for f in changed_files)
-        if analytics_calls and not analytics_in_util:
-            lessons.append({
-                "signal": "correction",
-                "category": FeedbackCategory.SECURITY.value,
-                "intensity": 4,
-                "query": "Add analytics tracking",
-                "response": "Called analytics() directly from component",
-                "correction": "Use centralized analytics functions from the analytics utility module.",
-                "context": "Firebase analytics must go through centralized utility.",
+                "response": f"Committed {len(debug_stmts)} debug statement(s)",
+                "correction": "Remove debug statements (console.log, print, debugger) before committing.",
+                "context": "Clean commits should not contain debug output.",
             })
 
     # ── Lesson: record what areas of code were touched ───────────────
     areas = set()
     for f in changed_files:
-        if "shared/components" in f:
-            areas.add("shared components")
-        elif "utils/" in f:
+        if "components" in f:
+            areas.add("components")
+        elif "utils/" in f or "helpers/" in f or "lib/" in f:
             areas.add("utilities")
-        elif "slices/" in f:
-            areas.add("redux slices")
 
     if areas:
         lessons.append({
@@ -295,7 +249,7 @@ def capture_commit_lessons():
             "timestamp": time.time(),
             "session_id": f"commit_{commit_info['sha'][:8]}",
         }
-        with open(feedback_log, "a") as f:
+        with open(feedback_log, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
     # Update Thompson Sampling

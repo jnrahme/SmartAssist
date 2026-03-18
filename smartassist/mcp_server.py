@@ -25,13 +25,16 @@ from datetime import datetime
 
 from mcp.server.fastmcp import FastMCP
 
-from smartassist.config import EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path
+from smartassist.config import (
+    EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path,
+    atomic_write_json, locked_update_json, spawn_managed,
+)
 from smartassist.lesson_feedback import (
     load_lesson_scores,
     save_lesson_scores,
-    _get_or_create_score,
-    _add_to_curated,
-    _remove_from_curated,
+    get_or_create_score,
+    add_to_curated,
+    remove_from_curated,
     log_comparison_entry,
     DEFAULT_BOOST,
     BOOST_INCREMENT,
@@ -64,27 +67,39 @@ VALID_CATEGORIES = {"testing", "code_edit", "git", "architecture", "pr_review", 
 def _get_storage():
     try:
         return get_storage_path()
-    except RuntimeError as e:
+    except RuntimeError:
         raise RuntimeError(
-            f"SmartAssist data directory not found. "
-            f"Run 'smartassist setup' in your project root, or set "
-            f"SMARTASSIST_DATA_DIR in your MCP server config "
-            f"(~/.claude/mcp.json → smartassist → env). Original: {e}"
+            "SmartAssist data directory not found. "
+            "Run 'smartassist setup' in your project root, or set "
+            "SMARTASSIST_DATA_DIR in your environment."
         )
 
 
 def _get_db():
     try:
         return get_db_path()
-    except RuntimeError as e:
+    except RuntimeError:
         raise RuntimeError(
-            f"SmartAssist database not found. "
-            f"Run 'smartassist setup' in your project root. Original: {e}"
+            "SmartAssist database not found. "
+            "Run 'smartassist setup' in your project root."
         )
 
 
 def _usage_log_path():
     return _get_storage() / "usage_log.jsonl"
+
+
+def _trigger_vectorization(full_rebuild: bool = False):
+    """Refresh the vector store after corpus changes."""
+    module = (
+        "smartassist.tools.cleanup_and_vectorize"
+        if full_rebuild
+        else "smartassist.hooks.vectorize_learnings"
+    )
+    try:
+        spawn_managed([sys.executable, "-m", module])
+    except Exception:
+        pass
 
 
 def _extract_lesson_text(raw_text: str) -> str:
@@ -276,18 +291,19 @@ def _curated_lesson_ids(storage):
 def _update_feedback_metrics(storage, action_type):
     """Increment action count in feedback_metrics.json."""
     metrics_path = storage / "feedback_metrics.json"
+    default = {
+        "boosts": 0, "demotes": 0, "creates": 0, "merges": 0,
+        "positive_signals": 0, "negative_signals": 0,
+        "last_updated": None,
+    }
     try:
-        if metrics_path.exists():
-            metrics = json.loads(metrics_path.read_text())
-        else:
-            metrics = {
-                "boosts": 0, "demotes": 0, "creates": 0, "merges": 0,
-                "positive_signals": 0, "negative_signals": 0,
-                "last_updated": None,
-            }
-        metrics[action_type] = metrics.get(action_type, 0) + 1
-        metrics["last_updated"] = datetime.now().isoformat()
-        metrics_path.write_text(json.dumps(metrics, indent=2))
+        def _increment(metrics):
+            if not isinstance(metrics, dict):
+                metrics = dict(default)
+            metrics[action_type] = metrics.get(action_type, 0) + 1
+            metrics["last_updated"] = datetime.now().isoformat()
+            return metrics
+        locked_update_json(metrics_path, _increment, default=default)
     except Exception:
         pass
 
@@ -334,9 +350,9 @@ def rag_search(
     try:
         embedder = _get_embedder()
         table = _get_table()
-    except Exception as e:
+    except Exception:
         _log_usage("rag_search", query, 0, 0)
-        return f"Error initializing search: {e}"
+        return "Error initializing search. Run 'smartassist health' to diagnose."
 
     enhanced_query = _enhance_query(query)
     query_vector = embedder.encode(enhanced_query)
@@ -663,7 +679,7 @@ def create_lesson(
         return f"Error accessing storage: {e}"
 
     # ── V2: Dual-path write — add to curated first to avoid partial state ─
-    new_id, cap_error = _add_to_curated(storage_path, lesson, cat)
+    new_id, cap_error = add_to_curated(storage_path, lesson, cat)
     if cap_error:
         return f"Cannot create lesson: {cap_error}"
 
@@ -684,7 +700,7 @@ def create_lesson(
             f.write(json.dumps(feedback_entry) + "\n")
     except Exception as e:
         # Roll back curated write if feedback log append fails.
-        _remove_from_curated(storage_path, new_id)
+        remove_from_curated(storage_path, new_id)
         return f"Error writing feedback: {e}"
 
     curated_msg = f" [ID: {new_id}]"
@@ -700,14 +716,7 @@ def create_lesson(
         pass  # Don't fail if Thompson model has issues
 
     # ── Fire-and-forget vectorization ─────────────────────────────────
-    try:
-        subprocess.Popen(
-            [sys.executable, "-m", "smartassist.hooks.vectorize_learnings"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        pass
+    _trigger_vectorization()
 
     # ── Update feedback metrics ───────────────────────────────────────
     _update_feedback_metrics(storage_path, "creates")
@@ -751,6 +760,11 @@ def compare_lesson(
     cat = category.lower().strip() if category else ""
     if cat not in VALID_CATEGORIES:
         return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
+
+    # ── Quality gate: sentiment ───────────────────────────────────────
+    sentiment = sentiment.lower().strip() if sentiment else ""
+    if sentiment not in ("positive", "negative"):
+        return f"Invalid sentiment '{sentiment}'. Must be 'positive' or 'negative'."
 
     # ── Quality gate: lesson length ───────────────────────────────────
     lesson = lesson.strip() if lesson else ""
@@ -823,7 +837,7 @@ def boost_lesson(lesson_id: str) -> str:
     if lesson_id not in _curated_lesson_ids(storage):
         return f"Cannot boost {lesson_id}: lesson not found in curated lessons."
 
-    entry = _get_or_create_score(scores, lesson_id)
+    entry = get_or_create_score(scores, lesson_id)
 
     entry["ups"] += 1
     old_boost = entry["boost"]
@@ -877,7 +891,7 @@ def demote_lesson(lesson_id: str) -> str:
     if lesson_id not in _curated_lesson_ids(storage):
         return f"Cannot demote {lesson_id}: lesson not found in curated lessons."
 
-    entry = _get_or_create_score(scores, lesson_id)
+    entry = get_or_create_score(scores, lesson_id)
 
     entry["downs"] += 1
     old_boost = entry["boost"]
@@ -897,9 +911,10 @@ def demote_lesson(lesson_id: str) -> str:
     # Remove from curated if auto-retired
     if auto_retired:
         try:
-            _remove_from_curated(storage, lesson_id)
+            remove_from_curated(storage, lesson_id)
         except Exception:
             pass
+        _trigger_vectorization(full_rebuild=True)
 
     # Thompson Sampling update
     try:
@@ -985,20 +1000,51 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     except Exception as e:
         return f"Error accessing storage: {e}"
 
-    # Verify source lessons exist in curated
+    # Verify source lessons exist in curated and perform merge under lock
     curated_path = storage / "curated_lessons.json"
     if not curated_path.exists():
         return f"curated_lessons.json not found. Cannot merge."
 
+    merge_result = {}
+
+    def _do_merge(curated):
+        if not isinstance(curated, list):
+            merge_result["error"] = "Error reading curated_lessons.json."
+            return None
+
+        curated_ids = {l.get("id") for l in curated}
+        missing = [lid for lid in ids if lid not in curated_ids]
+        if missing:
+            merge_result["error"] = f"Cannot merge: lesson(s) {', '.join(missing)} not found in curated lessons."
+            return None
+
+        max_num = 0
+        for lid in curated_ids:
+            if isinstance(lid, str) and lid.startswith("L") and lid[1:].isdigit():
+                max_num = max(max_num, int(lid[1:]))
+        merge_result["new_id"] = f"L{max_num + 1:03d}"
+
+        merged = [l for l in curated if l.get("id") not in ids]
+        if len(merged) >= MAX_CURATED_LESSONS:
+            merge_result["error"] = f"Cannot merge: Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
+            return None
+
+        merged.append({
+            "id": merge_result["new_id"],
+            "lesson": new_lesson,
+            "category": cat,
+        })
+        return merged
+
     try:
-        curated = json.loads(curated_path.read_text())
+        locked_update_json(curated_path, _do_merge, default=[])
     except Exception:
         return "Error reading curated_lessons.json."
 
-    curated_ids = {l.get("id") for l in curated}
-    missing = [lid for lid in ids if lid not in curated_ids]
-    if missing:
-        return f"Cannot merge: lesson(s) {', '.join(missing)} not found in curated lessons."
+    if "error" in merge_result:
+        return merge_result["error"]
+
+    new_id = merge_result["new_id"]
 
     # Combine scores from sources
     scores = load_lesson_scores()
@@ -1009,32 +1055,14 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
         combined_ups += entry.get("ups", 0)
         max_boost = max(max_boost, entry.get("boost", DEFAULT_BOOST))
 
-    # Build merged curated corpus with monotonic ID generation based on the
-    # pre-merge corpus (prevents ID reuse like L001 after removals).
-    max_num = 0
-    for lid in curated_ids:
-        if isinstance(lid, str) and lid.startswith("L") and lid[1:].isdigit():
-            max_num = max(max_num, int(lid[1:]))
-    new_id = f"L{max_num + 1:03d}"
-
-    merged_curated = [l for l in curated if l.get("id") not in ids]
-    if len(merged_curated) >= MAX_CURATED_LESSONS:
-        return f"Cannot merge: Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
-    merged_curated.append({
-        "id": new_id,
-        "lesson": new_lesson,
-        "category": cat,
-    })
-    curated_path.write_text(json.dumps(merged_curated, indent=2))
-
     # Set score for new lesson
-    new_entry = _get_or_create_score(scores, new_id)
+    new_entry = get_or_create_score(scores, new_id)
     new_entry["ups"] = combined_ups
     new_entry["boost"] = max_boost
 
     # Mark sources as superseded
     for lid in ids:
-        source_entry = _get_or_create_score(scores, lid)
+        source_entry = get_or_create_score(scores, lid)
         source_entry["blocked"] = True
         source_entry["retired"] = True
         source_entry["retired_reason"] = f"superseded_by={new_id}"
@@ -1060,15 +1088,8 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     except Exception:
         pass
 
-    # Fire vectorization
-    try:
-        subprocess.Popen(
-            [sys.executable, "-m", "smartassist.hooks.vectorize_learnings"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        pass
+    # Rebuild from curated lessons so superseded source lessons disappear from search.
+    _trigger_vectorization(full_rebuild=True)
 
     # Update metrics
     _update_feedback_metrics(storage, "merges")

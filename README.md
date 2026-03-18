@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/tests-59%20passing-brightgreen?style=flat-square" alt="59 tests passing">
+  <img src="https://img.shields.io/badge/tests-159%20passing-brightgreen?style=flat-square" alt="159 tests passing">
   <img src="https://img.shields.io/badge/license-BSL--1.1-blue?style=flat-square" alt="BSL 1.1 License">
   <img src="https://img.shields.io/badge/version-1.0.0-blue?style=flat-square" alt="Version 1.0.0">
 </p>
@@ -26,7 +26,7 @@ SmartAssist adds a **persistent learning layer** to Claude Code. It combines thr
 
 - **RLHF** — Learns from your explicit feedback (thumbs up/down, corrections). Tracks reliability per category with Thompson Sampling (Beta-Bernoulli with 30-day exponential decay).
 - **RAG** — Hybrid semantic search (1024-dim BAAI/bge-m3 vectors + BM25 keyword matching) with cross-encoder reranking over curated lessons stored in LanceDB.
-- **MCP Server** — Exposes 3 tools (`rag_search`, `rag_dashboard`, `rag_feedback`) via the Model Context Protocol. Claude decides when to search — zero overhead on simple prompts.
+- **MCP Server** — Exposes 8 tools (`rag_search`, `rag_dashboard`, `rag_feedback`, `create_lesson`, `boost_lesson`, `demote_lesson`, `merge_lessons`, `compare_lesson`) via the Model Context Protocol. Claude decides when to search — zero overhead on simple prompts.
 
 ### System Architecture
 
@@ -115,32 +115,7 @@ smartassist init
 
 ### One-Time Setup
 
-Add to `~/.claude/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "smartassist": {
-      "command": "smartassist",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-Add hooks to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 -m smartassist.hooks.session_start"}]}],
-    "SessionEnd": [{"hooks": [{"type": "command", "command": "python3 -m smartassist.hooks.session_end"}]}],
-    "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 -m smartassist.hooks.commit_hook"}]}],
-    "PostToolUse": [{"matcher": "mcp__smartassist__rag_search", "hooks": [{"type": "command", "command": "python3 -m smartassist.hooks.show_lessons"}]}],
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 -m smartassist.hooks.prompt_inject"}]}]
-  }
-}
-```
+`smartassist setup` handles everything automatically — it registers the MCP server via `claude mcp add -s user` and configures hooks in `~/.claude/settings.json`. No manual file editing needed.
 
 ---
 
@@ -310,7 +285,7 @@ The dashboard includes:
 ```
 smartassist/
 ├── config.py                  # Path resolution + embedding config (keystone)
-├── cli.py                     # CLI entry point (9 subcommands)
+├── cli.py                     # CLI entry point (13 subcommands)
 ├── mcp_server.py              # MCP server (3 tools)
 ├── thompson_sampling.py       # Beta-Bernoulli with 30-day decay
 ├── feedback_system.py         # FeedbackCapture + JSONL storage
