@@ -1,0 +1,4 @@
+#!/bin/sh
+# Placeholder — replaced by postinstall.js with the actual binary wrapper
+echo "SmartAssist binary not found. Run: npm rebuild smartassist-memory"
+exit 1

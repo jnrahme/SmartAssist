@@ -21,10 +21,10 @@ uv.lock
 .env.*.local
 qa-artifacts/
 
-# Node (not part of SmartAssist)
+# Node (root-level only — npm-package/ is intentional)
 node_modules/
-package-lock.json
-package.json
+/package-lock.json
+/package.json
 
 # SmartAssist data
 .claude/smartassist/
