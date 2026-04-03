@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartAssist — AI Memory That Learns From Every Correction</title>
+<meta name="description" content="SmartAssist adds persistent memory to Claude Code and Codex. It learns from your feedback, stores lessons, and injects the right context automatically.">
+<meta name="theme-color" content="#030712">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+:root {
+  --bg: #030712;
+  --bg2: #0a0f1e;
+  --surface: rgba(255,255,255,.03);
+  --surface-hi: rgba(255,255,255,.06);
+  --border: rgba(255,255,255,.06);
+  --border-hi: rgba(255,255,255,.12);
+  --text: #94a3b8;
+  --text-hi: #cbd5e1;
+  --white: #f1f5f9;
+  --dim: #475569;
+  --violet: #8b5cf6;
+  --violet-glow: rgba(139,92,246,.4);
+  --blue: #38bdf8;
+  --emerald: #34d399;
+  --amber: #fbbf24;
+  --rose: #fb7185;
+  --cyan: #22d3ee;
+  --pink: #e879f9;
+  --r: 16px;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: auto; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(139,92,246,.35); color: #fff; }
+a { color: inherit; text-decoration: none; }
+
+#scene-container {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+#scene-container canvas { display: block; }
+
+.content-layer {
+  position: relative;
+  z-index: 1;
+}
+
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 0 40px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(3,7,18,0);
+  -webkit-backdrop-filter: blur(0px);
+  backdrop-filter: blur(0px);
+  border-bottom: 1px solid transparent;
+  transition: all .4s;
+}
+.nav.scrolled {
+  background: rgba(3,7,18,.85);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-bottom-color: var(--border);
+}
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--white);
+  letter-spacing: -.5px;
+}
+.nav-logo svg { width: 28px; height: 28px; }
+.nav-links { display: flex; align-items: center; gap: 32px; }
+.nav-links a {
+  font-size: .85rem; font-weight: 500; color: var(--dim);
+  transition: color .2s;
+}
+.nav-links a:hover { color: var(--white); }
+.nav-cta {
+  padding: 10px 24px; border-radius: 10px;
+  font-size: .85rem; font-weight: 700; color: #fff;
+  background: var(--violet);
+  border: 1px solid rgba(255,255,255,.15);
+  box-shadow: 0 0 20px rgba(139,92,246,.3), inset 0 1px 0 rgba(255,255,255,.15);
+  transition: all .2s;
+  text-shadow: 0 1px 2px rgba(0,0,0,.3);
+}
+.nav-cta:hover {
+  transform: translateY(-1px);
+  background: #7c3aed;
+  box-shadow: 0 0 32px rgba(139,92,246,.4), inset 0 1px 0 rgba(255,255,255,.2);
+}
+.mobile-menu-btn {
+  display: none; background: none; border: none;
+  color: var(--text); cursor: pointer; padding: 8px;
+}
+.mobile-menu-btn svg { width: 24px; height: 24px; }
+
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1000px;
+  padding: 120px 40px 80px;
+}
+.hero-content {
+  text-align: center;
+  max-width: 800px;
+  opacity: 0;
+  transform: translateZ(0) translateY(40px);
+  position: relative;
+}
+.hero-content::before {
+  content: '';
+  position: absolute;
+  top: -40px; left: -80px; right: -80px; bottom: -40px;
+  background: radial-gradient(ellipse 100% 100% at 50% 50%, rgba(3,7,18,.65) 0%, rgba(3,7,18,.3) 50%, transparent 75%);
+  pointer-events: none;
+  z-index: -1;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 16px; border-radius: 100px;
+  font-size: .72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 2px;
+  color: var(--violet);
+  background: rgba(139,92,246,.08);
+  border: 1px solid rgba(139,92,246,.15);
+  margin-bottom: 28px;
+}
+.hero-badge .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--emerald);
+  animation: pulse-glow 2s infinite;
+}
+@keyframes pulse-glow { 0%,100%{opacity:.5} 50%{opacity:1} }
+.hero h1 {
+  font-size: clamp(2.4rem, 6vw, 4.5rem);
+  font-weight: 900; color: var(--white);
+  letter-spacing: -2px; line-height: 1.05;
+  margin-bottom: 24px;
+  text-shadow: 0 0 40px rgba(3,7,18,.9), 0 0 80px rgba(3,7,18,.7), 0 2px 4px rgba(0,0,0,.5);
+}
+.hero h1 .gradient-text {
+  background: linear-gradient(135deg, var(--violet), var(--blue), var(--pink));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  color: var(--text-hi); max-width: 560px;
+  margin: 0 auto 40px; line-height: 1.7;
+  text-shadow: 0 0 30px rgba(3,7,18,.9), 0 0 60px rgba(3,7,18,.6);
+}
+.hero-actions {
+  display: flex; align-items: center;
+  justify-content: center; gap: 16px; flex-wrap: wrap;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 16px 36px; border-radius: 12px;
+  font-family: var(--sans); font-size: 1.05rem;
+  font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--violet), #7c3aed);
+  border: none; cursor: pointer;
+  box-shadow: 0 0 32px var(--violet-glow), 0 4px 16px rgba(0,0,0,.3);
+  transition: all .25s;
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 60px var(--violet-glow), 0 8px 24px rgba(0,0,0,.4);
+}
+.btn-primary svg { width: 18px; height: 18px; }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 28px; border-radius: 12px;
+  font-family: var(--sans); font-size: .9rem;
+  font-weight: 600; color: var(--text-hi);
+  background: transparent;
+  border: 1px solid var(--border-hi);
+  cursor: pointer; transition: all .25s;
+}
+.btn-secondary:hover {
+  background: rgba(255,255,255,.05);
+  transform: translateY(-1px);
+}
+.btn-secondary svg { width: 16px; height: 16px; }
+.hero-microcopy {
+  font-size: .82rem;
+  color: var(--dim);
+  margin-top: 16px;
+}
+
+.hero-panels {
+  display: flex;
+  gap: 20px;
+  max-width: 800px;
+  margin: 48px auto 0;
+}
+.hero-panel {
+  flex: 1;
+  min-width: 0;
+}
+.hero-panel-label {
+  font-size: .65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+  padding-left: 20px;
+}
+.hero-panel.before .hero-panel-label { color: var(--dim); }
+.hero-panel.after .hero-panel-label { color: var(--violet); }
+.hero-panel.before .terminal { opacity: .7; }
+.hero-panel.after .terminal { border-left: 2px solid var(--violet); }
+.hero-panel.after .terminal-body { color: var(--text-hi); }
+
+.scroll-indicator {
+  position: absolute; bottom: 40px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column;
+  align-items: center; gap: 8px; opacity: 0;
+}
+.scroll-indicator span {
+  font-size: .7rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 2px; color: var(--dim);
+}
+.scroll-mouse {
+  width: 24px; height: 38px;
+  border: 2px solid rgba(255,255,255,.15);
+  border-radius: 12px; position: relative;
+}
+.scroll-mouse::after {
+  content: ''; position: absolute; top: 6px; left: 50%;
+  transform: translateX(-50%);
+  width: 3px; height: 8px; border-radius: 2px;
+  background: var(--violet);
+  animation: scroll-float 2s infinite;
+}
+@keyframes scroll-float {
+  0%,100% { transform: translateX(-50%) translateY(0); opacity: 1; }
+  50% { transform: translateX(-50%) translateY(8px); opacity: .3; }
+}
+
+.section {
+  padding: 96px 40px;
+  position: relative;
+}
+.section-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.glass-panel {
+  background: rgba(3,7,18,.75);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 56px 48px;
+  box-shadow: 0 32px 80px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.section-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: .65rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 3px;
+  margin-bottom: 16px;
+}
+.section-label::before {
+  content: ''; width: 20px; height: 2px; border-radius: 1px;
+}
+.section-label.violet { color: var(--violet); }
+.section-label.violet::before { background: var(--violet); }
+.section-label.blue { color: var(--blue); }
+.section-label.blue::before { background: var(--blue); }
+.section-label.emerald { color: var(--emerald); }
+.section-label.emerald::before { background: var(--emerald); }
+.section-label.amber { color: var(--amber); }
+.section-label.amber::before { background: var(--amber); }
+.section-label.cyan { color: var(--cyan); }
+.section-label.cyan::before { background: var(--cyan); }
+.section-title {
+  font-size: clamp(2rem, 4.5vw, 2.8rem);
+  font-weight: 800; color: var(--white);
+  letter-spacing: -1px; line-height: 1.12;
+  margin-bottom: 16px;
+}
+.section-desc {
+  font-size: 1.05rem; color: var(--text);
+  max-width: 560px; line-height: 1.7;
+  margin-bottom: 48px;
+}
+
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  overflow: hidden;
+}
+.stats-glass {
+  background: rgba(3,7,18,.75);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 16px;
+  box-shadow: 0 32px 80px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.stat-item {
+  padding: 32px 16px; text-align: center;
+  transition: background .2s;
+  border-radius: var(--r);
+}
+.stat-item:hover { background: rgba(255,255,255,.03); }
+.stat-value {
+  font-size: 1.8rem; font-weight: 800; color: var(--white);
+  letter-spacing: -1px; margin-bottom: 6px;
+}
+.stat-label {
+  font-size: .72rem; font-weight: 500; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 1px;
+  line-height: 1.4;
+}
+
+/* Pipeline */
+.pipeline {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  position: relative;
+}
+.pipeline-step {
+  flex: 1;
+  padding: 28px 20px;
+  text-align: center;
+  position: relative;
+}
+.pipeline-step-num {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .82rem; font-weight: 800; margin-bottom: 16px;
+}
+.pipeline-step:nth-child(1) .pipeline-step-num { background: rgba(139,92,246,.12); color: var(--violet); }
+.pipeline-step:nth-child(3) .pipeline-step-num { background: rgba(56,189,248,.12); color: var(--blue); }
+.pipeline-step:nth-child(5) .pipeline-step-num { background: rgba(232,121,249,.12); color: var(--pink); }
+.pipeline-step:nth-child(7) .pipeline-step-num { background: rgba(52,211,153,.12); color: var(--emerald); }
+.pipeline-step:nth-child(9) .pipeline-step-num { background: rgba(251,191,36,.12); color: var(--amber); }
+.pipeline-step h3 {
+  font-size: .95rem; font-weight: 700; color: var(--white);
+  margin-bottom: 6px; letter-spacing: -.3px;
+}
+.pipeline-step p { font-size: .78rem; color: var(--text); line-height: 1.5; }
+
+.pipeline-connector {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; flex-shrink: 0; position: relative;
+}
+.pipeline-connector::before {
+  content: ''; width: 100%; height: 2px;
+  background: linear-gradient(90deg, var(--violet), var(--blue));
+  opacity: 0.3;
+}
+.pipeline-connector::after {
+  content: ''; position: absolute; right: 0;
+  width: 8px; height: 8px;
+  border-right: 2px solid var(--blue); border-top: 2px solid var(--blue);
+  transform: rotate(45deg); opacity: 0.3;
+}
+
+/* Features */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.feature-card {
+  padding: 36px 32px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  transition: all .4s cubic-bezier(.16,1,.3,1);
+  position: relative; overflow: hidden;
+  will-change: transform;
+}
+.feature-card::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--card-accent, var(--violet)), transparent);
+  opacity: 0; transition: opacity .3s;
+}
+.feature-card::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle 300px at var(--mx, 50%) var(--my, 50%), rgba(139,92,246,.08), transparent 60%);
+  opacity: 0; transition: opacity .3s; pointer-events: none;
+}
+.feature-card:hover {
+  background: rgba(255,255,255,.04);
+  border-color: var(--border-hi);
+  transform: translateY(-6px);
+  box-shadow: 0 24px 64px rgba(0,0,0,.35), 0 0 40px rgba(139,92,246,.05);
+}
+.feature-card:hover::before { opacity: 1; }
+.feature-card:hover::after { opacity: 1; }
+.feature-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+.feature-card h3 {
+  font-size: 1.05rem; font-weight: 700; color: var(--white);
+  margin-bottom: 10px; letter-spacing: -.3px;
+}
+.feature-card p { font-size: .82rem; color: var(--dim); line-height: 1.65; }
+
+/* MCP Tools */
+.tools-layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
+.tool-list { display: flex; flex-direction: column; gap: 4px; }
+.tool-list-item {
+  padding: 14px 18px; border-radius: 10px; cursor: pointer;
+  font-family: var(--mono); font-size: .85rem; font-weight: 500;
+  color: var(--dim); transition: all .2s;
+  border: 1px solid transparent;
+  display: flex; align-items: center; gap: 10px;
+  background: none;
+  text-align: left;
+  width: 100%;
+}
+.tool-list-item::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--dim); transition: background .2s; flex-shrink: 0;
+}
+.tool-list-item:hover { color: var(--text-hi); background: rgba(255,255,255,.03); }
+.tool-list-item.active {
+  color: var(--violet); background: rgba(139,92,246,.06);
+  border-color: rgba(139,92,246,.15);
+}
+.tool-list-item.active::before { background: var(--violet); }
+.tool-detail {
+  padding: 32px; background: rgba(255,255,255,.02);
+  border: 1px solid var(--border); border-radius: 16px;
+  min-height: 280px;
+}
+.tool-detail-name {
+  font-family: var(--mono); font-size: 1.1rem; font-weight: 700;
+  color: var(--violet); margin-bottom: 12px;
+}
+.tool-detail-desc { font-size: .95rem; color: var(--text-hi); margin-bottom: 24px; line-height: 1.6; }
+.tool-detail-example {
+  background: rgba(10,15,30,.6); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 20px;
+  font-family: var(--mono); font-size: .82rem; line-height: 1.8;
+  color: var(--text);
+}
+
+/* Terminal */
+.terminal {
+  background: rgba(10,15,30,.9);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  font-family: var(--mono); font-size: .85rem;
+  box-shadow: 0 24px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04);
+}
+.terminal-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 20px;
+  background: rgba(255,255,255,.02);
+  border-bottom: 1px solid var(--border);
+}
+.terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
+.terminal-dot:nth-child(1) { background: #ef4444; }
+.terminal-dot:nth-child(2) { background: #eab308; }
+.terminal-dot:nth-child(3) { background: #22c55e; }
+.terminal-title {
+  flex: 1; text-align: center;
+  font-size: .72rem; color: var(--dim); font-weight: 500;
+}
+.terminal-body {
+  padding: 24px; line-height: 1.9; overflow-x: auto;
+}
+.terminal-body .prompt { color: var(--emerald); }
+.terminal-body .cmd { color: var(--white); }
+.terminal-body .comment { color: var(--dim); }
+.terminal-body .output { color: var(--text); opacity: .7; }
+.terminal-body .success { color: var(--emerald); }
+.terminal-body .arrow { color: var(--violet); }
+.terminal-body .lesson { color: var(--amber); }
+
+/* Install */
+.install-tabs {
+  display: flex; gap: 4px; margin-bottom: 32px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 4px; width: fit-content;
+  max-width: 100%; overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.install-tabs::-webkit-scrollbar { display: none; }
+.install-tab {
+  padding: 10px 24px; border-radius: 9px;
+  font-family: var(--sans); font-size: .85rem;
+  font-weight: 600; color: var(--dim);
+  background: none; border: none; cursor: pointer;
+  transition: all .2s;
+}
+.install-tab:hover { color: var(--text-hi); }
+.install-tab.active {
+  color: var(--white);
+  background: rgba(139,92,246,.12);
+}
+.install-panel { display: none; }
+.install-panel.active { display: block; }
+.install-cmd {
+  display: flex; align-items: center; gap: 16px;
+  padding: 20px 24px;
+  background: rgba(10,15,30,.6);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 12px;
+  transition: border-color .2s;
+}
+.install-cmd:hover { border-color: var(--border-hi); }
+.install-cmd code {
+  flex: 1; font-family: var(--mono); font-size: .9rem;
+  color: var(--white); white-space: nowrap; overflow-x: auto;
+}
+.install-cmd code .prompt { color: var(--emerald); margin-right: 8px; }
+.copy-btn {
+  flex-shrink: 0; padding: 8px 16px; border-radius: 8px;
+  font-family: var(--sans); font-size: .78rem; font-weight: 600;
+  color: var(--text); background: rgba(255,255,255,.05);
+  border: 1px solid var(--border); cursor: pointer;
+  transition: all .2s; display: flex; align-items: center; gap: 6px;
+}
+.copy-btn:hover { color: var(--white); background: rgba(255,255,255,.08); }
+.copy-btn.copied { color: var(--emerald); border-color: rgba(52,211,153,.3); }
+.copy-btn svg { width: 14px; height: 14px; }
+.install-note { font-size: .82rem; color: var(--dim); margin-top: 8px; }
+.install-step-header {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text-hi);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
+.install-compat-line {
+  font-size: .82rem;
+  color: var(--dim);
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* CTA */
+.cta-section {
+  text-align: center;
+  position: relative;
+  padding: 128px 40px;
+  background: radial-gradient(ellipse 60% 50% at 50% 60%, rgba(139,92,246,.06), transparent);
+}
+.cta-title {
+  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  font-weight: 900; color: var(--white);
+  letter-spacing: -1px; margin-bottom: 16px;
+}
+.cta-desc {
+  font-size: 1.1rem; color: var(--text);
+  margin-bottom: 40px; max-width: 500px;
+  margin-left: auto; margin-right: auto;
+}
+.cta-sub {
+  font-size: .85rem;
+  color: var(--dim);
+  margin-top: 20px;
+}
+
+/* Footer */
+.footer {
+  padding: 48px 40px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap; gap: 16px;
+}
+.footer-left { font-size: .82rem; color: var(--dim); }
+.footer-left strong { color: var(--text-hi); font-weight: 600; }
+.footer-links { display: flex; gap: 24px; }
+.footer-links a { font-size: .82rem; color: var(--dim); transition: color .2s; }
+.footer-links a:hover { color: var(--violet); }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .nav { padding: 0 20px; }
+  .nav-links { display: none; }
+  .mobile-menu-btn { display: flex; }
+  .section { padding: 64px 20px; }
+  .glass-panel { padding: 40px 24px; border-radius: 20px; }
+  .features-grid { grid-template-columns: 1fr !important; }
+  .stats-bar { grid-template-columns: repeat(3, 1fr); }
+  .footer { flex-direction: column; text-align: center; }
+  .hero { padding: 100px 20px 60px; }
+  .hero-panels { flex-direction: column; }
+  .tools-layout { grid-template-columns: 1fr; }
+  .tool-list { flex-direction: row; overflow-x: auto; gap: 8px; padding-bottom: 8px; }
+  .tool-list-item { white-space: nowrap; padding: 10px 16px; font-size: .78rem; }
+  .pipeline { flex-direction: column; align-items: center; }
+  .pipeline-connector { width: auto; height: 32px; transform: rotate(90deg); }
+  .cta-section { padding: 80px 20px; }
+}
+@media (max-width: 480px) {
+  .hero h1 { font-size: 1.9rem; }
+  .hero-panels { gap: 12px; }
+  .hero-actions { flex-direction: column; }
+  .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+  .install-cmd { flex-wrap: wrap; }
+  .install-cmd code { min-width: 0; overflow-x: auto; font-size: .78rem; }
+  .copy-btn { margin-left: auto; }
+  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div id="scene-container"></div>
+
+<div class="content-layer">
+
+<nav class="nav" id="nav">
+  <a href="#" class="nav-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--violet)">
+      <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 22"/>
+      <path d="M12 2a4 4 0 0 0-4 4c0 1.95 1.4 3.58 3.25 3.93"/>
+      <circle cx="12" cy="6" r="1" fill="currentColor"/>
+      <path d="M5 10c1.5 0 3 .5 4 2"/><path d="M19 10c-1.5 0-3 .5-4 2"/>
+      <path d="M3 16c2 0 4-1 5.5-3"/><path d="M21 16c-2 0-4-1-5.5-3"/>
+    </svg>
+    SmartAssist
+  </a>
+  <div class="nav-links">
+    <a href="#how-it-works">How It Works</a>
+    <a href="#features">Features</a>
+    <a href="#tools">MCP Tools</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/jnrahme/SmartAssist" target="_blank">GitHub</a>
+    <a href="#install" class="nav-cta">Get Started</a>
+  </div>
+  <button class="mobile-menu-btn" onclick="toggleMobileNav()" aria-label="Menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+  </button>
+</nav>
+
+<section class="hero" id="hero">
+  <div class="hero-content" id="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Works with Claude Code &amp; Codex
+    </div>
+    <h1>
+      Your AI Learns From<br>
+      <span class="gradient-text">Every Correction</span>
+    </h1>
+    <p class="hero-sub">
+      Turn feedback into permanent improvements. No retraining. No prompts. Just smarter AI.
+    </p>
+    <div class="hero-actions">
+      <a href="#install" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Install SmartAssist
+      </a>
+      <a href="#how-it-works" class="btn-secondary">
+        See How It Works
+      </a>
+    </div>
+    <p class="hero-microcopy">Free &middot; Open source &middot; 60 seconds to install</p>
+
+    <div class="hero-panels">
+      <div class="hero-panel before">
+        <div class="hero-panel-label">Before SmartAssist</div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
+            <span class="terminal-title">terminal</span>
+          </div>
+          <div class="terminal-body">
+            <div><span class="comment">You:</span> <span class="output">"Don't mock the database"</span></div>
+            <div><span class="output">AI: Uses mocks anyway</span></div>
+            <div style="margin-top:10px"><span class="comment">You:</span> <span class="output">"I said no mocks!"</span></div>
+            <div><span class="output">AI: Still uses mocks</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-panel after">
+        <div class="hero-panel-label">With SmartAssist</div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span>
+            <span class="terminal-title">terminal</span>
+          </div>
+          <div class="terminal-body">
+            <div><span class="comment">Session starts...</span></div>
+            <div><span class="success">&#10003; Lesson #47 injected:</span> <span class="lesson">"Use real DB, never mock"</span></div>
+            <div style="margin-top:10px"><span class="comment">You:</span> <span class="cmd">"Write the test"</span></div>
+            <div><span class="output">AI: Creates test with real database</span> <span class="success">&#10003;</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scroll-indicator" id="scroll-indicator">
+    <div class="scroll-mouse"></div>
+    <span>Scroll to explore</span>
+  </div>
+</section>
+
+<div class="section" style="padding-top:0;padding-bottom:0">
+  <div class="section-inner">
+    <div class="stats-glass">
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-item"><div class="stat-value">8</div><div class="stat-label">MCP Tools to<br>Manage Memory</div></div>
+        <div class="stat-item"><div class="stat-value">5</div><div class="stat-label">Lifecycle<br>Hooks</div></div>
+        <div class="stat-item"><div class="stat-value">418+</div><div class="stat-label">Tests<br>Passing</div></div>
+        <div class="stat-item"><div class="stat-value">&lt;100ms</div><div class="stat-label">Instant<br>Injection</div></div>
+        <div class="stat-item"><div class="stat-value">BGE-M3</div><div class="stat-label">Production-Grade<br>Embeddings</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="section" id="how-it-works">
+  <div class="section-inner">
+    <div class="glass-panel">
+      <div class="section-label violet">How It Works</div>
+      <h2 class="section-title">Five steps to a smarter AI</h2>
+      <p class="section-desc">SmartAssist creates a feedback loop that turns every correction into permanent improvement.</p>
+      <div class="pipeline">
+        <div class="pipeline-step"><div class="pipeline-step-num">1</div><h3>React</h3><p>Give <code>:)</code> or <code>:(</code> after any response</p></div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step"><div class="pipeline-step-num">2</div><h3>Learn</h3><p>A lesson is created from full context</p></div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step"><div class="pipeline-step-num">3</div><h3>Rank</h3><p>Thompson Sampling finds what works</p></div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step"><div class="pipeline-step-num">4</div><h3>Inject</h3><p>Best lessons added to every prompt</p></div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step"><div class="pipeline-step-num">5</div><h3>Improve</h3><p>Your AI gets it right the first time</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="section-inner">
+    <div class="glass-panel">
+      <div class="section-label blue">Features</div>
+      <h2 class="section-title">Everything you need for AI memory</h2>
+      <p class="section-desc">A complete system that captures, stores, ranks, and retrieves project-specific knowledge.</p>
+      <div class="features-grid">
+        <div class="feature-card" style="--card-accent: var(--violet)">
+          <div class="feature-icon" style="background:rgba(139,92,246,.1);color:var(--violet)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <h3>Find the Right Lesson, Every Time</h3>
+          <p>BGE-M3 + LanceDB hybrid search with cross-encoder reranking</p>
+        </div>
+        <div class="feature-card" style="--card-accent: var(--blue)">
+          <div class="feature-icon" style="background:rgba(56,189,248,.1);color:var(--blue)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          </div>
+          <h3>Lessons That Prove Themselves</h3>
+          <p>Per-lesson Thompson Sampling &mdash; proven lessons rank higher, new ones get fair exploration, bad ones sink automatically</p>
+        </div>
+        <div class="feature-card" style="--card-accent: var(--emerald)">
+          <div class="feature-icon" style="background:rgba(52,211,153,.1);color:var(--emerald)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <h3>Context at the Right Moment</h3>
+          <p>5 lifecycle hooks inject knowledge on prompt, session start, and tool use</p>
+        </div>
+        <div class="feature-card" style="--card-accent: var(--pink)">
+          <div class="feature-icon" style="background:rgba(232,121,249,.1);color:var(--pink)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m-7-3.5l5.2-3m3.6-2.1L19 1.5m0 17l-5.2-3m-3.6-2.1L5 16.5"/></svg>
+          </div>
+          <h3>Full Control From Any Conversation</h3>
+          <p>8 MCP tools to search, create, boost, demote, and merge lessons</p>
+        </div>
+        <div class="feature-card" style="--card-accent: var(--amber)">
+          <div class="feature-icon" style="background:rgba(251,191,36,.1);color:var(--amber)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          </div>
+          <h3>Dual-Memory Injection</h3>
+          <p>MemAlign pattern: injects project rules (semantic memory) alongside past corrections (episodic memory) for richer context</p>
+        </div>
+        <div class="feature-card" style="--card-accent: var(--cyan)">
+          <div class="feature-icon" style="background:rgba(34,211,238,.1);color:var(--cyan)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          </div>
+          <h3>Every Repo Gets Its Own Brain</h3>
+          <p>Isolated lessons, vectors, and analytics per project</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="tools">
+  <div class="section-inner">
+    <div class="glass-panel">
+      <div class="section-label cyan">MCP Tools</div>
+      <h2 class="section-title">Full control over your knowledge base</h2>
+      <p class="section-desc">Eight MCP tools let you and your AI manage lessons directly from any conversation.</p>
+      <div class="tools-layout">
+        <div class="tool-list">
+          <button class="tool-list-item active" onclick="switchTool(0)">rag_search</button>
+          <button class="tool-list-item" onclick="switchTool(1)">rag_dashboard</button>
+          <button class="tool-list-item" onclick="switchTool(2)">rag_feedback</button>
+          <button class="tool-list-item" onclick="switchTool(3)">create_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(4)">compare_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(5)">boost_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(6)">demote_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(7)">merge_lessons</button>
+        </div>
+        <div class="tool-detail">
+          <div class="tool-detail-name">rag_search</div>
+          <div class="tool-detail-desc">Search your project knowledge base for relevant lessons, corrections, and conventions.</div>
+          <div class="tool-detail-example"><span style="color:var(--emerald)">&gt;</span> rag_search("database testing patterns")<br><br>Found 3 lessons:<br>&nbsp;&nbsp;#47 Use real DB connections in tests<br>&nbsp;&nbsp;#23 Prefer transactions for test isolation<br>&nbsp;&nbsp;#51 Mock only external APIs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="install">
+  <div class="section-inner">
+    <div class="glass-panel">
+      <div class="section-label amber">Install</div>
+      <h2 class="section-title">One command. Any platform.</h2>
+      <p class="section-desc">Choose your preferred method and you're up and running in under a minute.</p>
+
+      <div class="install-tabs" role="tablist">
+        <button class="install-tab active" onclick="switchTab('npm')" role="tab">npm</button>
+        <button class="install-tab" onclick="switchTab('brew')" role="tab">macOS (Homebrew)</button>
+        <button class="install-tab" onclick="switchTab('curl')" role="tab">curl</button>
+        <button class="install-tab" onclick="switchTab('pip')" role="tab">pip / pipx</button>
+      </div>
+
+      <div class="install-panel" id="panel-brew">
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> brew install smartassist-memory/tap/smartassist</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'brew install smartassist-memory/tap/smartassist')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <div class="install-step-header">Then run:</div>
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> cd my-project && smartassist setup</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'cd my-project && smartassist setup')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <p class="install-note">Recommended for macOS. Auto-updates with <code>brew upgrade smartassist</code>.</p>
+      </div>
+      <div class="install-panel" id="panel-curl">
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> curl -fsSL https://smartassist-memory.com/install | sh</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'curl -fsSL https://smartassist-memory.com/install | sh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <div class="install-step-header">Then run:</div>
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> cd my-project && smartassist setup</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'cd my-project && smartassist setup')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <p class="install-note">Works on macOS and Linux. Detects OS and architecture automatically.</p>
+      </div>
+      <div class="install-panel active" id="panel-npm">
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> npm install -g smartassist-memory</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'npm install -g smartassist-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <div class="install-step-header">Then run:</div>
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> cd my-project && smartassist setup</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'cd my-project && smartassist setup')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <p class="install-note">Thin wrapper that downloads the native binary on install.</p>
+      </div>
+      <div class="install-panel" id="panel-pip">
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> pipx install smartassist</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'pipx install smartassist')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <div class="install-step-header">Then run:</div>
+        <div class="install-cmd">
+          <code><span class="prompt">$</span> cd my-project && smartassist setup</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'cd my-project && smartassist setup')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+        </div>
+        <p class="install-note">Python-native install. Requires Python 3.10+.</p>
+      </div>
+
+      <p class="install-compat-line">Works on macOS, Linux, and CI environments &middot; Python 3.10+</p>
+    </div>
+  </div>
+</section>
+
+<section class="section cta-section">
+  <div class="section-inner">
+    <h2 class="cta-title">Stop Repeating Yourself to Your AI</h2>
+    <p class="cta-desc">Install SmartAssist and make every project smarter from day one.</p>
+    <a href="#install" class="btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Install SmartAssist
+    </a>
+    <p class="cta-sub">Free and open source &middot; Works with Claude Code and Codex</p>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-left">Built by <strong>Joey Rahme</strong> &mdash; BUSL-1.1 License</div>
+  <div class="footer-links">
+    <a href="https://github.com/jnrahme/SmartAssist" target="_blank">GitHub</a>
+    <a href="https://github.com/jnrahme/SmartAssist/wiki" target="_blank">Wiki</a>
+    <a href="https://github.com/jnrahme/SmartAssist/issues" target="_blank">Issues</a>
+    <a href="#install">Install</a>
+  </div>
+</footer>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ═══ PREMIUM NEURAL NETWORK — spherical, breathing, atmospheric ═══
+const container = document.getElementById('scene-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x030712, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x030712, 0.012);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
+camera.position.set(0, 0, 55);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.6, 0.8, 0.55);
+composer.addPass(bloom);
+
+const NODE_COUNT = 120;
+const CONN_DIST = 12;
+const SPREAD = 35;
+const PULSE_COUNT = 35;
+
+const palette = [
+  new THREE.Color(0x8b5cf6),
+  new THREE.Color(0x38bdf8),
+  new THREE.Color(0x8b5cf6),
+  new THREE.Color(0x38bdf8),
+  new THREE.Color(0x34d399),
+];
+
+const nodeGroup = new THREE.Group();
+scene.add(nodeGroup);
+
+const sphereGeo = new THREE.SphereGeometry(1, 12, 8);
+const nodes = [];
+
+const gridOffsetX = -(GRID_COLS - 1) * GRID_SPACING_X / 2;
+const gridOffsetY = -(GRID_ROWS - 1) * GRID_SPACING_Y / 2;
+
+for (let row = 0; row < GRID_ROWS; row++) {
+  for (let col = 0; col < GRID_COLS; col++) {
+    const x = gridOffsetX + col * GRID_SPACING_X;
+    const y = gridOffsetY + row * GRID_SPACING_Y;
+    const z = 0;
+
+    const color = palette[Math.floor(Math.random() * palette.length)];
+    const size = 0.1 + Math.random() * 0.1;
+
+    const mat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.9,
+    });
+    const mesh = new THREE.Mesh(sphereGeo, mat);
+    mesh.position.set(x, y, z);
+    mesh.scale.setScalar(size);
+    nodeGroup.add(mesh);
+
+    const spriteMat = new THREE.SpriteMaterial({
+      color, transparent: true, opacity: 0.25,
+      blending: THREE.AdditiveBlending,
+    });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.setScalar(size * 2);
+    mesh.add(sprite);
+
+    const isEdge = row === 0 || row === GRID_ROWS - 1 || col === 0 || col === GRID_COLS - 1;
+
+    nodes.push({
+      mesh, color, size,
+      baseX: x, baseY: y,
+      row, col, isEdge,
+      phase: (col + row) * 0.5,
+    });
+  }
+}
+
+// --- Connections ---
+const connections = [];
+for (let i = 0; i < nodes.length; i++) {
+  const ni = nodes[i];
+  for (let j = i + 1; j < nodes.length; j++) {
+    const nj = nodes[j];
+    const dx = ni.baseX - nj.baseX;
+    const dy = ni.baseY - nj.baseY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < CONN_DIST) {
+      connections.push({ from: i, to: j, dist });
+    }
+  }
+}
+
+const linePositions = new Float32Array(connections.length * 6);
+const lineColors = new Float32Array(connections.length * 6);
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(lineColors, 3));
+const lineMat = new THREE.LineBasicMaterial({
+  vertexColors: true, transparent: true,
+  opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const linesMesh = new THREE.LineSegments(lineGeo, lineMat);
+scene.add(linesMesh);
+
+// --- Flow Pulses (edge -> center) ---
+const pulseGeo = new THREE.SphereGeometry(1, 8, 6);
+const pulses = [];
+
+function pickEdgeNode() {
+  const edgeNodes = nodes.filter(n => n.isEdge);
+  return nodes.indexOf(edgeNodes[Math.floor(Math.random() * edgeNodes.length)]);
+}
+
+function pickCenterNode() {
+  const cx = GRID_COLS / 2, cy = GRID_ROWS / 2;
+  const centerNodes = nodes.filter(n => {
+    const dc = Math.abs(n.col - cx) + Math.abs(n.row - cy);
+    return dc < 4;
+  });
+  return nodes.indexOf(centerNodes[Math.floor(Math.random() * centerNodes.length)]);
+}
+
+// Build adjacency for pathfinding
+const adjacency = new Array(nodes.length).fill(null).map(() => []);
+for (const conn of connections) {
+  adjacency[conn.from].push(conn.to);
+  adjacency[conn.to].push(conn.from);
+}
+
+function findPath(startIdx, endIdx) {
+  // Simple BFS
+  const visited = new Set();
+  const queue = [[startIdx]];
+  visited.add(startIdx);
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const current = path[path.length - 1];
+    if (current === endIdx) return path;
+    for (const neighbor of adjacency[current]) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push([...path, neighbor]);
+      }
+    }
+  }
+  return null;
+}
+
+for (let i = 0; i < PULSE_COUNT; i++) {
+  const color = palette[Math.floor(Math.random() * palette.length)];
+  const mat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.8,
+  });
+  const mesh = new THREE.Mesh(pulseGeo, mat);
+  mesh.scale.setScalar(0.1);
+  mesh.visible = false;
+  scene.add(mesh);
+
+  const gMat = new THREE.SpriteMaterial({
+    color, transparent: true, opacity: 0.35,
+    blending: THREE.AdditiveBlending,
+  });
+  const glow = new THREE.Sprite(gMat);
+  glow.scale.setScalar(1.0);
+  mesh.add(glow);
+
+  pulses.push({
+    mesh,
+    path: null,
+    pathIndex: 0,
+    segmentT: 0,
+    speed: 0.006 + Math.random() * 0.006,
+    active: false,
+    cooldown: Math.random() * 150,
+  });
+}
+
+// --- Stars ---
+const starCount = 200;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  starPos[i*3]   = (Math.random() - 0.5) * 300;
+  starPos[i*3+1] = (Math.random() - 0.5) * 300;
+  starPos[i*3+2] = (Math.random() - 0.5) * 300;
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({
+  color: 0x334155, size: 0.3, transparent: true,
+  opacity: 0.15, blending: THREE.AdditiveBlending,
+});
+scene.add(new THREE.Points(starGeo, starMat));
+
+// --- Interaction ---
+const mouse = { x: 0, y: 0 };
+let scrollY = 0;
+window.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+window.addEventListener('scroll', () => { scrollY = window.scrollY; }, { passive: true });
+
+function onResize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  const scrollFactor = Math.min(scrollY / window.innerHeight, 3);
+
+  // Camera: fixed at z=80, subtle mouse parallax, recede on scroll
+  camera.position.x = mouse.x * 3;
+  camera.position.y = mouse.y * 3;
+  camera.position.z = 80 + scrollFactor * 20;
+  camera.lookAt(0, 0, 0);
+
+  bloom.strength = Math.max(0.4, 0.8 - scrollFactor * 0.3);
+
+  // Gentle undulation
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    const undulation = Math.sin(t * 0.4 + n.phase) * 0.8;
+    n.mesh.position.y = n.baseY + undulation;
+
+    const sprite = n.mesh.children[0];
+    if (sprite) {
+      sprite.material.opacity = 0.15 + Math.sin(t * 1.5 + n.phase) * 0.08;
+    }
+  }
+
+  // Update connections
+  for (let c = 0; c < connections.length; c++) {
+    const conn = connections[c];
+    const pi = nodes[conn.from].mesh.position;
+    const pj = nodes[conn.to].mesh.position;
+    const k = c * 6;
+    linePositions[k] = pi.x; linePositions[k+1] = pi.y; linePositions[k+2] = pi.z;
+    linePositions[k+3] = pj.x; linePositions[k+4] = pj.y; linePositions[k+5] = pj.z;
+    const ci = nodes[conn.from].color, cj = nodes[conn.to].color;
+    const b = 0.3;
+    lineColors[k] = ci.r*b; lineColors[k+1] = ci.g*b; lineColors[k+2] = ci.b*b;
+    lineColors[k+3] = cj.r*b; lineColors[k+4] = cj.g*b; lineColors[k+5] = cj.b*b;
+  }
+  lineGeo.attributes.position.needsUpdate = true;
+  lineGeo.attributes.color.needsUpdate = true;
+
+  // Flow pulses along paths
+  for (const p of pulses) {
+    if (!p.active) {
+      p.cooldown--;
+      if (p.cooldown <= 0) {
+        const from = pickEdgeNode();
+        const to = pickCenterNode();
+        if (from >= 0 && to >= 0 && from !== to) {
+          const path = findPath(from, to);
+          if (path && path.length > 1) {
+            p.path = path;
+            p.pathIndex = 0;
+            p.segmentT = 0;
+            p.active = true;
+            p.mesh.visible = true;
+          } else {
+            p.cooldown = 20;
+          }
+        } else {
+          p.cooldown = 20;
+        }
+      }
+    }
+    if (p.active && p.path) {
+      p.segmentT += p.speed;
+      if (p.segmentT >= 1) {
+        p.segmentT = 0;
+        p.pathIndex++;
+        if (p.pathIndex >= p.path.length - 1) {
+          p.active = false;
+          p.mesh.visible = false;
+          p.cooldown = 40 + Math.random() * 80;
+          continue;
+        }
+      }
+      const a = nodes[p.path[p.pathIndex]].mesh.position;
+      const b = nodes[p.path[p.pathIndex + 1]].mesh.position;
+      p.mesh.position.lerpVectors(a, b, p.segmentT);
+      const s = 0.08 + Math.sin(p.segmentT * Math.PI) * 0.06;
+      p.mesh.scale.setScalar(s);
+      p.mesh.children[0].scale.setScalar(s * 8);
+      p.mesh.children[0].material.opacity = 0.2 + Math.sin(p.segmentT * Math.PI) * 0.2;
+    }
+  }
+
+  composer.render();
+}
+animate();
+
+// --- GSAP Animations ---
+gsap.registerPlugin(ScrollTrigger);
+
+gsap.to('#hero-content', {
+  opacity: 1, y: 0, duration: 0.9,
+  ease: 'power2.out', delay: 0.2,
+  onComplete: () => {
+    ScrollTrigger.create({
+      trigger: '#hero',
+      start: 'top top',
+      end: 'bottom top',
+      scrub: true,
+      animation: gsap.fromTo('#hero-content',
+        { opacity: 1, y: 0 },
+        { opacity: 0, y: -100 }
+      ),
+    });
+  }
+});
+gsap.to('#scroll-indicator', {
+  opacity: 1, duration: 1, delay: 1.2,
+});
+ScrollTrigger.create({
+  trigger: '#hero',
+  start: '10% top',
+  end: '30% top',
+  scrub: true,
+  animation: gsap.fromTo('#scroll-indicator', { opacity: 1 }, { opacity: 0 }),
+});
+
+ScrollTrigger.create({
+  start: 50,
+  onEnter: () => document.getElementById('nav').classList.add('scrolled'),
+  onLeaveBack: () => document.getElementById('nav').classList.remove('scrolled'),
+});
+
+document.querySelectorAll('.glass-panel').forEach(panel => {
+  gsap.from(panel, {
+    scrollTrigger: { trigger: panel, start: 'top 85%', end: 'top 50%', scrub: false },
+    y: 60, opacity: 0,
+    duration: 0.7, ease: 'power2.out',
+  });
+});
+
+document.querySelectorAll('.feature-card').forEach((card, i) => {
+  gsap.from(card, {
+    scrollTrigger: { trigger: card, start: 'top 90%' },
+    y: 30, opacity: 0,
+    duration: 0.5, delay: i % 3 * 0.08, ease: 'power2.out',
+  });
+});
+
+// Pipeline steps stagger
+document.querySelectorAll('.pipeline-step').forEach((step, i) => {
+  gsap.from(step, {
+    scrollTrigger: { trigger: step, start: 'top 88%' },
+    y: 30, opacity: 0,
+    duration: 0.5, delay: i * 0.12, ease: 'power2.out',
+  });
+});
+
+// Pipeline connectors fade in after their left step
+document.querySelectorAll('.pipeline-connector').forEach((conn, i) => {
+  gsap.from(conn, {
+    scrollTrigger: { trigger: conn, start: 'top 88%' },
+    opacity: 0,
+    duration: 0.3, delay: i * 0.12 + 0.1, ease: 'power2.out',
+  });
+});
+
+gsap.from('.cta-title', {
+  scrollTrigger: { trigger: '.cta-section', start: 'top 80%' },
+  y: 40, opacity: 0, duration: 0.7, ease: 'power2.out',
+});
+
+// Feature card spotlight
+document.querySelectorAll('.feature-card').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    card.style.setProperty('--mx', ((e.clientX - rect.left) / rect.width * 100) + '%');
+    card.style.setProperty('--my', ((e.clientY - rect.top) / rect.height * 100) + '%');
+  });
+});
+</script>
+
+<script>
+const toolData = [
+  { name: 'rag_search', desc: 'Search your project knowledge base for relevant lessons, corrections, and conventions.', example: '> rag_search("database testing patterns")\n\nFound 3 lessons:\n  #47 Use real DB connections in tests\n  #23 Prefer transactions for test isolation\n  #51 Mock only external APIs' },
+  { name: 'rag_dashboard', desc: 'View category reliability, corpus health, and feedback metrics at a glance.', example: '> rag_dashboard()\n\n  Categories:  12 active\n  Lessons:     47 total, 38 positive\n  Reliability: 81% average' },
+  { name: 'rag_feedback', desc: 'Record whether a suggestion was helpful to train the ranking system.', example: '> rag_feedback(lesson_id=47, helpful=true)\n\n\u2713 Feedback recorded\n  Lesson #47 score: 0.72 \u2192 0.78' },
+  { name: 'create_lesson', desc: 'Save a new project-specific lesson synthesized from the current conversation context.', example: '> create_lesson("Always use snake_case for Python functions")\n\n\u2713 Lesson #52 created\n  Category: code_style\n  Embedded and indexed' },
+  { name: 'compare_lesson', desc: 'Draft a lesson for A/B comparison without committing it to the knowledge base.', example: '> compare_lesson("Prefer pathlib over os.path")\n\n  Draft created (not saved)\n  Compare against lesson #31\n  Use rag_feedback to pick winner' },
+  { name: 'boost_lesson', desc: 'Increase a lesson\'s Thompson Sampling priority after confirmed positive impact.', example: '> boost_lesson(lesson_id=47)\n\n\u2713 Lesson #47 boosted\n  Priority: normal \u2192 high\n  Will appear more frequently' },
+  { name: 'demote_lesson', desc: 'Reduce a lesson\'s priority or retire it after repeated negative feedback.', example: '> demote_lesson(lesson_id=12)\n\n\u2713 Lesson #12 demoted\n  Priority: normal \u2192 low\n  Will appear less frequently' },
+  { name: 'merge_lessons', desc: 'Combine overlapping or duplicate lessons into one stronger, unified lesson.', example: '> merge_lessons(ids=[23, 31])\n\n\u2713 Merged into lesson #53\n  Combined context from both\n  Originals archived' },
+];
+
+function switchTool(index) {
+  const items = document.querySelectorAll('.tool-list-item');
+  items.forEach((item, i) => item.classList.toggle('active', i === index));
+  const tool = toolData[index];
+  const detail = document.querySelector('.tool-detail');
+  detail.querySelector('.tool-detail-name').textContent = tool.name;
+  detail.querySelector('.tool-detail-desc').textContent = tool.desc;
+  detail.querySelector('.tool-detail-example').innerHTML = tool.example.replace(/\n/g, '<br>').replace(/^(&gt;|>)/, '<span style="color:var(--emerald)">$&</span>').replace(/(\u2713)/g, '<span style="color:var(--emerald)">$1</span>').replace(/(\u2192)/g, '<span style="color:var(--blue)">$1</span>');
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.install-panel').forEach(p => p.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('panel-' + id).classList.add('active');
+}
+function copyCmd(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
+    }, 2000);
+  });
+}
+function toggleMobileNav() {
+  const links = document.querySelector('.nav-links');
+  if (links.style.display === 'flex') { links.style.display = 'none'; }
+  else {
+    links.style.display = 'flex'; links.style.position = 'fixed';
+    links.style.top = '72px'; links.style.left = '0'; links.style.right = '0';
+    links.style.flexDirection = 'column'; links.style.padding = '20px';
+    links.style.background = 'rgba(3,7,18,.95)';
+    links.style.backdropFilter = 'blur(20px)';
+    links.style.borderBottom = '1px solid var(--border)';
+    links.style.zIndex = '99'; links.style.gap = '16px';
+  }
+}
+document.querySelectorAll('.nav-links a').forEach(a => {
+  a.addEventListener('click', () => {
+    if (window.innerWidth <= 900) document.querySelector('.nav-links').style.display = 'none';
+  });
+});
+</script>
+</body>
+</html>
