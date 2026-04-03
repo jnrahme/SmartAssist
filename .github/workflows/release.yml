@@ -12,11 +12,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
+          - os: macos-latest
             target: darwin-arm64
-            python: '3.12'
-          - os: macos-13
-            target: darwin-amd64
             python: '3.12'
           - os: ubuntu-latest
             target: linux-amd64
