@@ -430,28 +430,63 @@ def _context_to_lesson(user_context):
     return text
 
 
-def _infer_category(reinforcement_results, storage_path):
-    """Infer lesson category from boosted lessons via majority vote."""
-    if not reinforcement_results:
-        return "code_edit"
+_CATEGORY_KEYWORDS = {
+    "testing": ["test", "jest", "mock", "e2e", "coverage", "detox", "assertion", "spec"],
+    "git": ["git", "commit", "branch", "merge", "push", "rebase", "ticket"],
+    "code_edit": ["style", "lint", "format", "component", "import", "color", "theme",
+                  "pattern", "refactor"],
+    "architecture": ["architecture", "structure", "directory", "module", "folder"],
+    "security": ["security", "auth", "credential", "token", "secret", "env"],
+    "debugging": ["debug", "error", "crash", "log", "stack trace"],
+    "pr_review": ["pr", "review", "pull request", "approval"],
+}
 
-    curated_path = storage_path / "curated_lessons.json"
-    curated_map = {}
-    if curated_path.exists():
-        try:
-            lessons = json.loads(curated_path.read_text())
-            curated_map = {l.get("id", ""): l.get("category", "") for l in lessons}
-        except Exception:
-            pass
 
-    counts = {}
-    for lid, _, _, _ in reinforcement_results:
-        cat = curated_map.get(lid, "")
-        if cat:
-            counts[cat] = counts.get(cat, 0) + 1
+def _infer_category_from_text(text):
+    """Infer category by keyword matching against the feedback text."""
+    lower = text.lower()
+    for cat, keywords in _CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if " " in kw:
+                if kw in lower:
+                    return cat
+            elif len(kw) <= 3:
+                if re.search(rf"\b{re.escape(kw)}\b", lower):
+                    return cat
+            else:
+                if re.search(rf"\b{re.escape(kw)}", lower):
+                    return cat
+    return None
 
-    if counts:
-        return max(counts, key=counts.get)
+
+def _infer_category(reinforcement_results, storage_path, user_context=""):
+    """Infer lesson category from boosted lessons, then feedback text, then default."""
+    # 1. Majority vote from reinforced lessons
+    if reinforcement_results:
+        curated_path = storage_path / "curated_lessons.json"
+        curated_map = {}
+        if curated_path.exists():
+            try:
+                lessons = json.loads(curated_path.read_text())
+                curated_map = {l.get("id", ""): l.get("category", "") for l in lessons}
+            except Exception:
+                pass
+
+        counts = {}
+        for lid, _, _, _ in reinforcement_results:
+            cat = curated_map.get(lid, "")
+            if cat:
+                counts[cat] = counts.get(cat, 0) + 1
+
+        if counts:
+            return max(counts, key=counts.get)
+
+    # 2. Keyword match against the user's feedback text
+    if user_context:
+        matched = _infer_category_from_text(user_context)
+        if matched:
+            return matched
+
     return "code_edit"
 
 
@@ -465,7 +500,7 @@ def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
         return None, None
 
     storage_path = get_storage_path()
-    category = _infer_category(reinforcement_results, storage_path)
+    category = _infer_category(reinforcement_results, storage_path, user_context)
 
     new_id, error = add_to_curated(storage_path, lesson_text, category)
     if error:

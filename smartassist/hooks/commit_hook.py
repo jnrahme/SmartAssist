@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-Commit Hook - Captures learnings during git commit process.
-Called by Claude Code PreToolUse on Bash commands.
-Detects when a commit just happened and extracts lessons from the diff.
+PreToolUse hook for SmartAssist.
+
+Responsibilities:
+1. Enforce hard gates before risky Bash/Edit/Write actions execute.
+2. Preserve the existing commit-capture side effect for Bash usage.
 """
 
 import sys
@@ -12,6 +14,7 @@ import time
 import re
 
 from smartassist.config import get_storage_path, get_project_root
+from smartassist.gates import build_pretool_hook_output, evaluate_pretool_gate
 
 
 def get_last_commit_info():
@@ -214,8 +217,12 @@ def extract_lessons_from_commit(commit_info, changed_files, diff_content):
     return lessons
 
 
-def capture_commit_lessons():
-    """Main entry: detect recent commit and capture lessons."""
+def capture_commit_lessons(*, verbose: bool = True):
+    """Detect a recent commit and promote commit-based lessons.
+
+    When running inside Claude's PreToolUse lifecycle we keep this silent unless
+    invoked manually, because hook stdout must stay valid JSON when gates fire.
+    """
     if not was_recent_commit():
         return
 
@@ -274,14 +281,50 @@ def capture_commit_lessons():
     except Exception:
         pass
 
-    print(f"\nCaptured {len(lessons)} lesson(s) from commit {commit_info['sha'][:8]}")
-    for lesson in lessons:
-        icon = "+" if lesson["signal"] == "thumbs_up" else "!"
-        print(f"   {icon} [{lesson['category']}] {lesson['response'][:70]}")
+    if verbose:
+        print(f"\nCaptured {len(lessons)} lesson(s) from commit {commit_info['sha'][:8]}")
+        for lesson in lessons:
+            icon = "+" if lesson["signal"] == "thumbs_up" else "!"
+            print(f"   {icon} [{lesson['category']}] {lesson['response'][:70]}")
+
+
+def _load_hook_input():
+    """Read Claude hook JSON from stdin when available."""
+    try:
+        if sys.stdin.isatty():
+            return None
+    except Exception:
+        return None
+
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, EOFError):
+        return None
+
+    return payload if isinstance(payload, dict) else None
+
+
+def handle_pre_tool_use(hook_input: dict) -> None:
+    """Evaluate gates and then run any silent side effects."""
+    tool_name = str(hook_input.get("tool_name") or "").strip()
+    tool_input = hook_input.get("tool_input")
+    decision = evaluate_pretool_gate(tool_name, tool_input)
+
+    if decision is not None:
+        print(json.dumps(build_pretool_hook_output(decision)))
+        return
+
+    if tool_name == "Bash":
+        capture_commit_lessons(verbose=False)
 
 
 def main():
-    capture_commit_lessons()
+    hook_input = _load_hook_input()
+    if hook_input is not None:
+        handle_pre_tool_use(hook_input)
+        return
+
+    capture_commit_lessons(verbose=True)
 
 
 if __name__ == "__main__":

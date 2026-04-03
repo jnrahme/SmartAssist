@@ -67,6 +67,16 @@ class TestLaunchTmux:
     def skip_without_tmux(self):
         if not shutil.which("tmux"):
             pytest.skip("tmux not installed")
+        probe_session = f"{SESSION_NAME}-probe"
+        probe = subprocess.run(
+            ["tmux", "new-session", "-d", "-s", probe_session, "-x", "80", "-y", "24"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode != 0:
+            detail = (probe.stderr or probe.stdout or "tmux session creation unavailable").strip()
+            pytest.skip(detail)
+        subprocess.run(["tmux", "kill-session", "-t", probe_session], capture_output=True)
 
     def test_creates_session(self, tmp_path, skip_without_tmux):
         log = tmp_path / "test.log"

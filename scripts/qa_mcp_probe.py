@@ -6,9 +6,13 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+from smartassist.runtime import resolve_cli_invocation
 
 
 def _check_required_symbols(required_tools: set[str]) -> tuple[bool, list[str]]:
@@ -23,11 +27,20 @@ def run_probe(timeout_s: float, required_tools: set[str]) -> dict:
     if not ok:
         raise RuntimeError(f"Missing required MCP tool symbols: {', '.join(missing)}")
 
+    repo_root = Path(__file__).resolve().parents[1]
+    invocation = resolve_cli_invocation(
+        prefer_source_checkout=True,
+        start_path=repo_root,
+    )
+    env = os.environ.copy()
+    env.update(invocation.env)
+
     proc = subprocess.Popen(
-        ["smartassist", "serve"],
+        [*invocation.argv, "serve"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=env,
     )
     try:
         warmup_deadline = time.time() + timeout_s
@@ -39,10 +52,11 @@ def run_probe(timeout_s: float, required_tools: set[str]) -> dict:
                         "latency_ms": int((time.time() - t0) * 1000),
                         "required_tools": sorted(required_tools),
                         "startup": "graceful_exit",
+                        "command": invocation.label,
                     }
                 stderr = (proc.stderr.read() if proc.stderr else "")[:600]
                 raise RuntimeError(
-                    f"smartassist serve exited early with code {proc.returncode}. stderr: {stderr}"
+                    f"{invocation.label} serve exited early with code {proc.returncode}. stderr: {stderr}"
                 )
             time.sleep(0.2)
 
@@ -51,6 +65,7 @@ def run_probe(timeout_s: float, required_tools: set[str]) -> dict:
             "latency_ms": int((time.time() - t0) * 1000),
             "required_tools": sorted(required_tools),
             "startup": "healthy",
+            "command": invocation.label,
         }
     finally:
         proc.terminate()

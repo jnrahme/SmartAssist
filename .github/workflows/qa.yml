@@ -25,8 +25,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Install pipx
+        run: python -m pip install pipx
+
       - name: Run QA harness (dry-run)
         run: bash scripts/qa_autodiagnose.sh --dry-run --max-attempts 2
+
+      - name: Run package smoke (dry-run)
+        run: bash scripts/qa_package_smoke.sh --dry-run
+
+      - name: Run pipx smoke (dry-run)
+        run: bash scripts/qa_pipx_smoke.sh --dry-run
 
       - name: Validate QA script tests
         run: uv run pytest -q tests/test_qa_workflow.py

@@ -25,12 +25,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-if ! command -v smartassist >/dev/null 2>&1; then
-  echo "[qa_mcp_protocol] FAIL: smartassist CLI not found in PATH" >&2
-  exit 1
-fi
-
 if command -v uv >/dev/null 2>&1; then
+  UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}" \
   PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
     uv run python scripts/qa_mcp_probe.py --timeout "$TIMEOUT" --required-tools "$REQUIRED_TOOLS"
 else

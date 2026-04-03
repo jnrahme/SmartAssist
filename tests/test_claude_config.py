@@ -10,10 +10,24 @@ from smartassist.claude_config import (
 
 
 class TestClaudeConfigHelpers:
-    def test_prefers_modern_claude_json_over_legacy(self, monkeypatch, tmp_path):
+    def test_prefers_project_local_mcp_over_user_and_legacy(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path))
         (tmp_path / ".claude").mkdir(exist_ok=True)
 
+        project = tmp_path / "project"
+        (project / "src").mkdir(parents=True)
+        (project / ".mcp.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "smartassist": {
+                            "command": "python",
+                            "args": ["-m", "smartassist.mcp_server"],
+                        }
+                    }
+                }
+            )
+        )
         (tmp_path / ".claude.json").write_text(
             json.dumps(
                 {
@@ -39,20 +53,24 @@ class TestClaudeConfigHelpers:
             )
         )
 
+        monkeypatch.chdir(project / "src")
         status = get_mcp_status()
 
         assert status["registered"] is True
-        assert status["source"] == "user"
-        assert status["source_label"] == "~/.claude.json (user)"
+        assert status["source"] == "project_local"
+        assert status["source_label"] == f"{project / '.mcp.json'} (project)"
+        assert "~/.claude.json (user)" in status["duplicate_sources"]
         assert "~/.claude/mcp.json (legacy)" in status["duplicate_sources"]
 
     def test_detects_project_scoped_registration(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path))
+        project = tmp_path / "project"
+        (project / "src").mkdir(parents=True)
         (tmp_path / ".claude.json").write_text(
             json.dumps(
                 {
                     "projects": {
-                        "/tmp/project": {
+                        str(project): {
                             "mcpServers": {
                                 "smartassist": {
                                     "command": "python",
@@ -65,11 +83,42 @@ class TestClaudeConfigHelpers:
             )
         )
 
-        entries = get_registered_mcp_entries()
+        entries = get_registered_mcp_entries(start_path=project / "src")
 
         assert len(entries) == 1
         assert entries[0]["source"] == "project"
-        assert entries[0]["source_label"] == "~/.claude.json (project: /tmp/project)"
+        assert entries[0]["source_label"] == f"~/.claude.json (project: {project})"
+        assert entries[0]["applies_to_current_context"] is True
+
+    def test_ignores_unrelated_project_scoped_registration(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        current_project = tmp_path / "current-project"
+        current_project.mkdir()
+        other_project = tmp_path / "other-project"
+        other_project.mkdir()
+        (tmp_path / ".claude.json").write_text(
+            json.dumps(
+                {
+                    "projects": {
+                        str(other_project): {
+                            "mcpServers": {
+                                "smartassist": {
+                                    "command": "python",
+                                    "args": ["-m", "smartassist.mcp_server"],
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        )
+
+        monkeypatch.chdir(current_project)
+        status = get_mcp_status()
+
+        assert status["registered"] is False
+        assert status["entries"] == []
+        assert len(status["all_entries"]) == 1
 
     def test_remove_legacy_mcp_servers_only_touches_smartassist_entries(
         self,

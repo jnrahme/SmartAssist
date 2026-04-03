@@ -4,6 +4,7 @@ SmartAssist CLI - Portable RAG learning system for Claude Code.
 
 Usage:
     smartassist setup         Configure Claude Code (MCP server + hooks + init)
+    smartassist doctor        Audit install readiness and runtime wiring
     smartassist uninstall     Remove SmartAssist from Claude Code config
     smartassist init          Initialize SmartAssist in current project
     smartassist serve         Start MCP server (stdio)
@@ -25,23 +26,127 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from smartassist.claude_config import SERVER_NAMES, get_mcp_status, remove_legacy_mcp_servers
+from smartassist.claude_config import (
+    ensure_project_mcp_server,
+    remove_legacy_mcp_servers,
+    remove_project_mcp_servers,
+    remove_project_state_mcp_servers,
+    remove_user_mcp_servers,
+)
+
+def _mcp_env() -> dict[str, str]:
+    return {
+        "HOME": str(Path.home()),
+        "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:"
+        + str(Path.home() / ".local" / "bin"),
+        "TMPDIR": "/tmp",
+    }
 
 
-def cmd_init():
+def _resolve_mcp_server_command() -> tuple[str, list[str]]:
+    smartassist_path = shutil.which("smartassist")
+    if smartassist_path:
+        real_path = Path(smartassist_path).resolve()
+        venv_python = str(real_path.parent / "python")
+        if Path(venv_python).exists():
+            return venv_python, ["-m", "smartassist.mcp_server"]
+        return smartassist_path, ["serve"]
+    return "smartassist", ["serve"]
+
+
+def _record_setup_note(message: str, log=None):
+    if log is None:
+        print(f"  {message}")
+    else:
+        log(message)
+
+
+def _ensure_project_mcp_registration(log=None) -> Path:
+    project_root = Path.cwd().resolve()
+    project_mcp_path = project_root / ".mcp.json"
+    command, args = _resolve_mcp_server_command()
+    env = _mcp_env()
+
+    if remove_user_mcp_servers():
+        _record_setup_note(
+            "MCP server: removed stale ~/.claude.json user registration",
+            log=log,
+        )
+    if remove_project_state_mcp_servers(project_root):
+        _record_setup_note(
+            "MCP server: removed stale ~/.claude.json project registration",
+            log=log,
+        )
+    if remove_legacy_mcp_servers():
+        _record_setup_note(
+            "MCP server: removed stale ~/.claude/mcp.json registration",
+            log=log,
+        )
+    if remove_project_mcp_servers(project_root):
+        _record_setup_note(
+            f"MCP server: refreshed existing {project_mcp_path.name}",
+            log=log,
+        )
+
+    claude_bin = shutil.which("claude")
+    if claude_bin:
+        env_args = []
+        for key, value in env.items():
+            env_args.extend(["-e", f"{key}={value}"])
+        add_cmd = [
+            claude_bin,
+            "mcp",
+            "add",
+            "smartassist",
+            "-s",
+            "project",
+            *env_args,
+            "--",
+            command,
+            *args,
+        ]
+        result = subprocess.run(add_cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            _record_setup_note(
+                f"MCP server: registered via 'claude mcp add -s project' ({project_mcp_path})",
+                log=log,
+            )
+            return project_mcp_path
+
+        error = result.stderr.strip() or "unknown error"
+        _record_setup_note(
+            f"MCP server: 'claude mcp add -s project' failed ({error}), "
+            "falling back to .mcp.json",
+            log=log,
+        )
+
+    mcp_path = ensure_project_mcp_server(
+        project_root=project_root,
+        command=command,
+        args=args,
+        env=env,
+    )
+    _record_setup_note(
+        f"MCP server: wrote project registration to {mcp_path}",
+        log=log,
+    )
+    return mcp_path
+
+
+def cmd_init(log=None):
     """Initialize SmartAssist in the current project."""
-    cwd = Path.cwd()
+    cwd = Path.cwd().resolve()
     data_dir = cwd / ".claude" / "smartassist"
     storage = data_dir / "data"
     lancedb = data_dir / "lancedb"
+    force = "--force" in sys.argv
+    already_initialized = data_dir.exists() and not force
 
-    if data_dir.exists():
+    if already_initialized:
         print(f"SmartAssist already initialized at {data_dir}")
         print("  Re-run with --force to reinitialize")
-        if "--force" not in sys.argv:
-            return 0
-
-    print(f"Initializing SmartAssist in {cwd}...")
+    else:
+        print(f"Initializing SmartAssist in {cwd}...")
 
     storage.mkdir(parents=True, exist_ok=True)
     lancedb.mkdir(parents=True, exist_ok=True)
@@ -79,9 +184,16 @@ def cmd_init():
         gitignore.write_text(f"# SmartAssist data\n{smartassist_entry}\n")
         print(f"  Created .gitignore")
 
+    mcp_path = _ensure_project_mcp_registration(log=log)
+
+    if already_initialized:
+        print(f"  MCP registration verified: {mcp_path}")
+        return 0
+
     print(f"\n  Created: {data_dir}/")
     print(f"    data/       - feedback logs, scores, curated lessons")
     print(f"    lancedb/    - vector database")
+    print(f"  MCP:          {mcp_path}")
     print(f"\nSmartAssist initialized successfully!")
     print(f"\nNext steps:")
     print(f"  1. Add lessons: smartassist seed")
@@ -103,6 +215,18 @@ def cmd_health():
     from smartassist.tools.health_check import main
 
     return main()
+
+
+def cmd_doctor():
+    """Audit SmartAssist install readiness for the current environment."""
+    from smartassist.tools.doctor import collect_doctor_report, report_to_text
+
+    report = collect_doctor_report()
+    if "--json" in sys.argv:
+        print(json.dumps(report, indent=2))
+    else:
+        print(report_to_text(report), end="")
+    return 0 if report["overall_status"] == "ready" else 1
 
 
 def cmd_migrate():
@@ -302,7 +426,7 @@ HOOK_DEFS = [
     },
     {
         "event": "PreToolUse",
-        "matcher": "Bash",
+        "matcher": "Bash|Edit|Write",
         "command": "smartassist-commit-hook",
     },
     {
@@ -411,10 +535,12 @@ def cmd_setup():
     print("Phase 2: Backing up config files...")
 
     mcp_path = claude_dir / "mcp.json"
+    project_mcp_path = Path.cwd().resolve() / ".mcp.json"
     claude_json_path = Path.home() / ".claude.json"
     settings_path = claude_dir / "settings.json"
 
     _backup_file(mcp_path, summary)
+    _backup_file(project_mcp_path, summary)
     _backup_file(claude_json_path, summary)
     _backup_file(settings_path, summary)
     # Shell rc backup happens inside _clean_stale_shell_aliases if needed
@@ -431,81 +557,7 @@ def cmd_setup():
     else:
         log("Shell cleanup: no stale aliases found")
 
-    # 3b. MCP server
-    smartassist_path = shutil.which("smartassist")
-    if smartassist_path:
-        real_path = Path(smartassist_path).resolve()
-        venv_python = str(real_path.parent / "python")
-        if not Path(venv_python).exists():
-            venv_python = smartassist_path
-            mcp_args = ["serve"]
-        else:
-            mcp_args = ["-m", "smartassist.mcp_server"]
-    else:
-        venv_python = "smartassist"
-        mcp_args = ["serve"]
-
-    claude_bin = shutil.which("claude")
-    if claude_bin:
-        for server_name in SERVER_NAMES:
-            subprocess.run(
-                [claude_bin, "mcp", "remove", server_name, "-s", "user"],
-                capture_output=True,
-            )
-        env_args = [
-            "-e",
-            f"HOME={Path.home()}",
-            "-e",
-            "PATH=/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:"
-            + str(Path.home() / ".local" / "bin"),
-            "-e",
-            "TMPDIR=/tmp",
-        ]
-        add_cmd = [
-            claude_bin,
-            "mcp",
-            "add",
-            "smartassist",
-            "-s",
-            "user",
-            *env_args,
-            "--",
-            venv_python,
-            *mcp_args,
-        ]
-        result = subprocess.run(add_cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            log("MCP server: registered via 'claude mcp add -s user'")
-            if remove_legacy_mcp_servers():
-                log("MCP server: removed stale ~/.claude/mcp.json registration")
-        else:
-            log(
-                f"MCP server: 'claude mcp add' failed ({result.stderr.strip()}), "
-                "falling back to mcp.json"
-            )
-            claude_bin = None
-
-    if not claude_bin:
-        if mcp_path.exists():
-            mcp_config = json.loads(mcp_path.read_text())
-        else:
-            mcp_config = {}
-        mcp_config.setdefault("mcpServers", {})
-        mcp_config["mcpServers"]["smartassist"] = {
-            "command": venv_python,
-            "args": mcp_args,
-            "env": {
-                "HOME": str(Path.home()),
-                "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:"
-                + str(Path.home() / ".local" / "bin"),
-                "TMPDIR": "/tmp",
-            },
-        }
-        from smartassist.config import atomic_write_json
-        atomic_write_json(mcp_path, mcp_config)
-        log("MCP server: added to ~/.claude/mcp.json (fallback)")
-
-    # 3c. Hooks — remove-then-add strategy via _configure_hooks()
+    # 3b. Hooks — remove-then-add strategy via _configure_hooks()
     if settings_path.exists():
         settings = json.loads(settings_path.read_text())
     else:
@@ -515,7 +567,7 @@ def cmd_setup():
     from smartassist.config import atomic_write_json
     atomic_write_json(settings_path, settings)
 
-    # 3d. Ensure ~/.local/bin in PATH
+    # 3c. Ensure ~/.local/bin in PATH
     local_bin = Path.home() / ".local" / "bin"
     path_dirs = os.environ.get("PATH", "").split(os.pathsep)
     if str(local_bin) not in path_dirs:
@@ -541,7 +593,7 @@ def cmd_setup():
     else:
         log("PATH: ~/.local/bin already in PATH")
 
-    # 3e. Verify all 7 CLI commands accessible
+    # 3d. Verify all 7 CLI commands accessible
     required_commands = ["smartassist", "claude-sa"] + SMARTASSIST_COMMANDS
     missing = [cmd for cmd in required_commands if not shutil.which(cmd)]
     if missing:
@@ -552,7 +604,7 @@ def cmd_setup():
 
     # ── Phase 4: Initialize project data ────────────────────────────────
     print("Phase 4: Initializing project data...")
-    cmd_init()
+    cmd_init(log=log)
 
     # ── Phase 5: Validate & report ──────────────────────────────────────
     print("Phase 5: Validating...")
@@ -597,20 +649,20 @@ def cmd_uninstall():
     """
     claude_dir = Path.home() / ".claude"
     removed = []
+    project_root = Path.cwd().resolve()
 
-    mcp_status = get_mcp_status()
-    claude_bin = shutil.which("claude")
+    if remove_project_mcp_servers(project_root):
+        removed.append(f"MCP server: removed from {project_root / '.mcp.json'}")
+    else:
+        removed.append("MCP server: no project-scoped .mcp.json registration found")
 
-    if claude_bin and any(entry["source"] == "user" for entry in mcp_status["entries"]):
-        for server_name in SERVER_NAMES:
-            subprocess.run(
-                [claude_bin, "mcp", "remove", server_name, "-s", "user"],
-                capture_output=True,
-                text=True,
-            )
+    if remove_project_state_mcp_servers(project_root):
+        removed.append("MCP server: removed from ~/.claude.json project config")
+    else:
+        removed.append("MCP server: no ~/.claude.json project-scoped registration found")
+
+    if remove_user_mcp_servers():
         removed.append("MCP server: removed from ~/.claude.json user config")
-    elif any(entry["source"] == "user" for entry in mcp_status["entries"]):
-        removed.append("MCP server: user config found but `claude` CLI unavailable")
     else:
         removed.append("MCP server: no user-scoped registration found")
 
@@ -769,6 +821,7 @@ def cmd_version():
 def main():
     commands = {
         "setup": cmd_setup,
+        "doctor": cmd_doctor,
         "uninstall": cmd_uninstall,
         "init": cmd_init,
         "serve": cmd_serve,
@@ -791,6 +844,7 @@ def main():
         print("Usage: smartassist <command> [options]\n")
         print("Commands:")
         print(f"  {'setup':<15} Configure Claude Code (MCP server + hooks + init)")
+        print(f"  {'doctor':<15} Audit install readiness and runtime wiring")
         print(f"  {'uninstall':<15} Remove SmartAssist from Claude Code config")
         print(f"  {'init':<15} Initialize SmartAssist in current project")
         print(f"  {'serve':<15} Start MCP server (stdio)")

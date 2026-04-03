@@ -487,6 +487,13 @@ def main():
             created_id, created_lesson = create_lesson_from_feedback(
                 user_context, sentiment, reinforcement_results,
             )
+            if created_id:
+                # Fire-and-forget: make lesson searchable via MCP rag_search
+                try:
+                    from smartassist.config import spawn_managed
+                    spawn_managed([sys.executable, "-m", "smartassist.hooks.vectorize_learnings"])
+                except Exception:
+                    pass
 
         try:
             storage_path = get_storage_path()

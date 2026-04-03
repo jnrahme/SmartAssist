@@ -30,8 +30,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Install pipx
+        run: python -m pip install pipx
+
       - name: Compile check
         run: python -m compileall -q smartassist tests
 
       - name: Run tests
         run: uv run pytest -q
+
+      - name: Run package smoke check
+        run: bash scripts/qa_package_smoke.sh
+
+      - name: Run pipx smoke check
+        run: bash scripts/qa_pipx_smoke.sh

@@ -21,5 +21,10 @@ uv.lock
 .env.*.local
 qa-artifacts/
 
+# Node (not part of SmartAssist)
+node_modules/
+package-lock.json
+package.json
+
 # SmartAssist data
 .claude/smartassist/

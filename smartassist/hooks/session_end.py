@@ -9,6 +9,7 @@ import json
 import subprocess
 from datetime import datetime
 
+from smartassist.boundary_packs import refresh_boundary_pack
 from smartassist.config import get_storage_path
 
 
@@ -62,6 +63,17 @@ def capture_session_learning():
         session_log = storage_path / "session_log.jsonl"
         with open(session_log, 'a', encoding='utf-8') as f:
             f.write(json.dumps(session_data) + '\n')
+
+        try:
+            pack = refresh_boundary_pack(storage_path)
+            promoted = len(pack.get("promoted_boundaries", []))
+            recent = len(pack.get("recent_mistakes", []))
+            print(
+                f"\nUpdated boundary pack: {promoted} promoted rule(s), "
+                f"{recent} recent lesson(s) carried forward"
+            )
+        except Exception as pack_exc:
+            print(f"Boundary pack refresh skipped: {pack_exc}")
 
         # Trigger vectorization of new learnings
         print("\nUpdating RAG database with new learnings...")
