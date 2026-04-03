@@ -1,6 +1,6 @@
 {
   "name": "smartassist-memory",
-  "version": "1.1.0-beta.4",
+  "version": "1.1.0-beta.5",
   "description": "AI memory that learns from developer feedback. Works with Claude Code and Codex.",
   "author": "Joey Rahme",
   "license": "BUSL-1.1",
