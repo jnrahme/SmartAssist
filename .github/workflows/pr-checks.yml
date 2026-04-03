@@ -39,8 +39,30 @@ jobs:
       - name: Run tests
         run: uv run pytest -q
 
+      - name: Run deterministic QA contract suite
+        run: |
+          uv run python -m smartassist.cli qa run --run-dir qa-artifacts/pr-check
+          uv run python -m smartassist.cli qa demo --run-dir qa-artifacts/pr-check --output qa-artifacts/pr-check/index.html
+
       - name: Run package smoke check
         run: bash scripts/qa_package_smoke.sh
 
       - name: Run pipx smoke check
         run: bash scripts/qa_pipx_smoke.sh
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-check-qa-artifacts
+          path: qa-artifacts/pr-check/**
+
+      - name: Publish QA summary
+        if: always()
+        run: |
+          echo "## Deterministic QA Contract Suite" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f qa-artifacts/pr-check/summary.txt ]; then
+            cat qa-artifacts/pr-check/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No QA summary file generated." >> "$GITHUB_STEP_SUMMARY"
+          fi

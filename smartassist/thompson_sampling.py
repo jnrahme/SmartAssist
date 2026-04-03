@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Dict
 from dataclasses import dataclass, asdict
 
-from smartassist.config import get_storage_path, atomic_write_json
+from smartassist.config import get_storage_path
+from smartassist.store import load_reliabilities_dict, save_reliabilities_dict
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class ThompsonSamplingModel:
             self.storage_path = get_storage_path()
         else:
             self.storage_path = Path(storage_path)
-        self.storage_path.mkdir(exist_ok=True)
+        self.storage_path.mkdir(parents=True, exist_ok=True)
 
         self.reliability_file = self.storage_path / "reliability_scores.json"
         self.half_life_days = half_life_days
@@ -71,13 +72,9 @@ class ThompsonSamplingModel:
 
     def _load_reliabilities(self) -> Dict[str, CategoryReliability]:
         """Load reliability scores from disk"""
-        if not self.reliability_file.exists():
-            return {}
-
         try:
-            with open(self.reliability_file, 'r') as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
+            data = load_reliabilities_dict(self.storage_path)
+        except Exception as exc:
             log.warning("Could not load reliability scores from %s: %s", self.reliability_file, exc)
             return {}
 
@@ -96,7 +93,7 @@ class ThompsonSamplingModel:
         for category, rel in self.reliabilities.items():
             data[category] = asdict(rel)
 
-        atomic_write_json(self.reliability_file, data)
+        save_reliabilities_dict(self.storage_path, data)
 
     def _apply_decay(self, category: str):
         """Apply exponential decay to reliability scores"""
@@ -179,21 +176,28 @@ class ThompsonSamplingModel:
         if category not in self.reliabilities:
             return 0.5  # Uninformed prior
 
+        self._apply_decay(category)
+        self._save_reliabilities()
         return self.reliabilities[category].get_success_rate()
 
     def get_weak_categories(self, threshold: float = 0.70) -> list[str]:
         """Get categories with success rate below threshold"""
         weak = []
-        for category, rel in self.reliabilities.items():
-            if rel.is_weak(threshold):
+        for category in list(self.reliabilities.keys()):
+            self._apply_decay(category)
+            if self.reliabilities[category].is_weak(threshold):
                 weak.append(category)
+        self._save_reliabilities()
         return weak
 
     def get_all_reliabilities(self) -> Dict[str, float]:
         """Get reliability scores for all categories"""
         scores = {}
-        for category in self.reliabilities.keys():
-            scores[category] = self.get_reliability(category)
+        for category in list(self.reliabilities.keys()):
+            self._apply_decay(category)
+            scores[category] = self.reliabilities[category].get_success_rate()
+        if scores:
+            self._save_reliabilities()
         return scores
 
     def get_stats(self) -> Dict:

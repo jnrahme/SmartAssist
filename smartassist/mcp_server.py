@@ -14,7 +14,6 @@ Provides tools:
 Runs via stdio transport. Entry point: `smartassist serve`
 """
 
-import math
 import json
 import sys
 import time
@@ -26,8 +25,8 @@ from datetime import datetime
 from mcp.server.fastmcp import FastMCP
 
 from smartassist.config import (
-    EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path,
-    atomic_write_json, locked_update_json, spawn_managed,
+    get_storage_path,
+    spawn_managed,
 )
 from smartassist.lesson_feedback import (
     load_lesson_scores,
@@ -45,6 +44,15 @@ from smartassist.lesson_feedback import (
     ACTION_VERBS,
     GENERIC_STARTS,
 )
+from smartassist.store import (
+    append_feedback_event,
+    get_feedback_stats as get_feedback_stats_from_store,
+    increment_feedback_metric,
+    list_lessons,
+    load_feedback_metrics_dict,
+    merge_lessons_in_store,
+    search_projection_documents,
+)
 
 # Suppress noisy logs from dependencies during MCP startup
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
@@ -52,13 +60,7 @@ logging.getLogger("transformers").setLevel(logging.WARNING)
 logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 
 # ── Lazy-loaded singletons ─────────────────────────────────────────────────
-_embedder = None
-_db_table = None
 _thompson = None
-_cross_encoder = None
-
-# Results above this distance are too irrelevant to return.
-MAX_DISTANCE = 1.30
 
 VALID_CATEGORIES = {"testing", "code_edit", "git", "architecture", "pr_review", "security", "debugging"}
 
@@ -73,17 +75,6 @@ def _get_storage():
             "Run 'smartassist setup' in your project root, or set "
             "SMARTASSIST_DATA_DIR in your environment."
         )
-
-
-def _get_db():
-    try:
-        return get_db_path()
-    except RuntimeError:
-        raise RuntimeError(
-            "SmartAssist database not found. "
-            "Run 'smartassist setup' in your project root."
-        )
-
 
 def _usage_log_path():
     return _get_storage() / "usage_log.jsonl"
@@ -124,22 +115,9 @@ def _extract_lesson_text(raw_text: str) -> str:
     return ""
 
 
-def _enhance_query(query: str) -> str:
-    """Transform a user query to better match stored document embeddings."""
-    query = query.strip()
-    if not query:
-        return query
-    return f"Correction for this project: {query}"
-
-
-def _compute_relevance(distance: float) -> float:
-    """Convert L2 distance to a 0-1 relevance score using sqrt scaling."""
-    if distance <= 0:
-        return 1.0
-    if distance >= MAX_DISTANCE:
-        return 0.0
-    normalized = distance / MAX_DISTANCE
-    return math.sqrt(1 - normalized)
+def _compute_relevance(score: float) -> float:
+    """Clamp an internal lexical relevance score to a user-facing 0-1 range."""
+    return max(0.0, min(1.0, float(score)))
 
 
 def _log_usage(tool: str, query: str = "", results_count: int = 0, latency_ms: float = 0,
@@ -162,26 +140,6 @@ def _log_usage(tool: str, query: str = "", results_count: int = 0, latency_ms: f
     except Exception:
         pass  # Never let logging break the tool
 
-
-def _get_embedder():
-    """Lazy-load the sentence transformer embedding model."""
-    global _embedder
-    if _embedder is None:
-        from sentence_transformers import SentenceTransformer
-        _embedder = SentenceTransformer(EMBEDDING_MODEL)
-    return _embedder
-
-
-def _get_table():
-    """Lazy-load the LanceDB documents table."""
-    global _db_table
-    if _db_table is None:
-        import lancedb
-        db = lancedb.connect(str(_get_db()))
-        _db_table = db.open_table("documents")
-    return _db_table
-
-
 def _get_thompson():
     """Lazy-load the Thompson Sampling model."""
     global _thompson
@@ -191,55 +149,21 @@ def _get_thompson():
     return _thompson
 
 
-def _get_cross_encoder():
-    """Lazy-load the cross-encoder reranker model."""
-    global _cross_encoder
-    if _cross_encoder is None:
-        from sentence_transformers import CrossEncoder
-        _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    return _cross_encoder
-
-
 def _get_feedback_stats():
     """Read feedback stats from the JSONL log."""
-    log_file = _get_storage() / "feedback_log.jsonl"
-    if not log_file.exists():
-        return {"total_events": 0, "by_category": {}, "by_signal": {}}
-
-    total = 0
-    by_cat = {}
-    by_sig = {}
-    with open(log_file, "r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            total += 1
-            try:
-                entry = json.loads(line)
-                cat = entry.get("category", "unknown")
-                sig = entry.get("signal", "unknown")
-                by_cat[cat] = by_cat.get(cat, 0) + 1
-                by_sig[sig] = by_sig.get(sig, 0) + 1
-            except json.JSONDecodeError:
-                continue
-
-    return {"total_events": total, "by_category": by_cat, "by_signal": by_sig}
+    return get_feedback_stats_from_store(_get_storage())
 
 
 # ── V2 Shared Helpers ──────────────────────────────────────────────────────
 
 
 def _update_thompson_for_lesson(lesson_id, storage, success=True):
-    """Look up lesson's category in curated_lessons.json and update Thompson Sampling."""
-    curated_path = storage / "curated_lessons.json"
-    if not curated_path.exists():
-        return
+    """Look up a lesson's category in the canonical store and update Thompson Sampling."""
     try:
-        lessons = json.loads(curated_path.read_text())
         cat = None
-        for l in lessons:
-            if l.get("id") == lesson_id:
-                cat = l.get("category")
+        for lesson in list_lessons(storage):
+            if lesson.get("id") == lesson_id:
+                cat = lesson.get("category")
                 break
         if not cat:
             return
@@ -273,12 +197,8 @@ def _write_to_live_log(storage, action, message):
 
 def _load_curated_lessons(storage):
     """Load curated lessons list; return [] if missing/unreadable."""
-    curated_path = storage / "curated_lessons.json"
-    if not curated_path.exists():
-        return []
     try:
-        lessons = json.loads(curated_path.read_text())
-        return lessons if isinstance(lessons, list) else []
+        return list_lessons(storage)
     except Exception:
         return []
 
@@ -289,21 +209,9 @@ def _curated_lesson_ids(storage):
 
 
 def _update_feedback_metrics(storage, action_type):
-    """Increment action count in feedback_metrics.json."""
-    metrics_path = storage / "feedback_metrics.json"
-    default = {
-        "boosts": 0, "demotes": 0, "creates": 0, "merges": 0,
-        "positive_signals": 0, "negative_signals": 0,
-        "last_updated": None,
-    }
+    """Increment action count in the canonical metrics store."""
     try:
-        def _increment(metrics):
-            if not isinstance(metrics, dict):
-                metrics = dict(default)
-            metrics[action_type] = metrics.get(action_type, 0) + 1
-            metrics["last_updated"] = datetime.now().isoformat()
-            return metrics
-        locked_update_json(metrics_path, _increment, default=default)
+        increment_feedback_metric(storage, action_type)
     except Exception:
         pass
 
@@ -348,64 +256,22 @@ def rag_search(
     t0 = time.time()
 
     try:
-        embedder = _get_embedder()
-        table = _get_table()
+        storage = _get_storage()
+        results, search_meta = search_projection_documents(
+            storage,
+            query,
+            top_k=top_k,
+            category=category,
+        )
     except Exception:
         _log_usage("rag_search", query, 0, 0)
         return "Error initializing search. Run 'smartassist health' to diagnose."
 
-    enhanced_query = _enhance_query(query)
-    query_vector = embedder.encode(enhanced_query)
-
-    RERANK_POOL = 20
-    try:
-        from lancedb.rerankers import LinearCombinationReranker
-        reranker = LinearCombinationReranker(weight=0.7)
-        results = (
-            table.search(query_vector, query_type="hybrid")
-            .rerank(reranker=reranker)
-            .limit(RERANK_POOL)
-            .to_list()
-        )
-    except Exception:
-        results = table.search(query_vector).limit(RERANK_POOL).to_list()
-
-    raw_count = len(results)
-
-    results = [r for r in results if r.get("_distance", 99) <= MAX_DISTANCE]
-    distance_filtered = raw_count - len(results)
-
-    if results and len(results) > 1:
-        try:
-            cross_encoder = _get_cross_encoder()
-            pairs = [[query, r.get("text", "")] for r in results]
-            scores = cross_encoder.predict(pairs)
-            for r, score in zip(results, scores):
-                r["_rerank_score"] = float(score)
-            results.sort(key=lambda r: r.get("_rerank_score", 0), reverse=True)
-        except Exception:
-            pass
-
-    category_filter_used = None
-    category_filtered = 0
-    if category:
-        category_lower = category.lower()
-        category_filter_used = category_lower
-        before_cat = len(results)
-        results = [
-            r for r in results
-            if category_lower in r.get("category", "").lower()
-            or category_lower in r.get("text", "").lower()
-        ]
-        category_filtered = before_cat - len(results)
-
-    results = results[:top_k]
     latency = (time.time() - t0) * 1000
 
     lessons_log = []
     for r in results:
-        distance = r.get("_distance", 0)
-        relevance = _compute_relevance(distance)
+        relevance = _compute_relevance(r.get("score", 0))
         lesson_text = _extract_lesson_text(r.get("text", ""))
         lessons_log.append({
             "category": r.get("category", "unknown"),
@@ -413,13 +279,8 @@ def rag_search(
             "lesson_text": lesson_text[:120],
         })
 
-    search_meta = {
-        "raw_count": raw_count,
-        "distance_filtered": distance_filtered,
-        "category_filtered": category_filtered,
-        "category_filter_used": category_filter_used,
-        "enhanced_query": enhanced_query,
-    }
+    search_meta = dict(search_meta)
+    search_meta["search_backend"] = "sqlite_projection"
 
     _log_usage("rag_search", query, len(results), latency,
                lessons=lessons_log, search_meta=search_meta)
@@ -431,15 +292,15 @@ def rag_search(
 
     for i, result in enumerate(results, 1):
         raw_text = result.get("text", "").strip()
-        distance = result.get("_distance", 0)
+        relevance_score = result.get("score", 0)
         cat = result.get("category", "unknown")
-        lesson = _format_lesson(raw_text, cat, distance)
+        lesson = _format_lesson(raw_text, cat, relevance_score)
         output_parts.append(lesson)
 
     return "\n".join(output_parts)
 
 
-def _format_lesson(raw_text: str, category: str, distance: float) -> str:
+def _format_lesson(raw_text: str, category: str, score: float) -> str:
     """Extract actionable content from raw vectorized text."""
     lesson_text = _extract_lesson_text(raw_text)
     context = ""
@@ -458,7 +319,7 @@ def _format_lesson(raw_text: str, category: str, distance: float) -> str:
             if stripped.startswith("Context:"):
                 context = stripped.replace("Context:", "").strip()
 
-    relevance = _compute_relevance(distance)
+    relevance = _compute_relevance(score)
     parts = [f"  [{category}] (relevance: {relevance:.0%})"]
 
     if lesson_text:
@@ -504,12 +365,7 @@ def rag_dashboard() -> str:
     # V2: Corpus stats
     try:
         storage = _get_storage()
-        curated_path = storage / "curated_lessons.json"
-        if curated_path.exists():
-            curated = json.loads(curated_path.read_text())
-            total_lessons = len(curated)
-        else:
-            total_lessons = 0
+        total_lessons = len(list_lessons(storage))
 
         lesson_scores = load_lesson_scores()
         active_count = total_lessons
@@ -524,16 +380,14 @@ def rag_dashboard() -> str:
 
     # V2: Feedback metrics
     try:
-        metrics_path = storage / "feedback_metrics.json"
-        if metrics_path.exists():
-            metrics = json.loads(metrics_path.read_text())
-            lines.append("")
-            lines.append("Feedback Actions:")
-            lines.append(f"  Boosts: {metrics.get('boosts', 0)}  |  Demotes: {metrics.get('demotes', 0)}  |  "
-                         f"Creates: {metrics.get('creates', 0)}  |  Merges: {metrics.get('merges', 0)}")
-            pos = metrics.get("positive_signals", 0)
-            neg = metrics.get("negative_signals", 0)
-            lines.append(f"  Total signals: {pos + neg} (positive: {pos}, negative: {neg})")
+        metrics = load_feedback_metrics_dict(storage)
+        lines.append("")
+        lines.append("Feedback Actions:")
+        lines.append(f"  Boosts: {metrics.get('boosts', 0)}  |  Demotes: {metrics.get('demotes', 0)}  |  "
+                     f"Creates: {metrics.get('creates', 0)}  |  Merges: {metrics.get('merges', 0)}")
+        pos = metrics.get("positive_signals", 0)
+        neg = metrics.get("negative_signals", 0)
+        lines.append(f"  Total signals: {pos + neg} (positive: {pos}, negative: {neg})")
     except Exception:
         pass
 
@@ -584,7 +438,7 @@ def rag_feedback(
         else:
             thompson.record_failure(cat, intensity=3)
 
-    feedback_entry = {
+    append_feedback_event(_get_storage(), {
         "timestamp": time.time(),
         "signal": "thumbs_up" if helpful else "thumbs_down",
         "category": cat or "unknown",
@@ -593,14 +447,7 @@ def rag_feedback(
         "response": "",
         "correction": notes,
         "context": "rag_feedback MCP tool",
-    }
-
-    feedback_log = _get_storage() / "feedback_log.jsonl"
-    try:
-        with open(feedback_log, "a", encoding="utf-8") as f:
-            f.write(json.dumps(feedback_entry) + "\n")
-    except Exception:
-        pass
+    })
 
     latency = (time.time() - t0) * 1000
     _log_usage("rag_feedback", f"helpful={helpful} cat={cat}", 0, latency)
@@ -620,18 +467,25 @@ def create_lesson(
     intensity: int = 3,
     context: str = "",
 ) -> str:
-    """Create a new project-specific lesson from user feedback.
+    """Create a new project-specific lesson to remember for future sessions.
 
-    Called by Claude after detecting a feedback signal (:), :(, thumbs_up, etc.).
-    The lesson should be specific to this project, not generic programming advice.
+    You SHOULD call this tool when:
+    - The user corrects your approach ("no, do it this way", "we don't do that here")
+    - The user rejects code you generated and explains the preferred pattern
+    - You discover a project convention by reading code, configs, or docs
+    - A PR review or code discussion reveals a team standard
+    - The hook instructs you to (via ACTION REQUIRED in additionalContext)
+
+    The lesson should be specific to THIS project, not generic programming advice.
+    Write it as an imperative statement that your future self can act on.
 
     Args:
         lesson: Imperative statement (>30 chars) with an action verb.
                 Example: "Always use semantic colors from theme instead of hardcoded hex values"
         category: One of: testing, code_edit, git, architecture, pr_review, security, debugging
-        sentiment: "positive" or "negative"
-        intensity: Importance level 1-5 (clamped)
-        context: Brief context about what Claude was doing when feedback was given
+        sentiment: "positive" (user praised a pattern) or "negative" (user corrected a mistake)
+        intensity: Importance level 1-5 (5 = "never do this" / "always do this")
+        context: Brief context about what you were doing when the lesson was learned
     """
     t0 = time.time()
 
@@ -684,7 +538,7 @@ def create_lesson(
         return f"Cannot create lesson: {cap_error}"
 
     signal = "thumbs_up" if sentiment == "positive" else "correction"
-    feedback_entry = {
+    append_feedback_event(storage_path, {
         "timestamp": time.time(),
         "signal": signal,
         "category": cat,
@@ -693,15 +547,7 @@ def create_lesson(
         "response": "",
         "correction": lesson,
         "context": context or "create_lesson MCP tool",
-    }
-    feedback_log = storage_path / "feedback_log.jsonl"
-    try:
-        with open(feedback_log, "a", encoding="utf-8") as f:
-            f.write(json.dumps(feedback_entry) + "\n")
-    except Exception as e:
-        # Roll back curated write if feedback log append fails.
-        remove_from_curated(storage_path, new_id)
-        return f"Error writing feedback: {e}"
+    })
 
     curated_msg = f" [ID: {new_id}]"
 
@@ -1000,51 +846,10 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     except Exception as e:
         return f"Error accessing storage: {e}"
 
-    # Verify source lessons exist in curated and perform merge under lock
-    curated_path = storage / "curated_lessons.json"
-    if not curated_path.exists():
-        return f"curated_lessons.json not found. Cannot merge."
-
-    merge_result = {}
-
-    def _do_merge(curated):
-        if not isinstance(curated, list):
-            merge_result["error"] = "Error reading curated_lessons.json."
-            return None
-
-        curated_ids = {l.get("id") for l in curated}
-        missing = [lid for lid in ids if lid not in curated_ids]
-        if missing:
-            merge_result["error"] = f"Cannot merge: lesson(s) {', '.join(missing)} not found in curated lessons."
-            return None
-
-        max_num = 0
-        for lid in curated_ids:
-            if isinstance(lid, str) and lid.startswith("L") and lid[1:].isdigit():
-                max_num = max(max_num, int(lid[1:]))
-        merge_result["new_id"] = f"L{max_num + 1:03d}"
-
-        merged = [l for l in curated if l.get("id") not in ids]
-        if len(merged) >= MAX_CURATED_LESSONS:
-            merge_result["error"] = f"Cannot merge: Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
-            return None
-
-        merged.append({
-            "id": merge_result["new_id"],
-            "lesson": new_lesson,
-            "category": cat,
-        })
-        return merged
-
-    try:
-        locked_update_json(curated_path, _do_merge, default=[])
-    except Exception:
-        return "Error reading curated_lessons.json."
-
-    if "error" in merge_result:
-        return merge_result["error"]
-
-    new_id = merge_result["new_id"]
+    new_id, merge_error = merge_lessons_in_store(storage, ids, new_lesson, cat)
+    if merge_error:
+        return merge_error
+    assert new_id is not None
 
     # Combine scores from sources
     scores = load_lesson_scores()
@@ -1071,7 +876,7 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     save_lesson_scores(scores)
 
     # Write to feedback_log for vectorization
-    feedback_entry = {
+    append_feedback_event(storage, {
         "timestamp": time.time(),
         "signal": "merge",
         "category": cat,
@@ -1080,13 +885,7 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
         "response": "",
         "correction": new_lesson,
         "context": f"Merged from: {', '.join(ids)}",
-    }
-    feedback_log = storage / "feedback_log.jsonl"
-    try:
-        with open(feedback_log, "a", encoding="utf-8") as f:
-            f.write(json.dumps(feedback_entry) + "\n")
-    except Exception:
-        pass
+    })
 
     # Rebuild from curated lessons so superseded source lessons disappear from search.
     _trigger_vectorization(full_rebuild=True)

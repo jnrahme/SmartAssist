@@ -15,6 +15,7 @@ import re
 
 from smartassist.config import get_storage_path, get_project_root
 from smartassist.gates import build_pretool_hook_output, evaluate_pretool_gate
+from smartassist.store import append_feedback_event, ensure_lesson
 
 
 def get_last_commit_info():
@@ -241,9 +242,8 @@ def capture_commit_lessons(*, verbose: bool = True):
         mark_captured(commit_info["sha"])
         return
 
-    # Write lessons to feedback log
     storage_path = get_storage_path()
-    feedback_log = storage_path / "feedback_log.jsonl"
+    promoted = 0
     for lesson in lessons:
         entry = {
             "signal": lesson["signal"],
@@ -256,8 +256,18 @@ def capture_commit_lessons(*, verbose: bool = True):
             "timestamp": time.time(),
             "session_id": f"commit_{commit_info['sha'][:8]}",
         }
-        with open(feedback_log, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
+        append_feedback_event(storage_path, entry)
+
+        correction = (lesson.get("correction") or "").strip()
+        if lesson["signal"] == "correction" and correction:
+            _lesson_id, _error, created = ensure_lesson(
+                storage_path,
+                correction,
+                lesson["category"],
+                origin="commit_hook",
+            )
+            if created:
+                promoted += 1
 
     # Update Thompson Sampling
     from smartassist.thompson_sampling import ThompsonSamplingModel
@@ -283,6 +293,8 @@ def capture_commit_lessons(*, verbose: bool = True):
 
     if verbose:
         print(f"\nCaptured {len(lessons)} lesson(s) from commit {commit_info['sha'][:8]}")
+        if promoted:
+            print(f"Promoted {promoted} correction(s) into the active lesson corpus")
         for lesson in lessons:
             icon = "+" if lesson["signal"] == "thumbs_up" else "!"
             print(f"   {icon} [{lesson['category']}] {lesson['response'][:70]}")

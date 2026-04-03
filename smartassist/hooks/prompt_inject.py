@@ -30,6 +30,7 @@ from smartassist.lesson_feedback import (
     log_comparison_entry,
     DEFAULT_BOOST,
 )
+from smartassist.store import list_lessons
 
 # ── Skip trivial prompts ─────────────────────────────────────────────────
 SKIP_PATTERNS = [
@@ -353,15 +354,10 @@ def _reconstruct_injected_lessons(storage_path):
     if injection_time and (time.time() - injection_time) > MAX_INJECTION_AGE:
         return []
 
-    # Load curated lessons for full text + category
-    curated_path = storage_path / "curated_lessons.json"
-    curated_map = {}
-    if curated_path.exists():
-        try:
-            lessons = json.loads(curated_path.read_text())
-            curated_map = {l.get("id", ""): l for l in lessons}
-        except Exception:
-            pass
+    curated_map = {
+        lesson.get("id", ""): lesson
+        for lesson in list_lessons(storage_path)
+    }
 
     # Load scores
     scores = load_lesson_scores()
@@ -409,9 +405,11 @@ def build_rich_feedback_context(sentiment, user_context, reinforcement_results):
         parts.append(f'User {sentiment} feedback: "{user_context}"')
         parts.append(
             "ACTION REQUIRED: Before responding to the user, you MUST call the "
-            "`compare_lesson` tool (mcp__smartassist__compare_lesson). "
-            "Convert the feedback above into an imperative, project-specific lesson "
-            "(>30 chars, with action verb). Use your recent conversation for context. "
+            "`create_lesson` tool (mcp__smartassist__create_lesson). "
+            "Analyze your recent conversation context and the feedback above. "
+            "Write a clear, imperative, project-specific lesson (>30 chars, "
+            "with an action verb) that captures what should be done differently. "
+            "Be specific — reference the actual pattern, file, or convention involved. "
             "Parameters: lesson=<your lesson>, category=<best fit>, "
             f'sentiment="{sentiment}", context="{user_context}". '
             "After calling the tool, acknowledge the feedback briefly."
@@ -481,14 +479,14 @@ def main():
         # Hook-level reinforcement — no Claude involvement needed
         reinforcement_results = reinforce_recent_lessons(sentiment)
 
-        # Hook-level lesson creation (production — unchanged)
+        # Immediate lesson creation — guaranteed, no LLM dependency
         created_id, created_lesson = None, None
         if user_context:
             created_id, created_lesson = create_lesson_from_feedback(
                 user_context, sentiment, reinforcement_results,
             )
             if created_id:
-                # Fire-and-forget: make lesson searchable via MCP rag_search
+                # Fire-and-forget: make lesson searchable via rag_search
                 try:
                     from smartassist.config import spawn_managed
                     spawn_managed([sys.executable, "-m", "smartassist.hooks.vectorize_learnings"])
@@ -513,7 +511,7 @@ def main():
         except RuntimeError:
             storage_path = None
 
-        # Don't reveal hook's lesson to Claude (unbiased comparison)
+        # ALSO tell the LLM to create a better version with full context
         context = build_rich_feedback_context(
             sentiment, user_context, reinforcement_results,
         )
@@ -539,13 +537,12 @@ def main():
     except RuntimeError:
         return
 
-    curated_path = storage_path / "curated_lessons.json"
-    if not curated_path.exists():
+    try:
+        lessons = list_lessons(storage_path)
+    except Exception:
         return
 
-    try:
-        lessons = json.loads(curated_path.read_text())
-    except Exception:
+    if not lessons:
         return
 
     query_tokens = tokenize(user_message)

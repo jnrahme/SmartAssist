@@ -17,6 +17,7 @@ from typing import List, Optional
 
 from smartassist.config import get_storage_path
 from smartassist.feedback_system import FeedbackCapture, FeedbackCategory, FeedbackSignal
+from smartassist.store import ensure_lesson
 
 
 # ── Markdown parsing ─────────────────────────────────────────────────────
@@ -579,6 +580,7 @@ def seed_database():
     from smartassist.config import atomic_write_json
     atomic_write_json(vectorization_log, {
         "total_vectorized": 0,
+        "last_processed_line": 0,
         "last_vectorization": None,
         "total_documents_in_rag": 0,
     })
@@ -598,6 +600,7 @@ def seed_database():
 
     # Write via FeedbackCapture so lesson files are also created
     fb = FeedbackCapture(str(storage_path))
+    promoted = 0
 
     for lesson in lessons:
         cat = FeedbackCategory(lesson["category"])
@@ -637,7 +640,19 @@ def seed_database():
                 context=lesson["context"],
             )
 
+        correction = (lesson.get("correction") or "").strip()
+        if correction:
+            _lesson_id, _error, created = ensure_lesson(
+                storage_path,
+                correction,
+                lesson["category"],
+                origin="seed",
+            )
+            if created:
+                promoted += 1
+
     print(f"\nWrote {len(lessons)} entries to {feedback_log}")
+    print(f"Promoted {promoted} active lesson(s) into smartassist.db")
     lesson_files = list(lessons_dir.glob("*.md"))
     print(f"Created {len(lesson_files)} lesson files in {lessons_dir}")
 

@@ -18,8 +18,19 @@ log = logging.getLogger(__name__)
 from smartassist.config import (
     get_storage_path,
     atomic_write_json,
-    locked_update_json,
     spawn_managed,
+)
+from smartassist.store import (
+    add_lesson,
+    append_feedback_event,
+    list_lessons,
+    load_last_injection_map,
+    load_lesson_scores_dict,
+    load_session_state_map,
+    retire_lesson,
+    save_last_injection_map,
+    save_lesson_scores_dict,
+    save_session_state_map,
 )
 
 DEFAULT_BOOST = 1.0
@@ -45,20 +56,20 @@ def _session_state_path() -> Path:
 def load_lesson_scores():
     """Load lesson scores from disk. Returns dict of {id: {boost, ups, downs, blocked}}."""
     try:
-        return json.loads(_scores_path().read_text())
+        return load_lesson_scores_dict(get_storage_path())
     except Exception:
         return {}
 
 
 def save_lesson_scores(data):
     """Write lesson scores to disk."""
-    atomic_write_json(_scores_path(), data)
+    save_lesson_scores_dict(get_storage_path(), data)
 
 
 def load_last_injection():
     """Load last injection mapping. Returns dict of {"1": "L026", "2": "L094", ...}."""
     try:
-        return json.loads(_injection_path().read_text())
+        return load_last_injection_map(get_storage_path())
     except Exception:
         return {}
 
@@ -71,7 +82,7 @@ def save_last_injection(results):
     """
     mapping = {str(i + 1): r["id"] for i, r in enumerate(results)}
     mapping["_timestamp"] = time.time()
-    atomic_write_json(_injection_path(), mapping)
+    save_last_injection_map(get_storage_path(), mapping)
 
 
 def load_session_state(session_id):
@@ -80,20 +91,14 @@ def load_session_state(session_id):
     Clears state if session_id has changed.
     """
     try:
-        data = json.loads(_session_state_path().read_text())
-        if data.get("session_id") == session_id:
-            return set(data.get("injected_ids", []))
+        return load_session_state_map(get_storage_path(), session_id)
     except Exception:
-        pass
-    return set()
+        return set()
 
 
 def save_session_state(session_id, injected_ids):
     """Write session dedup state."""
-    atomic_write_json(_session_state_path(), {
-        "session_id": session_id,
-        "injected_ids": sorted(injected_ids),
-    })
+    save_session_state_map(get_storage_path(), session_id, injected_ids)
 
 
 def get_or_create_score(scores, lesson_id):
@@ -187,18 +192,11 @@ def apply_feedback(command):
 
 
 def remove_from_curated(storage_path, lesson_id):
-    """Remove lesson from curated_lessons.json by ID. No-op if missing."""
-    curated_path = storage_path / "curated_lessons.json"
-    if not curated_path.exists():
-        return
+    """Retire a lesson from the active corpus. No-op if missing."""
     try:
-        def _remove(lessons):
-            if not isinstance(lessons, list):
-                return lessons
-            return [l for l in lessons if l.get("id") != lesson_id]
-        locked_update_json(curated_path, _remove, default=[])
+        retire_lesson(storage_path, lesson_id)
     except Exception as exc:
-        log.warning("Failed to remove %s from curated_lessons.json: %s", lesson_id, exc)
+        log.warning("Failed to retire %s from the active corpus: %s", lesson_id, exc)
 
 
 def _trigger_full_revectorization():
@@ -270,45 +268,8 @@ def reinforce_recent_lessons(sentiment, max_age=900):
 
 
 def add_to_curated(storage_path, lesson_text, category):
-    """Append lesson to curated_lessons.json. Returns (new_id, None) or (None, error_msg).
-
-    Creates file if missing. Enforces MAX_CURATED_LESSONS cap.
-    Uses file locking to prevent concurrent-write races (C3 fix).
-    """
-    curated_path = storage_path / "curated_lessons.json"
-
-    result_holder = {}
-
-    def _add(lessons):
-        if not isinstance(lessons, list):
-            lessons = []
-        if len(lessons) >= MAX_CURATED_LESSONS:
-            result_holder["error"] = f"Corpus at capacity ({MAX_CURATED_LESSONS}). Merge or demote lessons first."
-            return None  # skip write
-
-        existing_ids = {l.get("id", "") for l in lessons}
-        max_num = 0
-        for lid in existing_ids:
-            if lid.startswith("L") and lid[1:].isdigit():
-                max_num = max(max_num, int(lid[1:]))
-        new_id = f"L{max_num + 1:03d}"
-        result_holder["new_id"] = new_id
-
-        lessons.append({
-            "id": new_id,
-            "lesson": lesson_text,
-            "category": category,
-        })
-        return lessons
-
-    try:
-        locked_update_json(curated_path, _add, default=[])
-    except Exception:
-        return None, "Cannot read curated_lessons.json (invalid JSON). Fix file before adding lessons."
-
-    if "error" in result_holder:
-        return None, result_holder["error"]
-    return result_holder.get("new_id"), None
+    """Append a lesson to the active corpus. Returns (new_id, None) or (None, error_msg)."""
+    return add_lesson(storage_path, lesson_text, category, origin="lesson_feedback")
 
 
 # ── Shared quality-gate constants (used by both hook path and MCP tools) ──
@@ -463,14 +424,10 @@ def _infer_category(reinforcement_results, storage_path, user_context=""):
     """Infer lesson category from boosted lessons, then feedback text, then default."""
     # 1. Majority vote from reinforced lessons
     if reinforcement_results:
-        curated_path = storage_path / "curated_lessons.json"
-        curated_map = {}
-        if curated_path.exists():
-            try:
-                lessons = json.loads(curated_path.read_text())
-                curated_map = {l.get("id", ""): l.get("category", "") for l in lessons}
-            except Exception:
-                pass
+        curated_map = {
+            lesson.get("id", ""): lesson.get("category", "")
+            for lesson in list_lessons(storage_path)
+        }
 
         counts = {}
         for lid, _, _, _ in reinforcement_results:
@@ -506,9 +463,19 @@ def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
     if error:
         return None, None
 
-    # Write to feedback_log.jsonl
+    # Update Thompson Sampling for the new lesson's category
+    try:
+        from smartassist.thompson_sampling import ThompsonSamplingModel
+        thompson = ThompsonSamplingModel(str(storage_path))
+        if sentiment == "positive":
+            thompson.record_success(category, 3)
+        else:
+            thompson.record_failure(category, 3)
+    except Exception:
+        pass
+
     signal = "thumbs_up" if sentiment == "positive" else "correction"
-    feedback_entry = {
+    append_feedback_event(storage_path, {
         "timestamp": time.time(),
         "signal": signal,
         "category": category,
@@ -517,13 +484,7 @@ def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
         "response": "",
         "correction": lesson_text,
         "context": f"hook-created from feedback: {user_context}",
-    }
-    feedback_log = storage_path / "feedback_log.jsonl"
-    try:
-        with open(feedback_log, "a", encoding="utf-8") as f:
-            f.write(json.dumps(feedback_entry) + "\n")
-    except Exception:
-        pass
+    })
 
     return new_id, lesson_text
 

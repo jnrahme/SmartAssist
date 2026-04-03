@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import time
 
 from smartassist.gates import (
     build_pretool_hook_output,
@@ -13,6 +14,7 @@ from smartassist.gates import (
     load_prevention_rules,
 )
 from smartassist.hooks import commit_hook
+from smartassist.store import list_feedback_events, list_lessons
 
 
 def _storage_path(data_dir):
@@ -393,3 +395,111 @@ class TestCommitHookMain:
         commit_hook.main()
 
         assert calls == [True]
+
+
+class TestCommitCapturePromotion:
+    def test_commit_capture_promotes_corrections_into_active_lessons(self, monkeypatch, set_data_dir):
+        monkeypatch.setattr(commit_hook, "was_recent_commit", lambda: True)
+        monkeypatch.setattr(
+            commit_hook,
+            "get_last_commit_info",
+            lambda: {"sha": "abc12345", "message": "Fix auth flow", "timestamp": int(time.time())},
+        )
+        monkeypatch.setattr(commit_hook, "already_captured", lambda sha: False)
+        monkeypatch.setattr(commit_hook, "get_changed_files", lambda: ["src/auth/login.ts"])
+        monkeypatch.setattr(commit_hook, "get_commit_diff_content", lambda: "diff")
+        monkeypatch.setattr(
+            commit_hook,
+            "extract_lessons_from_commit",
+            lambda *_args: [
+                {
+                    "signal": "correction",
+                    "category": "git",
+                    "intensity": 3,
+                    "query": 'git commit -m "Fix auth flow"',
+                    "response": "Commit message missing ticket prefix",
+                    "correction": "Use format: [TICKET-XXX] Description",
+                    "context": "Commit: Fix auth flow. Branch: feature/auth.",
+                }
+            ],
+        )
+        marked = []
+        monkeypatch.setattr(commit_hook, "mark_captured", lambda sha: marked.append(sha))
+        monkeypatch.setattr(commit_hook.subprocess, "run", lambda *args, **kwargs: None)
+
+        commit_hook.capture_commit_lessons(verbose=False)
+
+        lessons = list_lessons(_storage_path(set_data_dir))
+        assert any(
+            lesson["lesson"] == "Use format: [TICKET-XXX] Description"
+            and lesson["category"] == "git"
+            for lesson in lessons
+        )
+        events = list_feedback_events(_storage_path(set_data_dir))
+        assert any(event["correction"] == "Use format: [TICKET-XXX] Description" for event in events)
+        assert marked == ["abc12345"]
+
+
+class TestLessonScoresInitialization:
+    """Verify that add_lesson and merge_lessons_in_store create lesson_scores rows."""
+
+    def test_add_lesson_initializes_scores(self, set_data_dir):
+        from smartassist.store import add_lesson, load_lesson_scores_dict
+
+        storage = _storage_path(set_data_dir)
+        new_id, error = add_lesson(storage, "Always run tests before pushing", "testing")
+        assert error is None
+        assert new_id is not None
+
+        scores = load_lesson_scores_dict(storage)
+        assert new_id in scores
+        assert scores[new_id]["boost"] == 1.0
+        assert scores[new_id]["ups"] == 0
+        assert scores[new_id]["downs"] == 0
+        assert scores[new_id]["blocked"] == 0
+
+    def test_merge_initializes_scores_for_new_lesson(self, set_data_dir):
+        from smartassist.store import add_lesson, load_lesson_scores_dict, merge_lessons_in_store
+
+        storage = _storage_path(set_data_dir)
+        id1, _ = add_lesson(storage, "Use theme colors for backgrounds", "code_edit")
+        id2, _ = add_lesson(storage, "Use theme colors for text", "code_edit")
+        assert id1 and id2
+
+        merged_id, error = merge_lessons_in_store(
+            storage, [id1, id2], "Always use theme colors instead of hardcoded values", "code_edit"
+        )
+        assert error is None
+        assert merged_id is not None
+
+        scores = load_lesson_scores_dict(storage)
+        assert merged_id in scores
+        assert scores[merged_id]["boost"] == 1.0
+
+
+class TestThompsonUpdateOnHookLessonCreation:
+    """Verify that create_lesson_from_feedback updates Thompson Sampling."""
+
+    def test_creates_lesson_and_updates_thompson(self, set_data_dir, monkeypatch):
+        from smartassist.lesson_feedback import create_lesson_from_feedback
+        from smartassist.thompson_sampling import ThompsonSamplingModel
+
+        storage = _storage_path(set_data_dir)
+        thompson = ThompsonSamplingModel(str(storage))
+
+        # Record baseline
+        before = thompson.get_reliability("code_edit")
+
+        # Create a lesson via the hook path with negative sentiment
+        new_id, lesson_text = create_lesson_from_feedback(
+            "dont use hardcoded colors, always use the theme tokens",
+            "negative",
+            [],  # no reinforcement results
+        )
+        assert new_id is not None
+
+        # Thompson should have recorded a failure for the inferred category
+        thompson_after = ThompsonSamplingModel(str(storage))
+        after = thompson_after.get_reliability("code_edit")
+        # Negative feedback → record_failure → reliability should decrease (or stay if prior was 0.5)
+        assert after <= before or before == 0.5

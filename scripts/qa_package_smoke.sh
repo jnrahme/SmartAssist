@@ -33,6 +33,7 @@ fi
 if [[ -z "$DIST_DIR" ]]; then
   DIST_DIR="$(mktemp -d /tmp/smartassist-dist-XXXXXX)"
 fi
+SOURCE_DIR="$(mktemp -d /tmp/smartassist-src-XXXXXX)"
 VENV_DIR="$(mktemp -d /tmp/smartassist-venv-XXXXXX)"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/tmp/pip-cache}"
@@ -53,17 +54,54 @@ then
 fi
 
 cleanup() {
+  rm -rf "$SOURCE_DIR"
   rm -rf "$VENV_DIR"
 }
 trap cleanup EXIT
 
-"$BUILD_PYTHON" - <<'PY' "$DIST_DIR" >/dev/null
+"$BUILD_PYTHON" - <<'PY' "$PWD" "$SOURCE_DIR" >/dev/null
+import shutil
+import sys
+from pathlib import Path
+
+source_root = Path(sys.argv[1]).resolve()
+dest_root = Path(sys.argv[2]).resolve()
+
+ignored_names = {
+    ".git",
+    ".venv",
+    ".pytest_cache",
+    "node_modules",
+    "build",
+    "dist",
+    "qa-artifacts",
+    "__pycache__",
+}
+
+for child in source_root.iterdir():
+    if child.name in ignored_names:
+        continue
+    target = dest_root / child.name
+    if child.is_dir():
+        shutil.copytree(
+            child,
+            target,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".DS_Store"),
+        )
+    else:
+        shutil.copy2(child, target)
+PY
+
+"$BUILD_PYTHON" - <<'PY' "$SOURCE_DIR" "$DIST_DIR" >/dev/null
+import os
 import sys
 from pathlib import Path
 from setuptools.build_meta import build_sdist, build_wheel
 
-dist_dir = Path(sys.argv[1])
+source_dir = Path(sys.argv[1]).resolve()
+dist_dir = Path(sys.argv[2]).resolve()
 dist_dir.mkdir(parents=True, exist_ok=True)
+os.chdir(source_dir)
 build_sdist(str(dist_dir))
 build_wheel(str(dist_dir))
 PY

@@ -1,6 +1,7 @@
 """Tests for the SmartAssist doctor command helpers."""
 
 import json
+import stat
 
 from smartassist.tools.doctor import collect_doctor_report
 
@@ -22,9 +23,28 @@ def _hook_settings():
     return {"hooks": hooks}
 
 
+def _install_fake_hook_commands(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    commands = [
+        "smartassist-prompt-inject",
+        "smartassist-session-start",
+        "smartassist-session-end",
+        "smartassist-commit-hook",
+        "smartassist-show-lessons",
+    ]
+    for command in commands:
+        path = bin_dir / command
+        path.write_text("#!/bin/sh\nexit 0\n")
+        path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    return bin_dir
+
+
 class TestDoctorReport:
     def test_collect_doctor_report_ready(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path))
+        _install_fake_hook_commands(tmp_path, monkeypatch)
 
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir(exist_ok=True)
@@ -62,6 +82,7 @@ class TestDoctorReport:
 
     def test_collect_doctor_report_fails_when_hooks_missing(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path))
+        _install_fake_hook_commands(tmp_path, monkeypatch)
 
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir(exist_ok=True)
@@ -101,6 +122,7 @@ class TestDoctorReport:
 
     def test_collect_doctor_report_fails_when_pretool_matcher_is_stale(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path))
+        _install_fake_hook_commands(tmp_path, monkeypatch)
 
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir(exist_ok=True)
@@ -138,5 +160,46 @@ class TestDoctorReport:
         assert any(
             check["name"] == "Hooks"
             and "Bash|Edit|Write" in check["detail"]
+            for check in report["checks"]
+        )
+
+    def test_collect_doctor_report_fails_when_hook_commands_are_not_on_path(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("PATH", str(tmp_path / "missing-bin"))
+
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+        (claude_dir / "settings.json").write_text(json.dumps(_hook_settings()))
+
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".mcp.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "smartassist": {
+                            "command": "python",
+                            "args": ["-m", "smartassist.mcp_server"],
+                        }
+                    }
+                }
+            )
+        )
+        data_dir = project / ".claude" / "smartassist"
+        (data_dir / "data").mkdir(parents=True)
+        (data_dir / "lancedb").mkdir()
+        (data_dir / "data" / "feedback_log.jsonl").write_text("")
+        (data_dir / "data" / "reliability_scores.json").write_text("{}")
+        (data_dir / "data" / "vectorization_log.json").write_text(
+            json.dumps({"total_vectorized": 0, "last_vectorization": None})
+        )
+
+        monkeypatch.setenv("SMARTASSIST_DATA_DIR", str(data_dir))
+        monkeypatch.chdir(project)
+        report = collect_doctor_report()
+
+        assert report["overall_status"] == "fail"
+        assert any(
+            check["name"] == "Hook commands" and check["status"] == "fail"
             for check in report["checks"]
         )

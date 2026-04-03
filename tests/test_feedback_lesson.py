@@ -709,13 +709,13 @@ class TestCompareLessonTool:
 class TestBuildRichFeedbackContext:
     """Test rich feedback context — two modes: with/without user context."""
 
-    def test_with_context_instructs_compare(self, set_data_dir):
-        """User context >= 15 chars → instructs Claude to call compare_lesson."""
+    def test_with_context_instructs_create_lesson(self, set_data_dir):
+        """User context >= 15 chars → instructs LLM to call create_lesson."""
         results = [("L001", 1.0, 1.3, False), ("L002", 1.0, 1.3, False)]
         context = build_rich_feedback_context(
             "positive", "good use of theme colors instead of hardcoded values", results,
         )
-        assert "compare_lesson" in context
+        assert "create_lesson" in context
         assert "MUST" in context
         assert "good use of theme colors" in context
         assert "Auto-reinforced 2 lesson(s)" in context
@@ -741,12 +741,12 @@ class TestBuildRichFeedbackContext:
         assert "Auto-reinforced 2 lesson(s)" in context
         assert "acknowledge" in context.lower()
 
-    def test_negative_with_context_instructs_compare(self, set_data_dir):
+    def test_negative_with_context_instructs_create_lesson(self, set_data_dir):
         results = [("L001", 1.0, 0.6, False)]
         context = build_rich_feedback_context(
             "negative", "dont do this to the theme ever again", results,
         )
-        assert "compare_lesson" in context
+        assert "create_lesson" in context
         assert "demoted" in context
 
     def test_empty_results_no_context(self, set_data_dir):
@@ -758,7 +758,7 @@ class TestBuildRichFeedbackContext:
         context = build_rich_feedback_context(
             "positive", "good use of semantic colors instead of hex", [],
         )
-        assert "compare_lesson" in context
+        assert "create_lesson" in context
         assert "0 lesson(s)" in context
 
     def test_shows_retired_in_summary(self, set_data_dir):
@@ -1709,7 +1709,7 @@ class TestPromptInjectMainFeedback:
         context = output["hookSpecificOutput"]["additionalContext"]
         assert "demoted" in context.lower() or "0 lesson(s)" in context
 
-    def test_signal_with_context_instructs_compare(self, set_data_dir, capsys):
+    def test_signal_with_context_creates_lesson_and_instructs_llm(self, set_data_dir, capsys):
         from smartassist.hooks.prompt_inject import main
         import io
 
@@ -1721,23 +1721,15 @@ class TestPromptInjectMainFeedback:
         output = json.loads(captured.out.strip())
         context = output["hookSpecificOutput"]["additionalContext"]
 
-        # Claude should be instructed to call compare_lesson
-        assert "compare_lesson" in context
-        # Hook's lesson text should NOT be in context (unbiased)
-        assert "Don't hardcode colors" not in context
+        # LLM should be instructed to also create a better version
+        assert "create_lesson" in context
+        assert "MUST" in context
 
-        # But hook still created its lesson in curated (production unchanged)
+        # Hook ALSO created its own lesson immediately (guaranteed reinforcement loop)
+        from smartassist.store import list_lessons
         storage = set_data_dir / "data"
-        curated = json.loads((storage / "curated_lessons.json").read_text())
-        assert len(curated) == 1
-        assert "hardcode colors" in curated[0]["lesson"].lower()
-
-        # And hook's result was logged to comparison file
-        comparison_log = storage / "lesson_comparison.jsonl"
-        assert comparison_log.exists()
-        entry = json.loads(comparison_log.read_text().strip())
-        assert entry["source"] == "hook"
-        assert entry["passed_gates"] is True
+        lessons = list_lessons(storage)
+        assert any("hardcode colors" in l.get("lesson", "").lower() for l in lessons)
 
     def test_normal_short_message_still_skipped(self, set_data_dir, capsys):
         from smartassist.hooks.prompt_inject import main

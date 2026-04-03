@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from smartassist.config import get_storage_path, get_db_path, EMBEDDING_MODEL
+from smartassist.store import get_feedback_stats, list_search_documents
 
 # Patterns that indicate a non-actionable lesson
 SKIP_PATTERNS = [
@@ -531,18 +532,104 @@ def load_curated_lessons(path) -> List[Dict]:
         return []
 
 
+def load_projection_documents(storage_path) -> List[Dict]:
+    """Load the canonical search projection from the SQLite store."""
+    return list_search_documents(storage_path, active_only=True)
+
+
+def _build_lancedb_rows(documents: List[Dict], embeddings, now: float) -> List[Dict]:
+    rows = []
+    for document, embedding in zip(documents, embeddings):
+        rows.append({
+            "id": document["doc_id"],
+            "doc_id": document["doc_id"],
+            "source_type": document["source_type"],
+            "source_id": document["source_id"],
+            "text": document["text"],
+            "vector": embedding.tolist(),
+            "category": document["category"],
+            "timestamp": float(document.get("updated_at", now) or now),
+            "content_hash": document["content_hash"],
+            "version": int(document["version"]),
+        })
+    return rows
+
+
+def _create_empty_table(db):
+    import pyarrow as pa
+
+    schema = pa.schema([
+        pa.field("id", pa.string()),
+        pa.field("doc_id", pa.string()),
+        pa.field("source_type", pa.string()),
+        pa.field("source_id", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32())),
+        pa.field("category", pa.string()),
+        pa.field("timestamp", pa.float64()),
+        pa.field("content_hash", pa.string()),
+        pa.field("version", pa.int64()),
+    ])
+    empty = pa.table({field.name: [] for field in schema}, schema=schema)
+    return db.create_table("documents", data=empty, mode="overwrite")
+
+
+def rebuild_vector_cache(storage_path=None, db_path=None, *, dry_run: bool = False) -> Dict:
+    storage_path = storage_path or get_storage_path()
+    db_path = db_path or get_db_path()
+    documents = load_projection_documents(storage_path)
+
+    summary = {
+        "documents": documents,
+        "document_count": len(documents),
+        "by_category": {},
+        "by_source_type": {},
+    }
+    for document in documents:
+        category = document["category"]
+        source_type = document["source_type"]
+        summary["by_category"][category] = summary["by_category"].get(category, 0) + 1
+        summary["by_source_type"][source_type] = summary["by_source_type"].get(source_type, 0) + 1
+
+    if dry_run:
+        return summary
+
+    import lancedb
+    from sentence_transformers import SentenceTransformer
+
+    db = lancedb.connect(str(db_path))
+    if not documents:
+        table = _create_empty_table(db)
+        _update_vectorization_log(storage_path, table.count_rows())
+        summary["total_in_db"] = table.count_rows()
+        return summary
+
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    texts = [document["text"] for document in documents]
+    embeddings = model.encode(texts, show_progress_bar=False, batch_size=64)
+    rows = _build_lancedb_rows(documents, embeddings, time.time())
+
+    table = db.create_table("documents", data=rows, mode="overwrite")
+    try:
+        table.create_fts_index("text", replace=True)
+    except Exception:
+        pass
+
+    _update_vectorization_log(storage_path, table.count_rows())
+    summary["total_in_db"] = table.count_rows()
+    return summary
+
+
 def _update_vectorization_log(storage_path, total_in_db: int):
-    """Mark the curated rebuild as the latest vectorization state."""
-    feedback_log = storage_path / "feedback_log.jsonl"
-    total_feedback = 0
-    if feedback_log.exists():
-        total_feedback = sum(1 for line in feedback_log.read_text().splitlines() if line.strip())
+    """Mark the canonical projection rebuild as the latest vectorization state."""
+    total_feedback = get_feedback_stats(storage_path).get("total_events", 0)
 
     from smartassist.config import atomic_write_json
 
     vectorization_log = storage_path / "vectorization_log.json"
     atomic_write_json(vectorization_log, {
         "total_vectorized": total_feedback,
+        "last_processed_line": total_feedback,
         "last_vectorization": datetime.now().isoformat(),
         "total_documents_in_rag": total_in_db,
     })
@@ -553,99 +640,68 @@ def main():
 
     storage_path = get_storage_path()
     db_path = get_db_path()
-    curated_path = storage_path / "curated_lessons.json"
 
     print("=" * 60)
-    print("RAG Knowledge Base - Curated Lessons Vectorizer")
+    print("RAG Knowledge Base - Canonical Projection Vectorizer")
     print("=" * 60)
 
-    # Step 1: Load curated lessons
-    lessons = load_curated_lessons(curated_path)
-    print(f"\nLoaded {len(lessons)} curated lessons from {curated_path.name}")
+    summary = rebuild_vector_cache(storage_path, db_path, dry_run=True)
+    documents = summary["documents"]
 
-    # Category breakdown
-    by_cat: Dict[str, int] = {}
-    for entry in lessons:
-        cat = entry["category"]
-        by_cat[cat] = by_cat.get(cat, 0) + 1
+    print(f"\nLoaded {summary['document_count']} active projection document(s) from smartassist.db")
+
     print(f"\nBy category:")
-    for cat, count in sorted(by_cat.items(), key=lambda x: -x[1]):
+    for cat, count in sorted(summary["by_category"].items(), key=lambda x: -x[1]):
         print(f"  {cat:15s}: {count}")
+    if not summary["by_category"]:
+        print("  (none)")
 
-    # Step 2: Build text blobs
-    texts = []
-    for entry in lessons:
-        text = format_text_for_vector(entry["category"], entry["lesson"])
-        texts.append(text)
+    print(f"\nBy source type:")
+    for source_type, count in sorted(summary["by_source_type"].items(), key=lambda x: -x[1]):
+        print(f"  {source_type:15s}: {count}")
+    if not summary["by_source_type"]:
+        print("  (none)")
 
-    # Show samples
-    print(f"\nSample lessons:")
-    for t in texts[:5]:
-        print(f"  {t}")
+    print(f"\nSample documents:")
+    for document in documents[:5]:
+        print(f"  [{document['source_type']}] {document['text']}")
+    if not documents:
+        print("  (none)")
     print()
 
     if dry_run:
         print("[DRY RUN] No changes made. Run without --dry-run to apply.")
         return
 
-    # Step 3: Generate embeddings
-    print("Loading embedding model...")
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(EMBEDDING_MODEL)
+    print("Loading embedding model and rebuilding LanceDB from the canonical projection...")
+    summary = rebuild_vector_cache(storage_path, db_path, dry_run=False)
 
-    print(f"Generating embeddings for {len(texts)} lessons...")
-    embeddings = model.encode(texts, show_progress_bar=True, batch_size=64)
-
-    # Step 4: Build LanceDB records
-    now = time.time()
-    data = []
-    for i, (entry, emb) in enumerate(zip(lessons, embeddings)):
-        data.append({
-            "id": i + 1,
-            "text": texts[i],
-            "vector": emb.tolist(),
-            "category": entry["category"],
-            "timestamp": now,
-        })
-
-    # Step 5: Rebuild the table
-    print(f"\nRebuilding LanceDB at {db_path}...")
     import lancedb
     db = lancedb.connect(str(db_path))
-    table = db.create_table("documents", data=data, mode="overwrite")
-    print(f"  Created table with {table.count_rows()} documents")
+    table = db.open_table("documents")
+    print(f"  Rebuilt table with {table.count_rows()} documents")
 
-    # Create full-text search index for hybrid search
-    try:
-        table.create_fts_index("text", replace=True)
-        print(f"  Created FTS index on 'text' column")
-    except Exception as e:
-        print(f"  Warning: Could not create FTS index: {e}")
-
-    # Step 6: Verify
     print(f"\nVerification:")
     print(f"  Table rows: {table.count_rows()}")
-    assert table.count_rows() == len(lessons), (
-        f"Row count mismatch: {table.count_rows()} != {len(lessons)}"
+    assert table.count_rows() == summary["document_count"], (
+        f"Row count mismatch: {table.count_rows()} != {summary['document_count']}"
     )
-    _update_vectorization_log(storage_path, table.count_rows())
 
-    # Test searches
     test_queries = [
         "how to style components with theme colors",
-        "jest mock setup best practices",
+        "testing best practices",
         "commit message format",
     ]
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer(EMBEDDING_MODEL)
     for query in test_queries:
         vec = model.encode(query)
         results = table.search(vec).limit(3).to_list()
-        print(f"\n  Search: \"{query}\"")
-        for r in results:
-            dist = r.get("_distance", 0)
-            text = r.get("text", "")[:120]
-            print(f"    dist={dist:.3f} -> {text}")
+        print(f"\n  Query: {query}")
+        for result in results[:3]:
+            print(f"    [{result.get('category', 'unknown')}] {result.get('text', '')[:120]}")
 
-    print(f"\nDone! LanceDB rebuilt with {len(data)} curated lessons.")
+    print(f"\nDone! LanceDB rebuilt with {summary['document_count']} projection documents.")
 
 
 if __name__ == "__main__":

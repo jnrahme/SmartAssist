@@ -1,206 +1,43 @@
 #!/usr/bin/env python3
 """
-Vectorize Learnings Hook - Ensures RAG database stays fully vectorized.
-Ingests new feedback into the vector database after commits/sessions.
+Vectorize Learnings Hook - refreshes the optional LanceDB cache.
+
+The canonical truth now lives in smartassist.db. This hook rebuilds the
+derived embedding cache from the current SQLite search projection so the
+background path and the explicit full rebuild path converge on the same
+document set.
 """
 
-import sys
 import json
-import re
-from datetime import datetime
-from typing import List, Dict, Tuple, Optional
+import sys
 
-from smartassist.config import EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path
-
-# Minimum correction length to be useful for vectorization
-MIN_CORRECTION_LEN = 30
-
-# Import shared patterns from the canonical source (L10 dedup fix)
-from smartassist.tools.cleanup_and_vectorize import SKIP_PATTERNS, is_skip_pattern  # noqa: E402
-
-
-def get_unvectorized_feedback() -> Tuple[List[Dict], int]:
-    """Get feedback events that haven't been vectorized yet."""
-    storage_path = get_storage_path()
-    vectorization_log = storage_path / "vectorization_log.json"
-    feedback_log = storage_path / "feedback_log.jsonl"
-
-    if vectorization_log.exists():
-        with open(vectorization_log, "r") as f:
-            vectorized_data = json.load(f)
-            last_vectorized_count = vectorized_data.get(
-                "total_vectorized",
-                vectorized_data.get("last_processed_line", 0),
-            )
-    else:
-        last_vectorized_count = 0
-
-    all_feedback = []
-    if feedback_log.exists():
-        with open(feedback_log, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    try:
-                        all_feedback.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-
-    last_vectorized_count = max(0, min(last_vectorized_count, len(all_feedback)))
-    new_feedback = all_feedback[last_vectorized_count:]
-    return new_feedback, len(all_feedback)
-
-
-def should_vectorize(event: Dict) -> bool:
-    """Check if an event is worth vectorizing."""
-    correction = event.get("correction", "")
-    if not correction or len(correction.strip()) < MIN_CORRECTION_LEN:
-        return False
-    if is_skip_pattern(correction):
-        return False
-    return True
-
-
-def format_text_for_vector(event: Dict) -> str:
-    """Create a dense text blob for vectorization."""
-    category = event.get("category", "unknown")
-    correction = event.get("correction", "").strip()
-    context = event.get("context", "").strip()
-
-    text = f"[{category}] {correction}"
-    if context:
-        text += f" Context: {context}"
-    return text
+from smartassist.config import get_storage_path, get_db_path
+from smartassist.store import get_feedback_stats
+from smartassist.tools.cleanup_and_vectorize import rebuild_vector_cache
 
 
 def vectorize_new_learnings() -> bool:
-    """Vectorize new feedback into RAG database."""
+    """Refresh the derived LanceDB cache from the canonical store."""
     storage_path = get_storage_path()
     db_path = get_db_path()
-    vectorization_log = storage_path / "vectorization_log.json"
 
     try:
-        new_feedback, total_feedback = get_unvectorized_feedback()
-
-        if not new_feedback:
-            print(json.dumps({
-                "status": "up_to_date",
-                "total_events": total_feedback,
-                "new_events": 0,
-            }))
-            return True
-
-        worthy = [e for e in new_feedback if should_vectorize(e)]
-
-        if not worthy:
-            _update_vectorization_log(vectorization_log, total_feedback, None)
-            print(json.dumps({
-                "status": "skipped",
-                "total_events": total_feedback,
-                "new_events": len(new_feedback),
-                "skipped": len(new_feedback),
-                "reason": "all_filtered",
-            }))
-            return True
-
-        # Lazy-load heavy dependencies
-        import lancedb
-        from sentence_transformers import SentenceTransformer
-
-        model = SentenceTransformer(EMBEDDING_MODEL)
-        db = lancedb.connect(str(db_path))
-
-        texts = [format_text_for_vector(e) for e in worthy]
-        embeddings = model.encode(texts, batch_size=64)
-
-        try:
-            table = db.open_table("documents")
-            row_count = table.count_rows()
-            existing_rows = []
-            if row_count:
-                # Reuse the same "scan all rows" approach used by health/dashboard
-                # so IDs stay monotonic even if earlier rows were deduplicated.
-                existing_rows = (
-                    table.search([0.0] * EMBEDDING_DIM)
-                    .limit(row_count)
-                    .to_list()
-                )
-            next_id = max((row.get("id", 0) for row in existing_rows), default=0) + 1
-        except Exception:
-            next_id = 1
-
-        DEDUP_DISTANCE = 0.40
-        data = []
-        dedup_skipped = 0
-        for i, (event, text, emb) in enumerate(zip(worthy, texts, embeddings)):
-            try:
-                table = db.open_table("documents")
-                existing = table.search(emb.tolist()).limit(1).to_list()
-                if existing and existing[0].get("_distance", 99) < DEDUP_DISTANCE:
-                    dedup_skipped += 1
-                    continue
-            except Exception:
-                pass
-
-            data.append({
-                "id": next_id + len(data),
-                "text": text,
-                "vector": emb.tolist(),
-                "category": event.get("category", "unknown"),
-                "timestamp": event.get("timestamp", 0),
-            })
-
-        if not data:
-            _update_vectorization_log(vectorization_log, total_feedback, None)
-            print(json.dumps({
-                "status": "skipped",
-                "total_events": total_feedback,
-                "new_events": len(new_feedback),
-                "skipped": len(new_feedback),
-                "dedup_skipped": dedup_skipped,
-                "reason": "all_deduplicated",
-            }))
-            return True
-
-        try:
-            table = db.open_table("documents")
-            table.add(data)
-        except Exception:
-            table = db.create_table("documents", data=data, mode="overwrite")
-
-        _update_vectorization_log(vectorization_log, total_feedback, table.count_rows())
-
+        summary = rebuild_vector_cache(storage_path, db_path, dry_run=False)
+        feedback_stats = get_feedback_stats(storage_path)
         print(json.dumps({
             "status": "vectorized",
-            "total_events": total_feedback,
-            "new_events": len(new_feedback),
-            "vectorized": len(data),
-            "skipped": len(new_feedback) - len(worthy),
-            "dedup_skipped": dedup_skipped,
-            "total_in_db": table.count_rows(),
+            "total_events": int(feedback_stats.get("total_events", 0)),
+            "documents": int(summary.get("document_count", 0)),
+            "total_in_db": int(summary.get("total_in_db", 0)),
+            "by_source_type": summary.get("by_source_type", {}),
         }))
-
         return True
-
-    except Exception as e:
+    except Exception as exc:
         print(json.dumps({
             "status": "error",
-            "error": str(e),
+            "error": str(exc),
         }))
         return False
-
-
-def _update_vectorization_log(log_path, total_feedback: int, total_in_db: Optional[int]):
-    """Update the vectorization progress log."""
-    log_data = {
-        "total_vectorized": total_feedback,
-        "last_vectorization": datetime.now().isoformat(),
-    }
-    if total_in_db is not None:
-        log_data["total_documents_in_rag"] = total_in_db
-
-    from smartassist.config import atomic_write_json
-    atomic_write_json(log_path, log_data)
 
 
 if __name__ == "__main__":

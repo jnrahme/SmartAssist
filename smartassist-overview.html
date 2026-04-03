@@ -1,0 +1,1969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartAssist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#030712;--bg2:#0a0f1e;--surface:rgba(255,255,255,.03);
+  --surface-hi:rgba(255,255,255,.055);--border:rgba(255,255,255,.06);
+  --border-hi:rgba(255,255,255,.10);--text:#94a3b8;--text-hi:#cbd5e1;
+  --white:#f1f5f9;--dim:#475569;
+  --violet:#8b5cf6;--violet-dim:rgba(139,92,246,.15);
+  --blue:#38bdf8;--blue-dim:rgba(56,189,248,.12);
+  --emerald:#34d399;--emerald-dim:rgba(52,211,153,.10);
+  --amber:#fbbf24;--amber-dim:rgba(251,191,36,.10);
+  --rose:#fb7185;--rose-dim:rgba(251,113,133,.10);
+  --cyan:#22d3ee;--cyan-dim:rgba(34,211,238,.10);
+  --pink:#e879f9;--pink-dim:rgba(232,121,249,.10);
+  --r:16px;--r-sm:12px;--mono:'JetBrains Mono',monospace;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);
+  line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+  min-height:100vh;display:flex;flex-direction:column}
+::selection{background:rgba(139,92,246,.35);color:#fff}
+img,svg{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+
+@keyframes drift{0%{transform:translate(0,0)}100%{transform:translate(64px,64px)}}
+@keyframes pulse-glow{0%,100%{opacity:.5}50%{opacity:.8}}
+@keyframes spin-slow{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+@keyframes fade-in{0%{opacity:0;transform:translateY(16px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes flow{0%{stroke-dashoffset:16}100%{stroke-dashoffset:0}}
+@keyframes flow-rev{0%{stroke-dashoffset:0}100%{stroke-dashoffset:16}}
+@keyframes node-pulse{0%,100%{filter:drop-shadow(0 0 4px var(--c))}50%{filter:drop-shadow(0 0 12px var(--c))}}
+
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:260px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;z-index:10}
+.sidebar-logo{display:flex;align-items:center;gap:10px;padding:24px 24px 20px;
+  font-weight:800;font-size:.95rem;color:var(--white);letter-spacing:-.4px;
+  border-bottom:1px solid var(--border)}
+.sidebar-logo svg{width:22px;height:22px;color:var(--violet);flex-shrink:0}
+.sidebar-label{font-size:.6rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:2.5px;color:var(--dim);padding:20px 24px 8px}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px;padding:0 12px}
+.sidebar-nav button{display:flex;align-items:center;gap:10px;width:100%;
+  background:none;border:none;cursor:pointer;padding:10px 14px;border-radius:10px;
+  font-family:var(--sans);font-size:.84rem;font-weight:500;color:var(--dim);
+  transition:all .2s;text-align:left;position:relative}
+.sidebar-nav button:hover{color:var(--text-hi);background:rgba(255,255,255,.03)}
+.sidebar-nav button.active{color:var(--white);background:rgba(139,92,246,.08)}
+.sidebar-nav button.active::before{content:'';position:absolute;left:0;top:50%;
+  transform:translateY(-50%);width:3px;height:20px;border-radius:0 2px 2px 0;background:var(--violet)}
+.sidebar-nav button svg{width:16px;height:16px;opacity:.5;flex-shrink:0}
+.sidebar-nav button.active svg{opacity:1;color:var(--violet)}
+.sidebar-version{margin-top:auto;padding:16px 24px;border-top:1px solid var(--border);
+  font-size:.7rem;color:var(--dim)}
+.sidebar-version a{color:var(--violet);font-weight:500}
+
+.mobile-bar{display:none;position:fixed;top:0;left:0;right:0;height:56px;z-index:100;
+  background:rgba(3,7,18,.85);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);align-items:center;padding:0 20px;gap:12px}
+.mobile-bar .nav-logo{display:flex;align-items:center;gap:8px;font-weight:800;
+  font-size:.9rem;color:var(--white);letter-spacing:-.3px}
+.mobile-bar .nav-logo svg{width:20px;height:20px;color:var(--violet)}
+.hamburger{background:none;border:none;cursor:pointer;padding:8px;margin-left:auto;
+  color:var(--text);display:flex;align-items:center;justify-content:center}
+.hamburger svg{width:22px;height:22px}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9}
+@media(max-width:860px){
+  .sidebar{position:fixed;left:-280px;top:0;bottom:0;z-index:50;transition:left .3s;width:280px}
+  .sidebar.open{left:0}
+  .sidebar-overlay.open{display:block}
+  .mobile-bar{display:flex}
+  .main{padding-top:56px}
+}
+.main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
+.tab-panel{display:none;animation:fade-in .35s ease both}
+.tab-panel.active{display:block}
+.page{max-width:960px;margin:0 auto;padding:48px 40px 80px}
+@media(max-width:860px){.page{padding:32px 20px 60px}}
+.page-header{margin-bottom:48px}
+.page-header .overline{display:inline-flex;align-items:center;gap:8px;font-size:.62rem;
+  font-weight:700;text-transform:uppercase;letter-spacing:3px;color:var(--violet);margin-bottom:12px}
+.page-header .overline::before{content:'';width:20px;height:2px;background:var(--violet);border-radius:1px}
+.page-header h1{font-size:clamp(1.7rem,4vw,2.4rem);font-weight:800;color:var(--white);
+  letter-spacing:-.8px;margin-bottom:12px;line-height:1.15}
+.page-header p{color:var(--dim);font-size:1rem;max-width:560px;line-height:1.6}
+
+/* Hero banner */
+.hero-banner{position:relative;border-radius:var(--r);overflow:hidden;
+  padding:64px 48px;margin-bottom:48px;border:1px solid var(--border);background:var(--surface)}
+.hero-banner .mesh{position:absolute;inset:0;pointer-events:none}
+.hero-banner .mesh::before{content:'';position:absolute;width:700px;height:700px;
+  top:-300px;left:50%;transform:translateX(-50%);border-radius:50%;
+  background:conic-gradient(from 180deg,rgba(139,92,246,.14),rgba(56,189,248,.08),rgba(232,121,249,.06),rgba(52,211,153,.04),rgba(139,92,246,.14));
+  filter:blur(80px);animation:spin-slow 25s linear infinite;opacity:.7}
+.hero-banner .mesh::after{content:'';position:absolute;inset:0;
+  background-image:linear-gradient(rgba(139,92,246,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(139,92,246,.025) 1px,transparent 1px);
+  background-size:64px 64px;
+  mask-image:radial-gradient(ellipse 70% 60% at 50% 40%,black,transparent 70%);
+  -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 40%,black,transparent 70%);
+  animation:drift 20s linear infinite}
+.hero-banner .hero-content{position:relative;text-align:center}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;
+  padding:6px 18px;border-radius:999px;border:1px solid rgba(139,92,246,.2);
+  background:rgba(139,92,246,.06);font-size:.72rem;font-weight:600;
+  color:var(--violet);letter-spacing:.5px;margin-bottom:24px}
+.hero-eyebrow::before{content:'';width:6px;height:6px;border-radius:50%;
+  background:var(--violet);animation:pulse-glow 2s ease-in-out infinite}
+.hero-banner h2{font-size:clamp(2rem,5vw,3.2rem);font-weight:900;letter-spacing:-2px;
+  line-height:1.08;margin-bottom:16px;color:var(--white)}
+.hero-banner h2 span{background:linear-gradient(135deg,#fff 0%,#c4b5fd 35%,#818cf8 55%,#38bdf8 80%,#34d399 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-banner .hero-sub{font-size:clamp(.9rem,1.6vw,1.05rem);color:var(--text);
+  max-width:500px;margin:0 auto 28px}
+.hero-badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.hbadge{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;
+  font-size:.68rem;font-weight:600;border-radius:999px;
+  background:rgba(255,255,255,.025);border:1px solid var(--border-hi);
+  color:var(--dim);transition:transform .3s}
+.hbadge:hover{transform:translateY(-1px)}
+.hbadge svg{width:12px;height:12px;opacity:.5}
+.hbadge-v{border-color:rgba(139,92,246,.22);color:var(--violet)}
+.hbadge-b{border-color:rgba(56,189,248,.22);color:var(--blue)}
+.hbadge-g{border-color:rgba(52,211,153,.22);color:var(--emerald)}
+.hbadge-a{border-color:rgba(251,191,36,.22);color:var(--amber)}
+
+/* Shared components */
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:700px){.g2,.g3{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:28px;position:relative;overflow:hidden;transition:border-color .3s,transform .3s,box-shadow .3s}
+.card::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(500px circle at var(--mx,50%) var(--my,50%),rgba(139,92,246,.05),transparent 40%);
+  opacity:0;transition:opacity .3s;pointer-events:none}
+.card:hover{border-color:rgba(139,92,246,.18);transform:translateY(-3px);
+  box-shadow:0 16px 48px rgba(0,0,0,.35)}
+.card:hover::before{opacity:1}
+.card h3{font-size:1.05rem;font-weight:700;color:var(--white);margin-bottom:8px}
+.card p{font-size:.86rem;color:var(--dim);line-height:1.6}
+.card-icon{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;
+  justify-content:center;margin-bottom:18px}
+.card-icon svg{width:22px;height:22px}
+.ci-v{background:var(--violet-dim);color:var(--violet)}
+.ci-b{background:var(--blue-dim);color:var(--blue)}
+.ci-g{background:var(--emerald-dim);color:var(--emerald)}
+.ci-a{background:var(--amber-dim);color:var(--amber)}
+.ci-c{background:var(--cyan-dim);color:var(--cyan)}
+.stats{display:flex;gap:14px;flex-wrap:wrap;margin-top:40px}
+.stat{text-align:center;padding:24px 32px;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r);flex:1;min-width:120px;
+  transition:border-color .3s,transform .3s}
+.stat:hover{border-color:rgba(139,92,246,.18);transform:translateY(-2px)}
+.stat-n{font-size:2.2rem;font-weight:900;letter-spacing:-1px;line-height:1.1;
+  background:linear-gradient(135deg,var(--violet),var(--blue));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.stat-l{font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;
+  color:var(--dim);margin-top:4px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:start}
+@media(max-width:700px){.two-col{grid-template-columns:1fr;gap:32px}}
+.tl{position:relative;padding-left:30px}
+.tl::before{content:'';position:absolute;left:8px;top:8px;bottom:8px;width:2px;
+  background:linear-gradient(to bottom,var(--violet),rgba(139,92,246,.06));border-radius:1px}
+.tl-i{position:relative;margin-bottom:26px}
+.tl-i:last-child{margin-bottom:0}
+.tl-i::before{content:'';position:absolute;left:-26px;top:7px;width:10px;height:10px;
+  border-radius:50%;background:var(--violet);
+  box-shadow:0 0 10px rgba(139,92,246,.5),0 0 0 4px var(--bg)}
+.tl-i h4{font-size:.88rem;font-weight:700;color:var(--white);margin-bottom:3px}
+.tl-i p{color:var(--dim);font-size:.82rem}
+.tool-c{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:20px 22px;display:flex;gap:14px;align-items:flex-start;transition:border-color .3s,transform .25s}
+.tool-c:hover{border-color:rgba(139,92,246,.16);transform:translateY(-2px)}
+.tool-dot{width:8px;height:8px;border-radius:50%;margin-top:7px;flex-shrink:0}
+.tool-c .tn{font-family:var(--mono);font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:4px}
+.tool-c .td{font-size:.78rem;color:var(--dim);line-height:1.5}
+.lc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:18px 22px;margin-bottom:12px;transition:border-color .3s,transform .25s}
+.lc:last-child{margin-bottom:0}
+.lc:hover{transform:translateX(4px);border-color:rgba(255,255,255,.08)}
+.lc h4{font-size:.86rem;font-weight:700;margin-bottom:3px}
+.lc p{font-size:.8rem;color:var(--dim)}
+.lc-g{border-left:3px solid var(--emerald)}.lc-g h4{color:var(--emerald)}
+.lc-r{border-left:3px solid var(--rose)}.lc-r h4{color:var(--rose)}
+.lc-a{border-left:3px solid var(--amber)}.lc-a h4{color:var(--amber)}
+.lc-v{border-left:3px solid var(--violet)}.lc-v h4{color:var(--violet)}
+.lc-b{border-left:3px solid var(--blue)}.lc-b h4{color:var(--blue)}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 13px;
+  font-size:.68rem;font-weight:600;border-radius:999px;border:1px solid var(--border);transition:transform .2s}
+.pill:hover{transform:translateY(-1px)}
+.pill i{width:6px;height:6px;border-radius:50%;background:currentColor;display:block}
+.p-testing{background:var(--emerald-dim);color:var(--emerald);border-color:rgba(52,211,153,.18)}
+.p-code{background:var(--blue-dim);color:var(--blue);border-color:rgba(56,189,248,.18)}
+.p-git{background:var(--amber-dim);color:var(--amber);border-color:rgba(251,191,36,.18)}
+.p-arch{background:var(--violet-dim);color:var(--violet);border-color:rgba(139,92,246,.18)}
+.p-pr{background:var(--cyan-dim);color:var(--cyan);border-color:rgba(34,211,238,.18)}
+.p-sec{background:var(--rose-dim);color:var(--rose);border-color:rgba(251,113,133,.18)}
+.p-dbg{background:var(--pink-dim);color:var(--pink);border-color:rgba(232,121,249,.18)}
+.fc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:20px;transition:border-color .3s,transform .25s}
+.fc:hover{border-color:rgba(255,255,255,.1);transform:translateY(-2px)}
+.fc .fn{font-family:var(--mono);font-size:.8rem;font-weight:600;margin-bottom:5px;
+  display:flex;align-items:center;gap:8px}
+.fc .fn i{width:8px;height:8px;border-radius:50%;display:block;flex-shrink:0}
+.fc p{font-size:.8rem;color:var(--dim);line-height:1.5}
+.safety{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:26px;text-align:center;transition:border-color .3s,transform .25s}
+.safety:hover{border-color:rgba(52,211,153,.16);transform:translateY(-2px)}
+.safety-ic{width:46px;height:46px;border-radius:13px;background:var(--emerald-dim);
+  display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px}
+.safety-ic svg{width:20px;height:20px;color:var(--emerald)}
+.safety h4{font-size:.9rem;font-weight:700;color:var(--white);margin-bottom:5px}
+.safety p{font-size:.8rem;color:var(--dim)}
+.cli-c{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:20px;transition:border-color .3s,transform .25s}
+.cli-c:hover{border-color:rgba(139,92,246,.18);transform:translateY(-2px)}
+.cli-c .cmd{font-family:var(--mono);font-size:.78rem;font-weight:600;color:var(--violet);margin-bottom:5px}
+.cli-c p{font-size:.76rem;color:var(--dim)}
+.cb{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:16px 20px;font-family:var(--mono);font-size:.78rem;line-height:1.7;
+  color:var(--text);overflow-x:auto;margin-top:12px}
+.cb .g{color:var(--emerald)}.cb .d{color:var(--dim)}
+code{font-family:var(--mono);background:rgba(139,92,246,.08);padding:2px 7px;
+  border-radius:5px;font-size:.78em;color:var(--violet);border:1px solid rgba(139,92,246,.1)}
+.callout{display:flex;gap:12px;padding:18px 22px;border-radius:var(--r-sm);
+  border:1px solid var(--border);background:var(--surface);margin:20px 0;font-size:.88rem;align-items:flex-start}
+.callout svg{width:18px;height:18px;flex-shrink:0;margin-top:3px}
+.callout.c-b{border-left:3px solid var(--blue)}
+.callout.c-g{border-left:3px solid var(--emerald)}
+.sub-h{font-size:1.05rem;font-weight:700;color:var(--white);margin-bottom:8px}
+.sub-p{color:var(--dim);font-size:.86rem;margin-bottom:20px}
+
+/* ================================================================
+   SVG DIAGRAM STYLES
+   ================================================================ */
+.diagram-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:24px;overflow-x:auto;position:relative}
+.diagram-wrap svg{display:block;margin:0 auto}
+.diagram-wrap svg text{font-family:var(--sans)}
+.diagram-wrap svg .mono{font-family:var(--mono)}
+
+/* Animated flow lines */
+.flow-line{stroke-dasharray:8 8;animation:flow 1s linear infinite}
+.flow-line-rev{stroke-dasharray:8 8;animation:flow-rev 1s linear infinite}
+.flow-line-slow{stroke-dasharray:6 6;animation:flow 2s linear infinite}
+
+/* Node glow pulse */
+.node-glow{animation:node-pulse 3s ease-in-out infinite}
+
+/* Pipeline horizontal */
+.pipe-wrap{display:flex;gap:0;overflow-x:auto;padding:8px 0;margin-bottom:48px}
+.pipe{flex:1;min-width:170px;text-align:center;padding:24px 14px;position:relative}
+.pipe::after{content:'';position:absolute;right:-1px;top:50%;
+  width:18px;height:18px;border:2px solid var(--border-hi);
+  border-left:none;border-bottom:none;transform:translateY(-50%) rotate(45deg);z-index:1}
+.pipe:last-child::after{display:none}
+.pipe-n{width:36px;height:36px;border-radius:10px;
+  background:linear-gradient(135deg,var(--violet),rgba(139,92,246,.5));
+  color:#fff;font-weight:800;font-size:.8rem;
+  display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;
+  box-shadow:0 4px 18px rgba(139,92,246,.25)}
+.pipe h4{font-size:.82rem;font-weight:700;color:var(--white);margin-bottom:5px}
+.pipe p{font-size:.72rem;color:var(--dim);line-height:1.4}
+
+/* Legend for diagrams */
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;justify-content:center}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--dim)}
+.legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+details[open] > summary svg.demo-chevron { transform: rotate(90deg); }
+details > summary::-webkit-details-marker { display: none; }
+</style>
+</head>
+<body>
+
+<div class="mobile-bar">
+  <div class="nav-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    SmartAssist
+  </div>
+  <button class="hamburger" onclick="toggleSidebar()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+  </button>
+</div>
+<div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<div class="shell">
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    SmartAssist
+  </div>
+  <div class="sidebar-label">Navigation</div>
+  <nav class="sidebar-nav" id="sidenav">
+    <button class="active" data-tab="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Overview</button>
+    <button data-tab="lessons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>How Lessons Work</button>
+    <button data-tab="architecture"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Architecture</button>
+    <button data-tab="hooks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>Hooks</button>
+    <button data-tab="tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>MCP Tools</button>
+    <button data-tab="pipeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>RAG Pipeline</button>
+    <button data-tab="scoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>Reliability</button>
+    <button data-tab="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>Data Model</button>
+    <button data-tab="cli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>CLI &amp; Setup</button>
+  </nav>
+  <div class="sidebar-version">v1.0.0 &mdash; <a href="https://github.com/jnrahme/SmartAssist">GitHub</a></div>
+</aside>
+
+<main class="main" id="main">
+
+<!-- ===== OVERVIEW ===== -->
+<div class="tab-panel active" id="tab-overview">
+<div class="page">
+  <div class="hero-banner">
+    <div class="mesh"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow">Persistent Memory for Claude Code</div>
+      <h2><span>SmartAssist</span></h2>
+      <p class="hero-sub">Capture feedback. Retrieve lessons. Reinforce what works. A RAG-powered learning layer that makes Claude Code smarter on every project.</p>
+      <div class="hero-badges">
+        <span class="hbadge hbadge-v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>MCP Server</span>
+        <span class="hbadge hbadge-b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>bge-m3</span>
+        <span class="hbadge hbadge-g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Thompson</span>
+        <span class="hbadge hbadge-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>LanceDB</span>
+        <span class="hbadge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>Hybrid Search</span>
+      </div>
+    </div>
+  </div>
+  <div class="grid g3">
+    <div class="card"><div class="card-icon ci-v"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><h3>Captures Feedback</h3><p>Detects <code>:)</code> <code>:(</code> thumbs up/down and corrections. Converts to structured lessons.</p></div>
+    <div class="card"><div class="card-icon ci-b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div><h3>Retrieves Context</h3><p>SQLite-backed lexical search over the canonical projection, with lesson boosts and event memory in one place.</p></div>
+    <div class="card"><div class="card-icon ci-g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><h3>Learns &amp; Improves</h3><p>Thompson Sampling tracks reliability. Good lessons boosted, bad retired. Smarter per-project.</p></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-n">8</div><div class="stat-l">MCP Tools</div></div>
+    <div class="stat"><div class="stat-n">5</div><div class="stat-l">Hook Points</div></div>
+    <div class="stat"><div class="stat-n">7</div><div class="stat-l">Categories</div></div>
+    <div class="stat"><div class="stat-n">1024</div><div class="stat-l">Embed Dims</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:40px">
+    <div class="card"><div class="card-icon ci-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><h3>Lightweight Hooks, Heavy Tools</h3><p>Hooks: &lt;50ms keyword matching. Embeddings and LanceDB are now a derived cache refresh path, not the runtime source of truth.</p></div>
+    <div class="card"><div class="card-icon ci-c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg></div><h3>Multi-Pathway Lessons</h3><p>Hook auto-capture, Claude curation, interactive MCP tools. A/B comparison for quality.</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== ARCHITECTURE ===== -->
+<div class="tab-panel" id="tab-architecture">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Architecture</div>
+    <h1>System Flow</h1>
+    <p>A closed-loop: feedback becomes lessons, lessons get vectorized, and each session improves the next.</p>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 880 920" width="100%" style="max-width:880px">
+      <defs>
+        <marker id="arr-v" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#8b5cf6"/></marker>
+        <marker id="arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#38bdf8"/></marker>
+        <marker id="arr-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#34d399"/></marker>
+        <marker id="arr-a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#fbbf24"/></marker>
+        <marker id="arr-dim" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#475569"/></marker>
+        <filter id="glow-v"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#8b5cf6" flood-opacity=".4"/></filter>
+        <filter id="glow-b"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#38bdf8" flood-opacity=".4"/></filter>
+        <filter id="glow-g"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#34d399" flood-opacity=".35"/></filter>
+        <filter id="glow-a"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#fbbf24" flood-opacity=".35"/></filter>
+        <filter id="glow-r"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#fb7185" flood-opacity=".35"/></filter>
+        <linearGradient id="grad-loop" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="100%" stop-color="#8b5cf6" stop-opacity=".6"/></linearGradient>
+      </defs>
+
+      <!-- USER NODE -->
+      <rect x="280" y="20" width="260" height="48" rx="24" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.15)" stroke-width="1.5"/>
+      <text x="410" y="50" text-anchor="middle" fill="#f1f5f9" font-size="14" font-weight="700">User in Claude Code</text>
+
+      <!-- Arrow down -->
+      <line x1="410" y1="68" x2="410" y2="105" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#arr-v)"/>
+
+      <!-- PROMPT SUBMIT HOOK -->
+      <rect x="200" y="108" width="420" height="44" rx="10" fill="rgba(56,189,248,.06)" stroke="#38bdf8" stroke-width="1.5" filter="url(#glow-b)"/>
+      <text x="410" y="136" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">UserPromptSubmit Hook</text>
+
+      <!-- Branch: Feedback? -->
+      <line x1="410" y1="152" x2="410" y2="185" stroke="#38bdf8" stroke-width="1.5" class="flow-line" marker-end="url(#arr-b)"/>
+      <rect x="330" y="188" width="160" height="32" rx="16" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.1)" stroke-width="1"/>
+      <text x="410" y="209" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">Feedback signal?</text>
+
+      <!-- YES branch left -->
+      <line x1="330" y1="204" x2="200" y2="204" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text x="258" y="198" fill="#34d399" font-size="10" font-weight="600">YES</text>
+      <line x1="200" y1="204" x2="200" y2="295" stroke="#34d399" stroke-width="1.5" class="flow-line" marker-end="url(#arr-g)"/>
+
+      <!-- Reinforce box -->
+      <rect x="80" y="298" width="240" height="62" rx="10" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.3)" stroke-width="1"/>
+      <text x="200" y="320" text-anchor="middle" fill="#34d399" font-size="11" font-weight="600" class="mono">reinforce_recent_lessons()</text>
+      <text x="200" y="338" text-anchor="middle" fill="#475569" font-size="10">boost +0.3 or demote -0.4</text>
+      <text x="200" y="352" text-anchor="middle" fill="#475569" font-size="10">+ create_lesson_from_feedback()</text>
+
+      <!-- NO branch right -->
+      <line x1="490" y1="204" x2="660" y2="204" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text x="580" y="198" fill="#22d3ee" font-size="10" font-weight="600">NO FEEDBACK</text>
+      <line x1="660" y1="204" x2="660" y2="295" stroke="#22d3ee" stroke-width="1.5" class="flow-line" marker-end="url(#arr-b)"/>
+
+      <!-- Inject box -->
+      <rect x="540" y="298" width="240" height="62" rx="10" fill="rgba(34,211,238,.05)" stroke="rgba(34,211,238,.3)" stroke-width="1"/>
+      <text x="660" y="320" text-anchor="middle" fill="#22d3ee" font-size="11" font-weight="600">Inject Relevant Lessons</text>
+      <text x="660" y="338" text-anchor="middle" fill="#475569" font-size="10">BM25 keyword match + boost scores</text>
+      <text x="660" y="352" text-anchor="middle" fill="#475569" font-size="10">Session dedup (no repeats)</text>
+
+      <!-- Merge arrows back to center -->
+      <line x1="200" y1="360" x2="200" y2="392" stroke="#475569" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="200" y1="392" x2="410" y2="392" stroke="#475569" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="660" y1="360" x2="660" y2="392" stroke="#475569" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="660" y1="392" x2="410" y2="392" stroke="#475569" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="410" y1="392" x2="410" y2="420" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#arr-v)"/>
+
+      <!-- PRE-TOOL USE / GATES -->
+      <rect x="240" y="423" width="340" height="44" rx="10" fill="rgba(251,113,133,.06)" stroke="#fb7185" stroke-width="1.5" filter="url(#glow-r)"/>
+      <text x="410" y="451" text-anchor="middle" fill="#fb7185" font-size="13" font-weight="700">PreToolUse Hook / Gates</text>
+
+      <!-- Gate action pills -->
+      <rect x="250" y="478" width="56" height="22" rx="11" fill="rgba(251,113,133,.12)" stroke="rgba(251,113,133,.3)" stroke-width="1"/>
+      <text x="278" y="493" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="600">deny</text>
+      <rect x="314" y="478" width="48" height="22" rx="11" fill="rgba(251,191,36,.12)" stroke="rgba(251,191,36,.3)" stroke-width="1"/>
+      <text x="338" y="493" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="600">ask</text>
+      <rect x="370" y="478" width="52" height="22" rx="11" fill="rgba(34,211,238,.12)" stroke="rgba(34,211,238,.3)" stroke-width="1"/>
+      <text x="396" y="493" text-anchor="middle" fill="#22d3ee" font-size="10" font-weight="600">warn</text>
+      <text x="450" y="493" fill="#475569" font-size="10">Check gate rules before execution</text>
+
+      <!-- Arrow to MCP -->
+      <line x1="410" y1="505" x2="410" y2="540" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#arr-v)"/>
+
+      <!-- MCP TOOLS CLUSTER -->
+      <rect x="170" y="543" width="480" height="170" rx="14" fill="rgba(251,191,36,.03)" stroke="rgba(251,191,36,.2)" stroke-width="1.5" filter="url(#glow-a)"/>
+      <text x="410" y="568" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Claude Uses MCP Tools</text>
+
+      <!-- Tool items in 2 columns -->
+      <text x="220" y="595" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">rag_search()</text>
+      <text x="340" y="595" fill="#475569" font-size="10">Semantic retrieval</text>
+      <text x="220" y="615" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">create_lesson()</text>
+      <text x="358" y="615" fill="#475569" font-size="10">Store new lesson</text>
+      <text x="220" y="635" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">compare_lesson()</text>
+      <text x="364" y="635" fill="#475569" font-size="10">A/B draft</text>
+      <text x="220" y="655" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">boost_lesson()</text>
+      <text x="346" y="655" fill="#475569" font-size="10">Increase priority</text>
+
+      <text x="510" y="595" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">demote_lesson()</text>
+      <text x="638" y="595" fill="#475569" font-size="10">Retire lesson</text>
+      <text x="510" y="615" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">merge_lessons()</text>
+      <text x="635" y="615" fill="#475569" font-size="10">Consolidate</text>
+      <text x="510" y="635" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">rag_dashboard()</text>
+      <text x="642" y="635" fill="#475569" font-size="10">Metrics view</text>
+      <text x="510" y="655" fill="#fbbf24" font-size="10.5" font-weight="600" class="mono">rag_feedback()</text>
+      <text x="636" y="655" fill="#475569" font-size="10">Quality signal</text>
+
+      <!-- Arrow to Session End -->
+      <line x1="410" y1="713" x2="410" y2="750" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#arr-v)"/>
+
+      <!-- SESSION END -->
+      <rect x="230" y="753" width="360" height="44" rx="10" fill="rgba(56,189,248,.06)" stroke="#38bdf8" stroke-width="1.5" filter="url(#glow-b)"/>
+      <text x="410" y="781" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">SessionEnd Hook</text>
+      <text x="410" y="810" text-anchor="middle" fill="#475569" font-size="10">Reliability summary &bull; refresh_boundary_pack() &bull; re-vectorize</text>
+
+      <!-- Arrow to Session Start -->
+      <line x1="410" y1="820" x2="410" y2="855" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#arr-v)"/>
+
+      <!-- SESSION START -->
+      <rect x="230" y="858" width="360" height="44" rx="10" fill="rgba(56,189,248,.06)" stroke="#38bdf8" stroke-width="1.5" filter="url(#glow-b)"/>
+      <text x="410" y="886" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">SessionStart Hook</text>
+
+      <!-- LOOP ARROW (right side) -->
+      <path d="M590,880 Q780,880 780,500 Q780,108 620,130" fill="none" stroke="url(#grad-loop)" stroke-width="2" class="flow-line-slow" marker-end="url(#arr-b)"/>
+      <rect x="752" y="488" width="56" height="24" rx="12" fill="rgba(56,189,248,.08)" stroke="rgba(56,189,248,.2)" stroke-width="1"/>
+      <text x="780" y="505" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="600">NEXT</text>
+      <text x="780" y="524" text-anchor="middle" fill="#475569" font-size="8">session</text>
+
+      <!-- Labels at bottom of SessionStart -->
+      <text x="410" y="915" text-anchor="middle" fill="#475569" font-size="10">Load boundary_pack.json &bull; Inject weak categories &bull; No ML loading</text>
+    </svg>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div>Hook nodes</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Feedback path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee"></div>Injection path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div>MCP tools</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb7185"></div>Gate enforcement</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Main flow</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== HOOKS ===== -->
+<div class="tab-panel" id="tab-hooks">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Integration Layer</div>
+    <h1>Hook System</h1>
+    <p>Five hooks plug into Claude Code's lifecycle, running automatically.</p>
+  </div>
+
+  <!-- Hook Flow SVG Diagram -->
+  <div class="diagram-wrap" style="margin-bottom:48px">
+    <svg viewBox="0 0 860 140" width="100%" style="max-width:860px">
+      <defs>
+        <marker id="ha" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#8b5cf6"/></marker>
+        <filter id="ng"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#8b5cf6" flood-opacity=".3"/></filter>
+      </defs>
+
+      <!-- Step 1 -->
+      <rect x="10" y="30" width="140" height="80" rx="12" fill="rgba(56,189,248,.06)" stroke="#38bdf8" stroke-width="1.5" filter="url(#ng)"/>
+      <text x="80" y="58" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="700">1</text>
+      <text x="80" y="76" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">SessionStart</text>
+      <text x="80" y="94" text-anchor="middle" fill="#475569" font-size="9">Inject boundary pack</text>
+
+      <line x1="150" y1="70" x2="180" y2="70" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#ha)"/>
+
+      <!-- Step 2 -->
+      <rect x="182" y="30" width="140" height="80" rx="12" fill="rgba(139,92,246,.06)" stroke="#8b5cf6" stroke-width="1.5" filter="url(#ng)"/>
+      <text x="252" y="58" text-anchor="middle" fill="#8b5cf6" font-size="10" font-weight="700">2</text>
+      <text x="252" y="76" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">PromptSubmit</text>
+      <text x="252" y="94" text-anchor="middle" fill="#475569" font-size="9">Feedback + inject</text>
+
+      <line x1="322" y1="70" x2="352" y2="70" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#ha)"/>
+
+      <!-- Step 3 -->
+      <rect x="354" y="30" width="140" height="80" rx="12" fill="rgba(251,113,133,.06)" stroke="#fb7185" stroke-width="1.5" filter="url(#ng)"/>
+      <text x="424" y="58" text-anchor="middle" fill="#fb7185" font-size="10" font-weight="700">3</text>
+      <text x="424" y="76" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">PreToolUse</text>
+      <text x="424" y="94" text-anchor="middle" fill="#475569" font-size="9">Gates + commit capture</text>
+
+      <line x1="494" y1="70" x2="524" y2="70" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#ha)"/>
+
+      <!-- Step 4 -->
+      <rect x="526" y="30" width="140" height="80" rx="12" fill="rgba(52,211,153,.06)" stroke="#34d399" stroke-width="1.5" filter="url(#ng)"/>
+      <text x="596" y="58" text-anchor="middle" fill="#34d399" font-size="10" font-weight="700">4</text>
+      <text x="596" y="76" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">PostToolUse</text>
+      <text x="596" y="94" text-anchor="middle" fill="#475569" font-size="9">Display lessons</text>
+
+      <line x1="666" y1="70" x2="696" y2="70" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#ha)"/>
+
+      <!-- Step 5 -->
+      <rect x="698" y="30" width="140" height="80" rx="12" fill="rgba(56,189,248,.06)" stroke="#38bdf8" stroke-width="1.5" filter="url(#ng)"/>
+      <text x="768" y="58" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="700">5</text>
+      <text x="768" y="76" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">SessionEnd</text>
+      <text x="768" y="94" text-anchor="middle" fill="#475569" font-size="9">Summarize + revectorize</text>
+
+      <!-- Loop arrow back -->
+      <path d="M768,110 Q768,130 440,130 Q80,130 80,110" fill="none" stroke="rgba(139,92,246,.3)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ha)"/>
+      <text x="440" y="126" text-anchor="middle" fill="rgba(139,92,246,.5)" font-size="8" font-weight="600">NEXT SESSION</text>
+    </svg>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <h3 class="sub-h">Prompt Injection (Fast Path)</h3>
+      <p class="sub-p">Runs on every prompt in &lt;50ms. Pure stdlib, no ML.</p>
+      <div class="tl">
+        <div class="tl-i"><h4>Tokenize &amp; Filter</h4><p>Extract keywords, remove stopwords, expand synonyms</p></div>
+        <div class="tl-i"><h4>IDF Scoring</h4><p>IDF-weighted keyword match against the active lesson slice in <code>smartassist.db</code></p></div>
+        <div class="tl-i"><h4>Boost &amp; Dedup</h4><p>Apply lesson scores, skip already-injected lessons</p></div>
+        <div class="tl-i"><h4>Inject Context</h4><p>Top matches added to additionalContext</p></div>
+      </div>
+    </div>
+    <div>
+      <h3 class="sub-h">Gate Enforcement</h3>
+      <p class="sub-p">PreToolUse checks gate rules before Bash, Edit, or Write.</p>
+      <div class="lc lc-r"><h4>Deny</h4><p>Block execution entirely. Force-push, destructive patterns.</p></div>
+      <div class="lc lc-a"><h4>Ask</h4><p>Prompt for confirmation. Protected branch pushes.</p></div>
+      <div class="lc lc-b"><h4>Warn</h4><p>Show warning but allow. Lockfile modifications.</p></div>
+      <div style="margin-top:18px">
+        <p style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Matchers:</strong></p>
+        <p style="font-size:.76rem;color:var(--dim);margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">
+          <code>force_push</code><code>protected_branch_push</code><code>lockfile_reset</code><code>sensitive_env_path</code><code>sensitive_env_command</code><code>regex</code>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== MCP TOOLS ===== -->
+<div class="tab-panel" id="tab-tools">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">MCP Server</div>
+    <h1>8 Tools Exposed to Claude</h1>
+    <p>Served via stdio transport for retrieval, lesson management, and feedback.</p>
+  </div>
+  <div class="grid g2">
+    <div class="tool-c"><div class="tool-dot" style="background:var(--blue);box-shadow:0 0 8px rgba(56,189,248,.5)"></div><div><div class="tn">rag_search</div><div class="td">SQLite-backed search over the canonical projection with token expansion, lesson boosts, and 0-100% relevance</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--emerald);box-shadow:0 0 8px rgba(52,211,153,.5)"></div><div><div class="tn">rag_dashboard</div><div class="td">Thompson scores per category, feedback counts, weak categories, corpus stats</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,.5)"></div><div><div class="tn">rag_feedback</div><div class="td">Updates lesson_scores, records to Thompson Sampling, auto-retires at boost floor</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--violet);box-shadow:0 0 8px rgba(139,92,246,.5)"></div><div><div class="tn">create_lesson</div><div class="td">Quality gates: &gt;30 chars, imperative, action verb. 7 categories, intensity 1-5</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--cyan);box-shadow:0 0 8px rgba(34,211,238,.5)"></div><div><div class="tn">compare_lesson</div><div class="td">Draft without storing. Logged for unbiased A/B evaluation</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--emerald);box-shadow:0 0 8px rgba(52,211,153,.5)"></div><div><div class="tn">boost_lesson</div><div class="td">boost += 0.3 (cap 3.0), ups++, Thompson alpha update, re-vectorize</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--rose);box-shadow:0 0 8px rgba(251,113,133,.5)"></div><div><div class="tn">demote_lesson</div><div class="td">boost -= 0.4 (floor 0.0), auto-retire if boost=0 AND ups=0</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--pink);box-shadow:0 0 8px rgba(232,121,249,.5)"></div><div><div class="tn">merge_lessons</div><div class="td">Remove old, add merged version, inherit metadata, re-vectorize</div></div></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== RAG PIPELINE ===== -->
+<div class="tab-panel" id="tab-pipeline">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Core Engine</div>
+    <h1>RAG Pipeline</h1>
+    <p>Canonical SQLite projection for runtime search, with LanceDB rebuilt in the background as an optional derived cache.</p>
+  </div>
+
+  <!-- RAG Pipeline SVG -->
+  <div class="diagram-wrap" style="margin-bottom:48px">
+    <svg viewBox="0 0 860 480" width="100%" style="max-width:860px">
+      <defs>
+        <marker id="ra" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#8b5cf6"/></marker>
+        <filter id="rg"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#8b5cf6" flood-opacity=".25"/></filter>
+      </defs>
+
+      <!-- VECTORIZATION COLUMN -->
+      <text x="200" y="24" text-anchor="middle" fill="#34d399" font-size="13" font-weight="700">VECTORIZATION</text>
+      <text x="200" y="40" text-anchor="middle" fill="#475569" font-size="9">Index lessons into vector DB</text>
+
+      <rect x="100" y="56" width="200" height="38" rx="8" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.3)" stroke-width="1.5" filter="url(#rg)"/>
+      <text x="200" y="80" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Load Curated Lessons</text>
+      <line x1="200" y1="94" x2="200" y2="116" stroke="#34d399" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <rect x="100" y="118" width="200" height="38" rx="8" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.3)" stroke-width="1.5"/>
+      <text x="200" y="142" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Quality Filter</text>
+      <line x1="200" y1="156" x2="200" y2="178" stroke="#34d399" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <rect x="100" y="180" width="200" height="38" rx="8" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.3)" stroke-width="1.5"/>
+      <text x="200" y="204" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Deduplicate</text>
+      <line x1="200" y1="218" x2="200" y2="240" stroke="#34d399" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <rect x="100" y="242" width="200" height="38" rx="8" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.3)" stroke-width="1.5"/>
+      <text x="200" y="266" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Embed with bge-m3</text>
+      <text x="200" y="278" text-anchor="middle" fill="#475569" font-size="9">1024-dim dense + sparse</text>
+      <line x1="200" y1="280" x2="200" y2="302" stroke="#34d399" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <!-- LANCEDB (shared center) -->
+      <rect x="100" y="304" width="200" height="44" rx="10" fill="rgba(251,191,36,.06)" stroke="#fbbf24" stroke-width="1.5" filter="url(#rg)"/>
+      <text x="200" y="332" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700">LanceDB</text>
+
+      <!-- Arrow from LanceDB to right column -->
+      <line x1="300" y1="326" x2="560" y2="326" stroke="rgba(251,191,36,.4)" stroke-width="1.5" stroke-dasharray="6 4"/>
+
+      <!-- SEARCH COLUMN -->
+      <text x="660" y="24" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="700">HYBRID SEARCH</text>
+      <text x="660" y="40" text-anchor="middle" fill="#475569" font-size="9">Retrieve with multi-stage reranking</text>
+
+      <rect x="560" y="56" width="200" height="38" rx="8" fill="rgba(56,189,248,.05)" stroke="rgba(56,189,248,.3)" stroke-width="1.5" filter="url(#rg)"/>
+      <text x="660" y="80" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Query Enhancement</text>
+      <line x1="660" y1="94" x2="660" y2="116" stroke="#38bdf8" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <rect x="560" y="118" width="200" height="38" rx="8" fill="rgba(56,189,248,.05)" stroke="rgba(56,189,248,.3)" stroke-width="1.5"/>
+      <text x="660" y="142" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Dense + Sparse Search</text>
+      <line x1="660" y1="156" x2="660" y2="178" stroke="#38bdf8" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <rect x="560" y="180" width="200" height="38" rx="8" fill="rgba(56,189,248,.05)" stroke="rgba(56,189,248,.3)" stroke-width="1.5"/>
+      <text x="660" y="198" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Linear Reranking</text>
+      <text x="660" y="212" text-anchor="middle" fill="#475569" font-size="9">70% keyword / 30% semantic</text>
+      <line x1="660" y1="218" x2="660" y2="240" stroke="#38bdf8" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <rect x="560" y="242" width="200" height="38" rx="8" fill="rgba(56,189,248,.05)" stroke="rgba(56,189,248,.3)" stroke-width="1.5"/>
+      <text x="660" y="266" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Cross-Encoder Rerank</text>
+      <line x1="660" y1="280" x2="660" y2="302" stroke="#38bdf8" stroke-width="1.5" class="flow-line" marker-end="url(#ra)"/>
+
+      <rect x="560" y="304" width="200" height="44" rx="10" fill="rgba(56,189,248,.05)" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="660" y="326" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="600">Distance Threshold</text>
+      <text x="660" y="342" text-anchor="middle" fill="#475569" font-size="9">Filter &gt; 1.30 L2 distance</text>
+
+      <!-- Results -->
+      <line x1="660" y1="348" x2="660" y2="380" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#ra)"/>
+      <rect x="560" y="382" width="200" height="44" rx="10" fill="rgba(139,92,246,.06)" stroke="#8b5cf6" stroke-width="1.5" filter="url(#rg)"/>
+      <text x="660" y="404" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">Ranked Results</text>
+      <text x="660" y="420" text-anchor="middle" fill="#8b5cf6" font-size="9" class="mono">score = sqrt(1 - d/1.30)</text>
+
+      <!-- Write arrow from Embed to LanceDB is already connected -->
+      <!-- Read arrow from LanceDB to Search step 2 -->
+      <path d="M300,316 Q430,316 430,142 Q430,142 558,142" fill="none" stroke="rgba(251,191,36,.3)" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#ra)"/>
+      <text x="430" y="230" fill="rgba(251,191,36,.5)" font-size="9" font-weight="600" transform="rotate(-90,430,230)">READ</text>
+
+      <!-- Write label -->
+      <text x="200" y="296" text-anchor="middle" fill="rgba(52,211,153,.5)" font-size="8" font-weight="600">WRITE</text>
+    </svg>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Vectorization path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div>Search path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div>LanceDB storage</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Final output</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== SCORING ===== -->
+<div class="tab-panel" id="tab-scoring">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Reinforcement</div>
+    <h1>Thompson Sampling &amp; Reliability</h1>
+    <p>Each category maintains a Beta-Bernoulli model tracking lesson reliability.</p>
+  </div>
+
+  <!-- Scoring visual -->
+  <div class="diagram-wrap" style="margin-bottom:40px">
+    <svg viewBox="0 0 860 260" width="100%" style="max-width:860px">
+      <defs>
+        <linearGradient id="bar-g" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#34d399" stop-opacity=".3"/></linearGradient>
+        <linearGradient id="bar-a" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#fbbf24" stop-opacity=".3"/></linearGradient>
+        <linearGradient id="bar-r" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#fb7185"/><stop offset="100%" stop-color="#fb7185" stop-opacity=".3"/></linearGradient>
+      </defs>
+      <text x="430" y="22" text-anchor="middle" fill="#f1f5f9" font-size="13" font-weight="700">Category Reliability Scores</text>
+      <text x="430" y="38" text-anchor="middle" fill="#475569" font-size="9">reliability = alpha / (alpha + beta) &bull; threshold: 70%</text>
+
+      <!-- Threshold line -->
+      <line x1="518" y1="52" x2="518" y2="240" stroke="rgba(251,191,36,.3)" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="518" y="250" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="600">70%</text>
+
+      <!-- Bars -->
+      <text x="120" y="78" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">testing</text>
+      <rect x="130" y="64" width="480" height="20" rx="4" fill="rgba(255,255,255,.03)"/>
+      <rect x="130" y="64" width="408" height="20" rx="4" fill="url(#bar-g)" opacity=".8"/>
+      <text x="545" y="78" fill="#34d399" font-size="10" font-weight="700">85%</text>
+
+      <text x="120" y="108" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">code_edit</text>
+      <rect x="130" y="94" width="480" height="20" rx="4" fill="rgba(255,255,255,.03)"/>
+      <rect x="130" y="94" width="384" height="20" rx="4" fill="url(#bar-g)" opacity=".8"/>
+      <text x="520" y="108" fill="#34d399" font-size="10" font-weight="700">80%</text>
+
+      <text x="120" y="138" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">architecture</text>
+      <rect x="130" y="124" width="480" height="20" rx="4" fill="rgba(255,255,255,.03)"/>
+      <rect x="130" y="124" width="360" height="20" rx="4" fill="url(#bar-g)" opacity=".8"/>
+      <text x="496" y="138" fill="#34d399" font-size="10" font-weight="700">75%</text>
+
+      <text x="120" y="168" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">pr_review</text>
+      <rect x="130" y="154" width="480" height="20" rx="4" fill="rgba(255,255,255,.03)"/>
+      <rect x="130" y="154" width="346" height="20" rx="4" fill="url(#bar-g)" opacity=".8"/>
+      <text x="484" y="168" fill="#34d399" font-size="10" font-weight="700">72%</text>
+
+      <text x="120" y="198" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">security</text>
+      <rect x="130" y="184" width="480" height="20" rx="4" fill="rgba(255,255,255,.03)"/>
+      <rect x="130" y="184" width="307" height="20" rx="4" fill="url(#bar-a)" opacity=".8"/>
+      <text x="444" y="198" fill="#fbbf24" font-size="10" font-weight="700">64%</text>
+
+      <text x="120" y="228" text-anchor="end" fill="#94a3b8" font-size="11" font-weight="600">git</text>
+      <rect x="130" y="214" width="480" height="20" rx="4" fill="rgba(255,255,255,.03)"/>
+      <rect x="130" y="214" width="70" height="20" rx="4" fill="url(#bar-r)" opacity=".8"/>
+      <text x="208" y="228" fill="#fb7185" font-size="10" font-weight="700">14%</text>
+    </svg>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Above threshold</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div>Below threshold</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb7185"></div>Critical</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <h3 style="font-size:.95rem">Reliability Formula</h3>
+        <div class="cb"><span class="g">reliability</span> = alpha / (alpha + beta)
+<span class="d">// threshold: &lt;70% = "weak"</span></div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:.95rem">Exponential Decay</h3>
+        <div class="cb"><span class="g">weight</span> = e^(-lambda * elapsed)
+<span class="d">// 30-day half-life, 1% floor</span></div>
+      </div>
+    </div>
+    <div>
+      <h3 class="sub-h">Lesson Scoring Lifecycle</h3>
+      <div class="lc lc-g"><h4>Positive Feedback</h4><p>boost += 0.3 (cap 3.0) &bull; ups++ &bull; alpha += intensity</p></div>
+      <div class="lc lc-r"><h4>Negative Feedback</h4><p>boost -= 0.4 (floor 0.0) &bull; downs++ &bull; beta += intensity</p></div>
+      <div class="lc lc-a"><h4>Auto-Retire</h4><p>boost = 0.0 AND ups = 0 &rarr; removed permanently</p></div>
+      <div class="lc lc-v"><h4>Boundary Promotion</h4><p>Same correction 2+ times &rarr; preventive gate rule</p></div>
+    </div>
+  </div>
+  <div style="margin-top:32px">
+    <h3 class="sub-h">Lesson Categories</h3>
+    <div class="pills">
+      <span class="pill p-testing"><i></i>testing</span>
+      <span class="pill p-code"><i></i>code_edit</span>
+      <span class="pill p-git"><i></i>git</span>
+      <span class="pill p-arch"><i></i>architecture</span>
+      <span class="pill p-pr"><i></i>pr_review</span>
+      <span class="pill p-sec"><i></i>security</span>
+      <span class="pill p-dbg"><i></i>debugging</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== DATA MODEL ===== -->
+<div class="tab-panel" id="tab-data">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Storage</div>
+    <h1>Data Model &amp; File Layout</h1>
+  </div>
+  <div class="callout c-b">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+    <div>All data lives in <code>&lt;project&gt;/.claude/smartassist/</code> &mdash; portable, project-scoped, git-ignorable. <code>smartassist.db</code> is the canonical runtime store; JSON and JSONL files are compatibility exports and audit surfaces.</div>
+  </div>
+  <div class="grid g2" style="margin-top:20px">
+    <div class="fc"><div class="fn"><i style="background:var(--violet)"></i>smartassist.db</div><p>Canonical runtime store. Lessons, scores, events, reliability, session state, and search projection live here.</p></div>
+    <div class="fc"><div class="fn"><i style="background:var(--amber)"></i>curated_lessons.json</div><p>Compatibility export of the active lesson corpus for inspection and legacy tooling.</p></div>
+    <div class="fc"><div class="fn"><i style="background:var(--emerald)"></i>lesson_scores.json</div><p>Compatibility export of per-lesson boost, ups/downs, blocked/retired flags.</p></div>
+    <div class="fc"><div class="fn"><i style="background:var(--cyan)"></i>feedback_log.jsonl</div><p>Append-only audit export mirrored from the feedback_events table.</p></div>
+    <div class="fc"><div class="fn"><i style="background:var(--pink)"></i>boundary_pack.json</div><p>Session-start: weak categories, promoted boundaries.</p></div>
+    <div class="fc"><div class="fn"><i style="background:var(--rose)"></i>gates.json</div><p>Preventive rules: matchers, actions, severity.</p></div>
+    <div class="fc"><div class="fn"><i style="background:var(--blue)"></i>reliability_scores.json</div><p>Compatibility export of Thompson alpha/beta per category for weak detection.</p></div>
+    <div class="fc"><div class="fn"><i style="background:var(--dim)"></i>usage_log.jsonl</div><p>Tool call log: timestamps, queries, latency.</p></div>
+  </div>
+  <div style="margin-top:36px">
+    <h3 class="sub-h" style="margin-bottom:16px">Safety Guarantees</h3>
+    <div class="grid g3">
+      <div class="safety"><div class="safety-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><h4>Atomic Writes</h4><p>Temp + <code>os.replace()</code></p></div>
+      <div class="safety"><div class="safety-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div><h4>Advisory Locks</h4><p>File locks for concurrent writes</p></div>
+      <div class="safety"><div class="safety-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg></div><h4>Process Limits</h4><p>Max 3 children + atexit</p></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== CLI ===== -->
+<div class="tab-panel" id="tab-cli">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">CLI &amp; Setup</div>
+    <h1>Command Reference</h1>
+  </div>
+  <div class="grid g3">
+    <div class="cli-c"><div class="cmd">smartassist setup</div><p>Register MCP, install hooks, init</p></div>
+    <div class="cli-c"><div class="cmd">smartassist init</div><p>Initialize in current project</p></div>
+    <div class="cli-c"><div class="cmd">smartassist health</div><p>DB, feedback, search, MCP checks</p></div>
+    <div class="cli-c"><div class="cmd">smartassist seed</div><p>Import from CLAUDE.md</p></div>
+    <div class="cli-c"><div class="cmd">smartassist vectorize</div><p>Rebuild LanceDB vectors</p></div>
+    <div class="cli-c"><div class="cmd">smartassist serve</div><p>Start MCP via stdio</p></div>
+    <div class="cli-c"><div class="cmd">smartassist maintenance</div><p>Staleness + compaction</p></div>
+    <div class="cli-c"><div class="cmd">smartassist analyze</div><p>Usage analytics</p></div>
+    <div class="cli-c"><div class="cmd">smartassist dashboard</div><p>HTML dashboard</p></div>
+  </div>
+  <div class="callout c-g" style="margin-top:28px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+    <div><strong style="color:var(--emerald)">claude-sa</strong> launches Claude Code with live SmartAssist monitor sidebar.</div>
+  </div>
+  <div class="two-col" style="margin-top:40px">
+    <div class="card"><h3>Install via pipx</h3><div class="cb"><span class="g">pipx install</span> git+https://github.com/jnrahme/SmartAssist.git
+<span class="g">pipx ensurepath</span></div><p style="margin-top:12px;font-size:.82rem">Python 3.10+, pipx, Claude Code.</p></div>
+    <div class="card"><h3>First-Time Setup</h3><div class="cb"><span class="g">cd</span> ~/your-project
+<span class="g">smartassist setup</span>    <span class="d"># MCP + hooks</span>
+<span class="g">smartassist seed</span>     <span class="d"># import CLAUDE.md</span>
+<span class="g">smartassist health</span>   <span class="d"># verify</span></div><p style="margin-top:12px;font-size:.82rem">Registers globally. Seed imports conventions.</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== HOW LESSONS WORK ===== -->
+<div class="tab-panel" id="tab-lessons">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Lesson Lifecycle</div>
+    <h1>How Lessons Get Created</h1>
+    <p>There are 5 distinct paths a lesson can enter the system. Each has different triggers, quality gates, and storage behavior.</p>
+  </div>
+
+  <!-- MASTER DIAGRAM: All 5 paths converging -->
+  <div class="diagram-wrap" style="margin-bottom:48px">
+    <svg viewBox="0 0 880 680" width="100%" style="max-width:880px">
+      <defs>
+        <marker id="la" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#8b5cf6"/></marker>
+        <marker id="la-g" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#34d399"/></marker>
+        <marker id="la-b" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#38bdf8"/></marker>
+        <marker id="la-a" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#fbbf24"/></marker>
+        <marker id="la-r" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#fb7185"/></marker>
+        <marker id="la-c" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#22d3ee"/></marker>
+        <marker id="la-p" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#e879f9"/></marker>
+        <filter id="lg"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#8b5cf6" flood-opacity=".25"/></filter>
+        <filter id="lg-g"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#34d399" flood-opacity=".3"/></filter>
+        <filter id="lg-b"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#38bdf8" flood-opacity=".3"/></filter>
+        <filter id="lg-a"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#fbbf24" flood-opacity=".3"/></filter>
+        <filter id="lg-r"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#fb7185" flood-opacity=".3"/></filter>
+        <filter id="lg-c"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#22d3ee" flood-opacity=".3"/></filter>
+      </defs>
+
+      <!-- ═══ TITLE ═══ -->
+      <text x="440" y="22" text-anchor="middle" fill="#f1f5f9" font-size="14" font-weight="800">5 Paths to Lesson Creation</text>
+
+      <!-- ═══ PATH 1: Feedback Hook (left) ═══ -->
+      <rect x="20" y="50" width="160" height="72" rx="12" fill="rgba(52,211,153,.05)" stroke="#34d399" stroke-width="1.5" filter="url(#lg-g)"/>
+      <text x="100" y="70" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">PATH 1</text>
+      <text x="100" y="86" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">Feedback Hook</text>
+      <text x="100" y="102" text-anchor="middle" fill="#475569" font-size="9">User sends :) :( etc.</text>
+      <text x="100" y="114" text-anchor="middle" fill="#475569" font-size="8">Auto-capture, &lt;50ms</text>
+
+      <!-- ═══ PATH 2: MCP create_lesson ═══ -->
+      <rect x="200" y="50" width="160" height="72" rx="12" fill="rgba(139,92,246,.05)" stroke="#8b5cf6" stroke-width="1.5" filter="url(#lg)"/>
+      <text x="280" y="70" text-anchor="middle" fill="#8b5cf6" font-size="9" font-weight="700">PATH 2</text>
+      <text x="280" y="86" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">MCP create_lesson</text>
+      <text x="280" y="102" text-anchor="middle" fill="#475569" font-size="9">Claude calls tool</text>
+      <text x="280" y="114" text-anchor="middle" fill="#475569" font-size="8">Interactive, curated</text>
+
+      <!-- ═══ PATH 3: Commit Hook ═══ -->
+      <rect x="380" y="50" width="160" height="72" rx="12" fill="rgba(251,191,36,.05)" stroke="#fbbf24" stroke-width="1.5" filter="url(#lg-a)"/>
+      <text x="460" y="70" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700">PATH 3</text>
+      <text x="460" y="86" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">Commit Hook</text>
+      <text x="460" y="102" text-anchor="middle" fill="#475569" font-size="9">After git commit</text>
+      <text x="460" y="114" text-anchor="middle" fill="#475569" font-size="8">Analyzes message + diff</text>
+
+      <!-- ═══ PATH 4: Seed from CLAUDE.md ═══ -->
+      <rect x="560" y="50" width="160" height="72" rx="12" fill="rgba(56,189,248,.05)" stroke="#38bdf8" stroke-width="1.5" filter="url(#lg-b)"/>
+      <text x="640" y="70" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="700">PATH 4</text>
+      <text x="640" y="86" text-anchor="middle" fill="#f1f5f9" font-size="11" font-weight="700">Seed CLAUDE.md</text>
+      <text x="640" y="102" text-anchor="middle" fill="#475569" font-size="9">smartassist seed</text>
+      <text x="640" y="114" text-anchor="middle" fill="#475569" font-size="8">Bulk import conventions</text>
+
+      <!-- ═══ PATH 5: Compare (A/B only) ═══ -->
+      <rect x="740" y="50" width="120" height="72" rx="12" fill="rgba(34,211,238,.05)" stroke="#22d3ee" stroke-width="1.5" filter="url(#lg-c)" stroke-dasharray="4 3"/>
+      <text x="800" y="70" text-anchor="middle" fill="#22d3ee" font-size="9" font-weight="700">PATH 5</text>
+      <text x="800" y="86" text-anchor="middle" fill="#f1f5f9" font-size="10" font-weight="700">compare_lesson</text>
+      <text x="800" y="102" text-anchor="middle" fill="#475569" font-size="9">A/B draft only</text>
+      <text x="800" y="114" text-anchor="middle" fill="#fb7185" font-size="8" font-weight="600">NOT stored</text>
+
+      <!-- ═══ Arrows down from paths 1-4 to Quality Gates ═══ -->
+      <line x1="100" y1="122" x2="100" y2="168" stroke="#34d399" stroke-width="1.5" class="flow-line" marker-end="url(#la-g)"/>
+      <line x1="280" y1="122" x2="280" y2="168" stroke="#8b5cf6" stroke-width="1.5" class="flow-line" marker-end="url(#la)"/>
+      <line x1="460" y1="122" x2="460" y2="168" stroke="#fbbf24" stroke-width="1.5" class="flow-line" marker-end="url(#la-a)"/>
+      <line x1="640" y1="122" x2="640" y2="168" stroke="#38bdf8" stroke-width="1.5" class="flow-line" marker-end="url(#la-b)"/>
+
+      <!-- Path 5 goes to separate destination -->
+      <line x1="800" y1="122" x2="800" y2="215" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#la-c)"/>
+      <rect x="730" y="218" width="140" height="36" rx="8" fill="rgba(34,211,238,.04)" stroke="rgba(34,211,238,.2)" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="800" y="236" text-anchor="middle" fill="#475569" font-size="9" class="mono">comparison.jsonl</text>
+      <text x="800" y="248" text-anchor="middle" fill="#475569" font-size="8">For later analysis only</text>
+
+      <!-- ═══ QUALITY GATES BAR ═══ -->
+      <rect x="20" y="170" width="700" height="56" rx="12" fill="rgba(251,113,133,.04)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="370" y="192" text-anchor="middle" fill="#fb7185" font-size="12" font-weight="700">Quality Gates</text>
+      <text x="113" y="214" text-anchor="middle" fill="#475569" font-size="9">Min 30 chars</text>
+      <text x="265" y="214" text-anchor="middle" fill="#475569" font-size="9">Imperative form</text>
+      <text x="400" y="214" text-anchor="middle" fill="#475569" font-size="9">Action verb required</text>
+      <text x="555" y="214" text-anchor="middle" fill="#475569" font-size="9">No generic starts</text>
+      <!-- Gate dots -->
+      <circle cx="60" cy="212" r="3" fill="#fb7185"/>
+      <circle cx="210" cy="212" r="3" fill="#fb7185"/>
+      <circle cx="348" cy="212" r="3" fill="#fb7185"/>
+      <circle cx="498" cy="212" r="3" fill="#fb7185"/>
+      <!-- Capacity pill -->
+      <rect x="618" y="203" width="86" height="18" rx="9" fill="rgba(251,113,133,.1)" stroke="rgba(251,113,133,.25)" stroke-width="1"/>
+      <text x="661" y="215" text-anchor="middle" fill="#fb7185" font-size="8" font-weight="600">Max 300 cap</text>
+
+      <!-- ═══ Arrow down from gates ═══ -->
+      <line x1="370" y1="226" x2="370" y2="270" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#la)"/>
+      <text x="370" y="262" text-anchor="middle" fill="rgba(139,92,246,.4)" font-size="8" font-weight="600">PASS</text>
+
+      <!-- ═══ CANONICAL STORE ═══ -->
+      <rect x="230" y="274" width="280" height="50" rx="12" fill="rgba(139,92,246,.06)" stroke="#8b5cf6" stroke-width="1.5" filter="url(#lg)"/>
+      <text x="370" y="296" text-anchor="middle" fill="#f1f5f9" font-size="12" font-weight="700" class="mono">smartassist.db</text>
+      <text x="370" y="314" text-anchor="middle" fill="#475569" font-size="9">Canonical lessons + scores + events + search projection</text>
+
+      <!-- ═══ Arrow to feedback_log export ═══ -->
+      <line x1="370" y1="324" x2="370" y2="358" stroke="#8b5cf6" stroke-width="1.5" class="flow-line" marker-end="url(#la)"/>
+
+      <!-- ═══ Compatibility export ═══ -->
+      <rect x="230" y="360" width="280" height="44" rx="10" fill="rgba(251,191,36,.04)" stroke="rgba(251,191,36,.25)" stroke-width="1"/>
+      <text x="370" y="382" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600" class="mono">feedback_log.jsonl</text>
+      <text x="370" y="396" text-anchor="middle" fill="#475569" font-size="9">Compatibility/audit export mirrored from the event table</text>
+
+      <!-- ═══ Arrow to Thompson ═══ -->
+      <line x1="370" y1="404" x2="370" y2="438" stroke="#8b5cf6" stroke-width="1.5" class="flow-line" marker-end="url(#la)"/>
+
+      <!-- ═══ THOMPSON SAMPLING UPDATE ═══ -->
+      <rect x="250" y="440" width="240" height="44" rx="10" fill="rgba(52,211,153,.04)" stroke="rgba(52,211,153,.25)" stroke-width="1"/>
+      <text x="370" y="462" text-anchor="middle" fill="#34d399" font-size="11" font-weight="600">Thompson Sampling Update</text>
+      <text x="370" y="476" text-anchor="middle" fill="#475569" font-size="9">record_success() or record_failure()</text>
+
+      <!-- ═══ Arrow to Vectorization ═══ -->
+      <line x1="370" y1="484" x2="370" y2="518" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#la)"/>
+
+      <!-- ═══ VECTORIZATION ═══ -->
+      <rect x="210" y="520" width="320" height="56" rx="14" fill="rgba(232,121,249,.05)" stroke="#e879f9" stroke-width="1.5" filter="url(#lg)"/>
+      <text x="370" y="544" text-anchor="middle" fill="#e879f9" font-size="12" font-weight="700">Cache Refresh</text>
+      <text x="370" y="562" text-anchor="middle" fill="#475569" font-size="9">Read SQLite projection &rarr; bge-m3 embedding &rarr; rebuild LanceDB cache</text>
+
+      <!-- When each path triggers vectorization -->
+      <!-- Path 1 label -->
+      <rect x="20" y="534" width="120" height="28" rx="6" fill="rgba(52,211,153,.06)" stroke="rgba(52,211,153,.2)" stroke-width="1"/>
+      <text x="80" y="552" text-anchor="middle" fill="#34d399" font-size="8" font-weight="600">Path 1: Fire-and-forget</text>
+      <line x1="140" y1="548" x2="208" y2="548" stroke="rgba(52,211,153,.3)" stroke-width="1" stroke-dasharray="3 2"/>
+
+      <rect x="590" y="520" width="150" height="28" rx="6" fill="rgba(139,92,246,.06)" stroke="rgba(139,92,246,.2)" stroke-width="1"/>
+      <text x="665" y="538" text-anchor="middle" fill="#8b5cf6" font-size="8" font-weight="600">Path 2: Immediate</text>
+      <line x1="590" y1="534" x2="532" y2="534" stroke="rgba(139,92,246,.3)" stroke-width="1" stroke-dasharray="3 2"/>
+
+      <rect x="590" y="554" width="150" height="28" rx="6" fill="rgba(251,191,36,.06)" stroke="rgba(251,191,36,.2)" stroke-width="1"/>
+      <text x="665" y="572" text-anchor="middle" fill="#fbbf24" font-size="8" font-weight="600">Path 3: Immediate</text>
+      <line x1="590" y1="568" x2="532" y2="568" stroke="rgba(251,191,36,.3)" stroke-width="1" stroke-dasharray="3 2"/>
+
+      <!-- ═══ Arrow to LanceDB ═══ -->
+      <line x1="370" y1="576" x2="370" y2="610" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#la)"/>
+
+      <!-- ═══ LANCEDB ═══ -->
+      <rect x="270" y="612" width="200" height="48" rx="12" fill="rgba(251,191,36,.06)" stroke="#fbbf24" stroke-width="1.5" filter="url(#lg-a)"/>
+      <text x="370" y="636" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">LanceDB</text>
+      <text x="370" y="652" text-anchor="middle" fill="#475569" font-size="9">Searchable via rag_search()</text>
+    </svg>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Path 1: Feedback hook</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Path 2: MCP tool</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div>Path 3: Commit hook</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div>Path 4: Seed</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee;border:1px dashed #22d3ee"></div>Path 5: Compare (no store)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb7185"></div>Quality gates</div>
+    </div>
+  </div>
+
+  <!-- ═══ DETAILED PATH CARDS ═══ -->
+  <h2 style="font-size:1.3rem;font-weight:800;color:var(--white);margin-bottom:24px">Each Path in Detail</h2>
+
+  <!-- PATH 1 -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--emerald)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div class="card-icon ci-g" style="margin-bottom:0;width:38px;height:38px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
+      <div>
+        <h3 style="margin-bottom:0;font-size:1rem">Path 1: Feedback Hook + LLM Lesson Creation</h3>
+        <p style="font-size:.76rem;color:var(--emerald);font-weight:600;margin:0">Most common path &bull; Hook runs in &lt;50ms &bull; LLM writes the lesson with full context</p>
+      </div>
+    </div>
+    <div class="two-col" style="gap:28px">
+      <div>
+        <p style="font-size:.84rem;margin-bottom:12px"><strong style="color:var(--white)">Trigger:</strong> User sends a prompt containing feedback signals</p>
+        <div class="cb" style="margin-top:0"><span class="d">// These signals are detected:</span>
+<span class="g">:)</span>  <span class="g">:(</span>  <span class="g">thumbs_up</span>  <span class="g">thumbs_down</span>
+<span class="g">:( dont use hardcoded colors</span>
+  &rarr; ("negative", "dont use hardcoded colors")</div>
+      </div>
+      <div>
+        <p style="font-size:.84rem;margin-bottom:8px"><strong style="color:var(--white)">Processing pipeline:</strong></p>
+        <div class="tl">
+          <div class="tl-i"><h4>detect_feedback_signal()</h4><p>Extracts sentiment + context from prompt</p></div>
+          <div class="tl-i"><h4>Feedback event captured</h4><p>Raw feedback stored in <code>smartassist.db</code> for audit trail</p></div>
+          <div class="tl-i"><h4>LLM instructed to call <code>create_lesson</code></h4><p>Claude or Codex analyzes full conversation context and writes a high-quality, specific lesson</p></div>
+        </div>
+        <p style="font-size:.78rem;color:var(--dim);margin-top:8px"><strong style="color:var(--emerald)">Why delegate to the LLM?</strong> The hook runs in &lt;50ms with no AI model. It can detect feedback but can't understand <em>what went wrong</em>. The LLM has full conversation context &mdash; it knows which file, which pattern, and why &mdash; so it writes a lesson that's specific and actionable.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ END-TO-END DEMO (under Path 1) ═══ -->
+  <details style="margin:-12px 0 20px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--emerald);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 24px;font-size:.88rem;font-weight:700;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      See it in action: end-to-end example
+    </summary>
+    <div style="padding:4px 24px 24px;display:flex;flex-direction:column;gap:18px">
+
+      <!-- STEP 1 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--rose-dim);border:1.5px solid var(--rose);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--rose);flex-shrink:0">1</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">User gives feedback</p>
+          <div class="cb" style="margin:0;font-size:.76rem"><span class="g">:(</span> dont use hardcoded colors, use the theme</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px"><code>detect_feedback_signal()</code> extracts <code>("negative", "dont use hardcoded colors, use the theme")</code>. The raw feedback is stored as an audit event in <code>smartassist.db</code>.</p>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--violet-dim);border:1.5px solid var(--violet);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--violet);flex-shrink:0">2</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">LLM analyzes context and creates the lesson</p>
+          <p style="font-size:.74rem;color:var(--dim)">The hook instructs Claude or Codex: <em>"Analyze your conversation and create a lesson."</em> The LLM has full context &mdash; it knows the file, the component, and what went wrong. It calls <code>create_lesson</code>:</p>
+          <div class="cb" style="margin:6px 0 0;font-size:.76rem"><span class="g">create_lesson</span>(
+  lesson: "Use semantic color tokens from theme.colors
+    (e.g. theme.colors.primary) instead of hardcoded
+    hex values in JSX style props",
+  category: "code_edit",
+  sentiment: "negative"
+)</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">The lesson is stored in <code>smartassist.db</code>, search projection rebuilt, compatibility exports refreshed, and LanceDB cache updated in the background.</p>
+
+          <!-- DEEP DIVE: How does the LLM create a better lesson? -->
+          <details style="margin-top:10px;background:rgba(139,92,246,.03);border:1px solid rgba(139,92,246,.12);border-radius:10px;overflow:hidden">
+            <summary style="cursor:pointer;padding:10px 14px;font-size:.76rem;font-weight:600;color:var(--violet);display:flex;align-items:center;gap:8px;user-select:none;list-style:none">
+              <svg class="demo-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="3" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+              Why is the LLM's lesson better than text cleanup?
+            </summary>
+            <div style="padding:4px 14px 14px;display:flex;flex-direction:column;gap:14px">
+
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--rose);flex-shrink:0">vs</div>
+                <div>
+                  <p style="font-size:.74rem;font-weight:600;color:var(--white);margin-bottom:3px">Text cleanup vs LLM-generated</p>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+                    <div style="padding:8px 10px;background:var(--surface);border:1px solid rgba(251,113,133,.15);border-radius:6px">
+                      <p style="font-size:.66rem;font-weight:600;color:var(--rose);margin-bottom:4px">Old: Hook text cleanup</p>
+                      <p style="font-size:.68rem;color:var(--dim);margin:0">"Don't use hardcoded colors, use the theme"</p>
+                    </div>
+                    <div style="padding:8px 10px;background:var(--surface);border:1px solid rgba(52,211,153,.15);border-radius:6px">
+                      <p style="font-size:.66rem;font-weight:600;color:var(--emerald);margin-bottom:4px">New: LLM with context</p>
+                      <p style="font-size:.68rem;color:var(--dim);margin:0">"Use semantic color tokens from theme.colors (e.g. theme.colors.primary) instead of hardcoded hex values in JSX style props"</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--violet);flex-shrink:0">a</div>
+                <div>
+                  <p style="font-size:.74rem;font-weight:600;color:var(--white);margin-bottom:3px">The hook captures the signal (&lt;50ms, no AI)</p>
+                  <p style="font-size:.7rem;color:var(--dim)">Detects the feedback, reinforces recently-injected lessons (boost/demote), stores the raw event for audit, and tells the LLM to take action. No model loading, no generation.</p>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--violet);flex-shrink:0">b</div>
+                <div>
+                  <p style="font-size:.74rem;font-weight:600;color:var(--white);margin-bottom:3px">The LLM writes the lesson (with full context)</p>
+                  <p style="font-size:.7rem;color:var(--dim)">Claude or Codex sees the instruction in <code>additionalContext</code> and calls <code>create_lesson</code>. It knows <strong style="color:var(--white)">which file</strong> was being edited, <strong style="color:var(--white)">which component</strong> had the problem, and <strong style="color:var(--white)">what the correct pattern is</strong> &mdash; so the lesson is specific and actionable.</p>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--violet);flex-shrink:0">c</div>
+                <div>
+                  <p style="font-size:.74rem;font-weight:600;color:var(--white);margin-bottom:3px"><code>create_lesson</code> validates and stores</p>
+                  <p style="font-size:.7rem;color:var(--dim)">The MCP tool applies quality gates (min 30 chars, action verb, no generic starts), stores the lesson in <code>smartassist.db</code> with Thompson Sampling update, rebuilds the search projection, refreshes compatibility exports, and triggers a background LanceDB cache rebuild.</p>
+                </div>
+              </div>
+
+              <p style="font-size:.7rem;color:var(--dim);margin:0;font-style:italic"><strong style="color:var(--violet)">Works with any LLM:</strong> Claude uses hooks to receive the instruction automatically. Codex receives it via AGENTS.md guidance to call <code>create_lesson</code> proactively after user feedback.</p>
+
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--emerald-dim);border:1.5px solid var(--emerald);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--emerald);flex-shrink:0">3</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Later &mdash; user asks to style a component</p>
+          <div class="cb" style="margin:0;font-size:.76rem">style the header with a blue background</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">Hook tokenizes &rarr; <code>["style", "header", "blue", "background"]</code>. Synonyms expand to include <code>"color", "theme", "hex"</code>. Matches <strong style="color:var(--emerald)">L042</strong>.</p>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--violet-dim);border:1.5px solid var(--violet);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--violet);flex-shrink:0">4</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Lesson injected into Claude's context</p>
+          <div class="cb" style="margin:6px 0 0;font-size:.76rem">Project-specific lessons from our RAG knowledge base:
+- [L042] [code_edit] Use semantic color tokens from theme.colors instead of hardcoded hex values in JSX style props</div>
+
+          <!-- DEEP DIVE: How retrieval works -->
+          <details style="margin-top:10px;background:rgba(139,92,246,.03);border:1px solid rgba(139,92,246,.12);border-radius:10px;overflow:hidden">
+            <summary style="cursor:pointer;padding:10px 14px;font-size:.76rem;font-weight:600;color:var(--violet);display:flex;align-items:center;gap:8px;user-select:none;list-style:none">
+              <svg class="demo-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="3" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+              How does retrieval work under the hood?
+            </summary>
+            <div style="padding:4px 14px 14px;display:flex;flex-direction:column;gap:14px">
+
+              <p style="font-size:.72rem;color:var(--dim);margin:0">There are <strong style="color:var(--white)">two retrieval paths</strong> that work in parallel. The hook uses fast lesson-only keyword search on every prompt. The MCP tool searches the broader SQLite projection on demand.</p>
+
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+                <p style="font-size:.74rem;font-weight:700;color:var(--emerald);margin-bottom:8px">Path A: Hook keyword search (runs every prompt)</p>
+
+                <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px">
+                  <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--emerald);flex-shrink:0">1</div>
+                  <div>
+                    <p style="font-size:.7rem;font-weight:600;color:var(--white);margin-bottom:2px">Tokenize the user's prompt</p>
+                    <p style="font-size:.68rem;color:var(--dim)"><code>"style the header with a blue background"</code> &rarr; <code>["style", "header", "blue", "background"]</code>. Stop words ("the", "with", "a") are removed.</p>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px">
+                  <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--emerald);flex-shrink:0">2</div>
+                  <div>
+                    <p style="font-size:.7rem;font-weight:600;color:var(--white);margin-bottom:2px">Expand synonyms</p>
+                    <p style="font-size:.68rem;color:var(--dim)"><code>"style"</code> expands to <code>{"styles","styling","color","colors","theme"}</code>. <code>"color"</code> expands to <code>{"theme","hex","style"}</code>. The expanded set now overlaps with L042's text.</p>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px">
+                  <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--emerald);flex-shrink:0">3</div>
+                  <div>
+                    <p style="font-size:.7rem;font-weight:600;color:var(--white);margin-bottom:2px">IDF scoring against active lessons in <code>smartassist.db</code></p>
+                    <p style="font-size:.68rem;color:var(--dim)">Each active lesson is scored by how many expanded tokens match, weighted by inverse document frequency (rare terms score higher). Lessons with boost from positive feedback rank higher. Blocked or retired lessons are skipped entirely.</p>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:10px;align-items:flex-start">
+                  <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--emerald);flex-shrink:0">4</div>
+                  <div>
+                    <p style="font-size:.7rem;font-weight:600;color:var(--white);margin-bottom:2px">Session dedup + inject</p>
+                    <p style="font-size:.68rem;color:var(--dim)">Lessons already injected in this session are skipped (tracked via <code>rag_session_state.json</code>). Top-5 results are formatted as <code>[ID] [category] lesson text</code> and injected as <code>additionalContext</code> in the hook output. Claude sees them before responding.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+                <p style="font-size:.74rem;font-weight:700;color:var(--violet);margin-bottom:8px">Path B: MCP <code>rag_search</code> (Claude calls on-demand)</p>
+
+                <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px">
+                  <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--violet);flex-shrink:0">1</div>
+                  <div>
+                    <p style="font-size:.7rem;font-weight:600;color:var(--white);margin-bottom:2px">Tokenize + expand query</p>
+                    <p style="font-size:.68rem;color:var(--dim)"><code>"how to style components"</code> becomes searchable tokens like <code>{"style","components","theme","color"}</code> using the same synonym expansion family as the hook path.</p>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px">
+                  <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--violet);flex-shrink:0">2</div>
+                  <div>
+                    <p style="font-size:.7rem;font-weight:600;color:var(--white);margin-bottom:2px">Search canonical projection</p>
+                    <p style="font-size:.68rem;color:var(--dim)"><code>rag_search</code> reads the SQLite <code>search_documents</code> projection, which contains active lessons plus vetted event memory. Category filters apply here, not against a separate store.</p>
+                  </div>
+                </div>
+
+                <div style="display:flex;gap:10px;align-items:flex-start">
+                  <div style="min-width:20px;height:20px;border-radius:50%;background:var(--surface-hi);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--violet);flex-shrink:0">3</div>
+                  <div>
+                    <p style="font-size:.7rem;font-weight:600;color:var(--white);margin-bottom:2px">Apply boosts + format results</p>
+                    <p style="font-size:.68rem;color:var(--dim)">Lesson boosts, source-type weighting, and category filters are applied from the canonical store. Results are returned in the same lesson-focused format Claude already expects.</p>
+                  </div>
+                </div>
+              </div>
+
+              <p style="font-size:.7rem;color:var(--dim);margin:0"><strong style="color:var(--white)">Why two paths?</strong> The hook path is lesson-only and optimized for every prompt. The MCP path searches the broader SQLite projection, so Claude can retrieve vetted event memory and active lessons on demand from the same canonical store. LanceDB is refreshed in the background as a cache, not a second source of truth.</p>
+
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <!-- STEP 5 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--cyan-dim);border:1.5px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--cyan);flex-shrink:0">5</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Next session &mdash; Claude uses <code>theme.colors.primary</code> instead of <code>#0000FF</code></p>
+          <div class="cb" style="margin:0;font-size:.76rem"><span class="d">// Guided by the LLM-created lesson:</span>
+backgroundColor: theme.colors.primary
+
+<span class="d">// Instead of:</span>
+backgroundColor: '#0000FF'</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">No repeated correction needed. The lesson &mdash; written by the LLM with full context &mdash; fires on every future styling-related prompt. It's specific enough to mention <code>theme.colors</code> and <code>JSX style props</code>, not just "use the theme."</p>
+        </div>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- PATH 2 -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--violet)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div class="card-icon ci-v" style="margin-bottom:0;width:38px;height:38px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></div>
+      <div>
+        <h3 style="margin-bottom:0;font-size:1rem">Path 2: MCP create_lesson() Tool</h3>
+        <p style="font-size:.76rem;color:var(--violet);font-weight:600;margin:0">LLM-initiated &bull; Highest quality &bull; Full conversation context</p>
+      </div>
+    </div>
+    <div class="two-col" style="gap:28px">
+      <div>
+        <p style="font-size:.84rem;margin-bottom:8px"><strong style="color:var(--white)">Trigger:</strong> The LLM calls the tool when it recognizes something worth saving:</p>
+        <div style="margin-bottom:10px;display:flex;flex-direction:column;gap:4px;font-size:.76rem;color:var(--dim)">
+          <span>&bull; User corrects the LLM's approach (<em>"no, we do it this way"</em>)</span>
+          <span>&bull; User rejects generated code and explains the preferred pattern</span>
+          <span>&bull; LLM discovers a convention from code, configs, or docs</span>
+          <span>&bull; Hook instructs it after feedback (Path 1 &rarr; "ACTION REQUIRED")</span>
+        </div>
+        <div class="cb" style="margin-top:0"><span class="g">create_lesson</span>(
+  lesson: "Always use semantic colors...",
+  category: "code_edit",
+  intensity: 4
+)</div>
+      </div>
+      <div>
+        <p style="font-size:.84rem;margin-bottom:8px"><strong style="color:var(--white)">What happens:</strong></p>
+        <div class="tl">
+          <div class="tl-i"><h4>Full quality gate validation</h4><p>Category, length, verb, generic starts check</p></div>
+          <div class="tl-i"><h4>Write to <code>smartassist.db</code></h4><p>Canonical lesson row + feedback event, with compatibility exports refreshed</p></div>
+          <div class="tl-i"><h4>Thompson Sampling update</h4><p>record_success() or record_failure() immediately</p></div>
+          <div class="tl-i"><h4>Trigger cache refresh</h4><p>Spawns subprocess immediately &mdash; SQLite search is live now, LanceDB cache follows</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PATH 2 DEMO ═══ -->
+  <details style="margin:-12px 0 20px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--violet);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 24px;font-size:.88rem;font-weight:700;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      See it in action: end-to-end example
+    </summary>
+    <div style="padding:4px 24px 24px;display:flex;flex-direction:column;gap:18px">
+
+      <!-- STEP 1 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--violet-dim);border:1.5px solid var(--violet);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--violet);flex-shrink:0">1</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">User corrects the LLM's approach</p>
+          <div class="cb" style="margin:0 0 6px;font-size:.76rem">User: "no, we always put test files next to the source file, not in __tests__/"</div>
+          <p style="font-size:.74rem;color:var(--dim)">The LLM recognizes this as a project convention it should remember. The <code>create_lesson</code> tool description tells it to call the tool when the user corrects its approach, rejects generated code, or reveals a team standard.</p>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--violet-dim);border:1.5px solid var(--violet);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--violet);flex-shrink:0">2</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">LLM calls <code>create_lesson</code> with full context</p>
+          <div class="cb" style="margin:6px 0 0;font-size:.76rem"><span class="g">create_lesson</span>(
+  lesson: "Always co-locate test files next to source files, not in a separate __tests__ directory",
+  category: "testing",
+  sentiment: "negative",
+  intensity: 4,
+  context: "User corrected test file placement during PaymentService review"
+)</div>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--amber-dim);border:1.5px solid var(--amber);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--amber);flex-shrink:0">3</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Quality gates validate the lesson</p>
+          <p style="font-size:.74rem;color:var(--dim)">Passes all checks: 82 chars (min 30), has action verb ("co-locate"), not a generic start, valid category. Stored in <code>smartassist.db</code> as <strong style="color:var(--violet)">L043</strong> and mirrored to <code>curated_lessons.json</code> + <code>feedback_log.jsonl</code> for compatibility.</p>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--pink-dim);border:1.5px solid var(--pink);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--pink);flex-shrink:0">4</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Immediately live in SQLite, cache refreshed in background</p>
+          <p style="font-size:.74rem;color:var(--dim)">Thompson Sampling records <code>record_success("testing", 4)</code>. The lesson is searchable right away via hook injection and MCP <code>rag_search</code> because both read <code>smartassist.db</code>. The background subprocess only refreshes the derived LanceDB cache.</p>
+        </div>
+      </div>
+
+      <!-- STEP 5 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--emerald-dim);border:1.5px solid var(--emerald);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--emerald);flex-shrink:0">5</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Next session &mdash; user asks to add tests</p>
+          <div class="cb" style="margin:0;font-size:.76rem">add unit tests for the new PaymentService</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">Hook matches "tests" &rarr; injects L043. Claude creates <code>PaymentService.test.ts</code> next to the source file, not in <code>__tests__/</code>.</p>
+        </div>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- PATH 3 -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--amber)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div class="card-icon ci-a" style="margin-bottom:0;width:38px;height:38px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94"/></svg></div>
+      <div>
+        <h3 style="margin-bottom:0;font-size:1rem">Path 3: Commit Hook Extraction</h3>
+        <p style="font-size:.76rem;color:var(--amber);font-weight:600;margin:0">After git commit &bull; Analyzes message + diff &bull; Learns patterns</p>
+      </div>
+    </div>
+    <div class="two-col" style="gap:28px">
+      <div>
+        <p style="font-size:.84rem;margin-bottom:12px"><strong style="color:var(--white)">Trigger:</strong> PreToolUse hook detects a commit completed within last 30 seconds</p>
+        <p style="font-size:.84rem"><strong style="color:var(--white)">What it analyzes:</strong></p>
+        <div style="margin-top:8px">
+          <div class="lc lc-a" style="padding:12px 16px"><h4 style="font-size:.8rem">Commit message format</h4><p style="font-size:.76rem">Missing [TICKET-123] prefix &rarr; correction</p></div>
+          <div class="lc lc-a" style="padding:12px 16px"><h4 style="font-size:.8rem">Test coverage</h4><p style="font-size:.76rem">Source changed without test update &rarr; correction</p></div>
+          <div class="lc lc-a" style="padding:12px 16px"><h4 style="font-size:.8rem">Debug statements</h4><p style="font-size:.76rem">console.log / debugger left in &rarr; correction</p></div>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:.84rem;margin-bottom:8px"><strong style="color:var(--white)">Storage:</strong></p>
+        <div class="tl">
+          <div class="tl-i"><h4><code>smartassist.db</code></h4><p>Canonical feedback event write, plus correction promotion into the active lesson corpus when applicable</p></div>
+          <div class="tl-i"><h4>Thompson Sampling</h4><p>Immediate update: success for good patterns, failure for bad</p></div>
+          <div class="tl-i"><h4>Refresh cache</h4><p>Spawns subprocess to rebuild LanceDB from the canonical projection</p></div>
+          <div class="tl-i"><h4>Dedup via commit SHA</h4><p>commit_captures.json prevents re-extraction</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PATH 3 DEMO ═══ -->
+  <details style="margin:-12px 0 20px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 24px;font-size:.88rem;font-weight:700;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      See it in action: end-to-end example
+    </summary>
+    <div style="padding:4px 24px 24px;display:flex;flex-direction:column;gap:18px">
+
+      <!-- STEP 1 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--amber-dim);border:1.5px solid var(--amber);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--amber);flex-shrink:0">1</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Claude makes a commit</p>
+          <div class="cb" style="margin:0;font-size:.76rem">git commit -m "Fix login validation bug"</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">The <code>PreToolUse</code> hook (Bash matcher) detects a <code>git commit</code> completed within the last 30 seconds.</p>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--rose-dim);border:1.5px solid var(--rose);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--rose);flex-shrink:0">2</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Hook analyzes the commit &mdash; finds problems</p>
+          <p style="font-size:.74rem;color:var(--dim)">Commit message is missing <code>[TICKET-XXX]</code> prefix. The diff shows <code>src/auth/login.ts</code> was changed but no test file was updated.</p>
+          <div class="cb" style="margin:6px 0 0;font-size:.76rem"><span class="d">// Two corrections extracted:</span>
+1. "Use format: [TICKET-XXX] Description for commit messages"
+2. "Update test files when modifying source files in src/auth/"</div>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--pink-dim);border:1.5px solid var(--pink);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--pink);flex-shrink:0">3</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Corrections stored, promoted, and mirrored</p>
+          <p style="font-size:.74rem;color:var(--dim)">Both corrections are written as feedback events in <code>smartassist.db</code> and mirrored to <code>feedback_log.jsonl</code>. Corrections are also promoted into the active lesson corpus when they are new, so the prompt hook can inject them later. Thompson Sampling records <code>record_failure("git", 3)</code> and <code>record_failure("testing", 3)</code>. Commit SHA saved to <code>commit_captures.json</code> so re-analyzing the same commit is skipped.</p>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--emerald-dim);border:1.5px solid var(--emerald);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--emerald);flex-shrink:0">4</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Next commit &mdash; lessons are injected</p>
+          <div class="cb" style="margin:0;font-size:.76rem">git commit -m "Add password reset flow"</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">The hook fires again. This time, the session start already injected the commit format lesson. Claude writes: <code>[AUTH-456] Add password reset flow</code> and includes test updates.</p>
+        </div>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- PATH 4 -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--blue)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div class="card-icon ci-b" style="margin-bottom:0;width:38px;height:38px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <div>
+        <h3 style="margin-bottom:0;font-size:1rem">Path 4: Seed from CLAUDE.md</h3>
+        <p style="font-size:.76rem;color:var(--blue);font-weight:600;margin:0">Manual bulk import &bull; Parses markdown &bull; Bootstraps new projects</p>
+      </div>
+    </div>
+    <div class="two-col" style="gap:28px">
+      <div>
+        <p style="font-size:.84rem;margin-bottom:12px"><strong style="color:var(--white)">Trigger:</strong> <code>smartassist seed</code> or during initial setup</p>
+        <p style="font-size:.84rem"><strong style="color:var(--white)">Parsing pipeline:</strong></p>
+        <div class="tl" style="margin-top:8px">
+          <div class="tl-i"><h4>Find CLAUDE.md</h4><p>Walk up from cwd to project root</p></div>
+          <div class="tl-i"><h4>Parse sections</h4><p>ATX + setext headers, extract bullets + code blocks</p></div>
+          <div class="tl-i"><h4>Infer categories</h4><p>Header keywords &rarr; testing, git, architecture, etc.</p></div>
+          <div class="tl-i"><h4>Filter actionable</h4><p>Must be imperative with action verb, min 30 chars</p></div>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:.84rem;margin-bottom:8px"><strong style="color:var(--white)">Intensity estimation from keywords:</strong></p>
+        <div class="lc lc-r" style="padding:12px 16px"><h4 style="font-size:.8rem">Intensity 5</h4><p style="font-size:.76rem">"never", "always", "must" &mdash; strongest signal</p></div>
+        <div class="lc lc-a" style="padding:12px 16px"><h4 style="font-size:.8rem">Intensity 4</h4><p style="font-size:.76rem">"should", "avoid", "prefer" &mdash; strong signal</p></div>
+        <div class="lc" style="padding:12px 16px;border-left:3px solid var(--dim)"><h4 style="font-size:.8rem;color:var(--dim)">Intensity 3</h4><p style="font-size:.76rem">Default for all other actionable bullets</p></div>
+        <p style="font-size:.78rem;color:var(--dim);margin-top:12px"><strong style="color:var(--blue)">Output:</strong> active lessons in <code>smartassist.db</code> + lessons_learned/*.md files + compatibility exports + cache refresh</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PATH 4 DEMO ═══ -->
+  <details style="margin:-12px 0 20px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 24px;font-size:.88rem;font-weight:700;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      See it in action: end-to-end example
+    </summary>
+    <div style="padding:4px 24px 24px;display:flex;flex-direction:column;gap:18px">
+
+      <!-- STEP 1 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--blue-dim);border:1.5px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--blue);flex-shrink:0">1</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">New project has a CLAUDE.md with conventions</p>
+          <div class="cb" style="margin:0;font-size:.76rem"><span class="d"># CLAUDE.md</span>
+
+## Testing
+- Always use `renderWithProviders()` instead of plain `render()`
+- Never use snapshot tests, prefer explicit assertions
+
+## Git
+- Always include Jira ticket in commit: [PROJ-XXX] Description
+- Never force push to main</div>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--blue-dim);border:1.5px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--blue);flex-shrink:0">2</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">User runs <code>smartassist seed</code></p>
+          <p style="font-size:.74rem;color:var(--dim)">Parser walks up from cwd, finds CLAUDE.md. Extracts 4 bullets. Headers map to categories: "Testing" &rarr; <code>testing</code>, "Git" &rarr; <code>git</code>. Keywords set intensity: "Always" &rarr; 5, "Never" &rarr; 5.</p>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--amber-dim);border:1.5px solid var(--amber);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--amber);flex-shrink:0">3</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">4 lessons created in the store and mirrored out</p>
+          <div class="cb" style="margin:6px 0 0;font-size:.76rem"><span class="d">// curated_lessons.json:</span>
+L001 [testing] "Use renderWithProviders() instead of plain render()"  intensity:5
+L002 [testing] "Never use snapshot tests, prefer explicit assertions"  intensity:5
+L003 [git]     "Include Jira ticket in commit: [PROJ-XXX] Description" intensity:5
+L004 [git]     "Never force push to main"                              intensity:5</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">All 4 are promoted into the active lesson corpus in <code>smartassist.db</code>, mirrored to <code>curated_lessons.json</code> + <code>feedback_log.jsonl</code>, and stored as <code>lessons_learned/*.md</code> files. LanceDB is then rebuilt from that projection in the background.</p>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--emerald-dim);border:1.5px solid var(--emerald);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--emerald);flex-shrink:0">4</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">First session &mdash; lessons are live from prompt one</p>
+          <div class="cb" style="margin:0;font-size:.76rem">write tests for the UserProfile component</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">Hook matches "tests" &rarr; injects L001 + L002. Claude uses <code>renderWithProviders()</code> and writes explicit assertions instead of snapshots. The project's conventions work from day one, no correction needed.</p>
+        </div>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- PATH 5 -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--cyan);border-style:dashed">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div class="card-icon ci-c" style="margin-bottom:0;width:38px;height:38px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/><path d="M16 21h5v-5"/><path d="M8 21H3v-5"/><path d="M21 21l-7-7"/><path d="M3 21l7-7"/></svg></div>
+      <div>
+        <h3 style="margin-bottom:0;font-size:1rem">Path 5: compare_lesson() &mdash; A/B Draft Only</h3>
+        <p style="font-size:.76rem;color:var(--rose);font-weight:600;margin:0">Does NOT store &bull; Does NOT vectorize &bull; Comparison logging only</p>
+      </div>
+    </div>
+    <p style="font-size:.86rem;margin-bottom:12px">When a user sends feedback with context, the hook auto-creates a lesson (Path 1) and tells Claude to also draft one via <code>compare_lesson()</code>. Both versions are logged to <code>lesson_comparison.jsonl</code> for later A/B analysis &mdash; but Claude's draft is <strong style="color:var(--white)">never stored or vectorized</strong>.</p>
+    <div class="cb"><span class="d">// lesson_comparison.jsonl entry:</span>
+{
+  "source": "claude",
+  "sentiment": "negative",
+  "feedback_context": "dont use hardcoded colors",
+  "lesson_text": "Always use semantic colors...",
+  "passed_gates": true   <span class="d">// but still not stored</span>
+}</div>
+  </div>
+
+  <!-- ═══ PATH 5 DEMO ═══ -->
+  <details style="margin:-12px 0 20px;background:var(--surface);border:1px solid var(--border);border-left:3px dashed var(--cyan);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 24px;font-size:.88rem;font-weight:700;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      See it in action: end-to-end example
+    </summary>
+    <div style="padding:4px 24px 24px;display:flex;flex-direction:column;gap:18px">
+
+      <!-- STEP 1 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--emerald-dim);border:1.5px solid var(--emerald);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--emerald);flex-shrink:0">1</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">User gives feedback with context</p>
+          <div class="cb" style="margin:0;font-size:.76rem"><span class="g">:(</span> stop using inline styles, we have a stylesheet for that</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">Path 1 fires first: hook creates lesson <strong style="color:var(--emerald)">L044</strong> ("Don't use inline styles, use the project stylesheet") and logs its version to <code>lesson_comparison.jsonl</code>.</p>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--violet-dim);border:1.5px solid var(--violet);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--violet);flex-shrink:0">2</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Hook tells Claude to draft its own version</p>
+          <p style="font-size:.74rem;color:var(--dim)">The hook injects: <em>"ACTION REQUIRED: call <code>compare_lesson</code> tool with your own lesson draft."</em> Claude has richer conversation context &mdash; it knows the component, the stylesheet name, and the pattern.</p>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--cyan-dim);border:1.5px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--cyan);flex-shrink:0">3</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Claude calls <code>compare_lesson</code> with its draft</p>
+          <div class="cb" style="margin:6px 0 0;font-size:.76rem"><span class="g">compare_lesson</span>(
+  lesson: "Use classes from styles/components.scss instead of inline style attributes on JSX elements",
+  category: "code_edit",
+  sentiment: "negative",
+  context: "stop using inline styles, we have a stylesheet for that"
+)</div>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:26px;height:26px;border-radius:50%;background:var(--amber-dim);border:1.5px solid var(--amber);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--amber);flex-shrink:0">4</div>
+        <div style="flex:1">
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Both versions logged side-by-side &mdash; neither overwrites the other</p>
+          <div class="cb" style="margin:6px 0 0;font-size:.76rem"><span class="d">// lesson_comparison.jsonl now has two entries:</span>
+{ "source": "hook",   "lesson": "Don't use inline styles, use the project stylesheet" }
+{ "source": "claude", "lesson": "Use classes from styles/components.scss instead of inline style attributes..." }</div>
+          <p style="font-size:.74rem;color:var(--dim);margin-top:5px">Claude's draft is <strong style="color:var(--rose)">never stored or vectorized</strong>. Only the hook's L044 is live. The comparison log lets you later analyze which source produces better lessons.</p>
+        </div>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- ═══ HOW LESSONS GET INJECTED ═══ -->
+  <h2 style="font-size:1.3rem;font-weight:800;color:var(--white);margin:40px 0 8px">How Lessons Get Injected</h2>
+  <p style="font-size:.84rem;color:var(--dim);margin-bottom:24px">Once a lesson exists in the system, it needs to reach the LLM at the right moment. There are two injection paths that work together.</p>
+
+  <div class="grid g2" style="margin-bottom:24px">
+    <!-- HOOK INJECTION -->
+    <div class="card" style="border-left:3px solid var(--emerald)">
+      <h3 style="font-size:.95rem;color:var(--emerald);margin-bottom:10px">Automatic: Hook Injection</h3>
+      <p style="font-size:.8rem;color:var(--dim);margin-bottom:12px">Fires on <strong style="color:var(--white)">every single prompt</strong> the user sends. No action required from the user or the LLM &mdash; lessons appear in context automatically.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.7rem;min-width:14px">1</span><span style="font-size:.78rem;color:var(--dim)">User types a prompt (e.g. <code>"style the header blue"</code>)</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.7rem;min-width:14px">2</span><span style="font-size:.78rem;color:var(--dim)"><code>UserPromptSubmit</code> hook fires, tokenizes the prompt, expands synonyms</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.7rem;min-width:14px">3</span><span style="font-size:.78rem;color:var(--dim)">IDF-weighted keyword match against all active lessons in <code>smartassist.db</code></span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.7rem;min-width:14px">4</span><span style="font-size:.78rem;color:var(--dim)">Boost multiplier applied from lesson scores, blocked/retired lessons filtered</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.7rem;min-width:14px">5</span><span style="font-size:.78rem;color:var(--dim)">Top matches injected into <code>additionalContext</code> &mdash; LLM sees them before responding</span></div>
+      </div>
+      <div style="margin-top:12px;padding:8px 10px;background:var(--surface);border-radius:6px">
+        <p style="font-size:.72rem;color:var(--dim);margin:0"><strong style="color:var(--emerald)">Speed:</strong> &lt;50ms, no ML model &bull; <strong style="color:var(--emerald)">Coverage:</strong> every prompt &bull; <strong style="color:var(--emerald)">Limit:</strong> top 5 lessons per prompt, session dedup prevents repeats</p>
+      </div>
+    </div>
+
+    <!-- MCP INJECTION -->
+    <div class="card" style="border-left:3px solid var(--violet)">
+      <h3 style="font-size:.95rem;color:var(--violet);margin-bottom:10px">On-Demand: MCP <code>rag_search</code></h3>
+      <p style="font-size:.8rem;color:var(--dim);margin-bottom:12px">The LLM calls this when it wants to <strong style="color:var(--white)">actively search</strong> for project-specific guidance. Deeper and more semantic than the hook path.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.7rem;min-width:14px">1</span><span style="font-size:.78rem;color:var(--dim)">LLM decides to check for project rules (e.g. before writing tests, before a commit)</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.7rem;min-width:14px">2</span><span style="font-size:.78rem;color:var(--dim)">Calls <code>rag_search("how to write tests")</code> with a natural language query</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.7rem;min-width:14px">3</span><span style="font-size:.78rem;color:var(--dim)">SQLite FTS5 lexical search + optional LanceDB semantic search with cross-encoder reranking</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.7rem;min-width:14px">4</span><span style="font-size:.78rem;color:var(--dim)">Boost and blocked status applied, results returned to the LLM</span></div>
+      </div>
+      <div style="margin-top:12px;padding:8px 10px;background:var(--surface);border-radius:6px">
+        <p style="font-size:.72rem;color:var(--dim);margin:0"><strong style="color:var(--violet)">Speed:</strong> ~800ms (includes embedding) &bull; <strong style="color:var(--violet)">Coverage:</strong> on-demand only &bull; <strong style="color:var(--violet)">Strength:</strong> finds semantic matches even when no keywords overlap</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHY TWO PATHS -->
+  <div style="margin-bottom:40px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r)">
+    <p style="font-size:.82rem;font-weight:700;color:var(--white);margin-bottom:6px">Why two injection paths?</p>
+    <p style="font-size:.78rem;color:var(--dim);margin-bottom:8px">The hook is <strong style="color:var(--white)">fast and automatic</strong> &mdash; it runs on every prompt and catches keyword matches instantly. But it can't understand meaning. If the user asks about <code>"background hue"</code> and the lesson says <code>"hardcoded hex values"</code>, the hook misses it because the words don't overlap.</p>
+    <p style="font-size:.78rem;color:var(--dim);margin-bottom:8px"><code>rag_search</code> is <strong style="color:var(--white)">slower but smarter</strong> &mdash; it uses vector embeddings to find semantic matches regardless of word choice. Together, the two paths ensure lessons surface whether the prompt uses the same words or completely different ones.</p>
+    <p style="font-size:.78rem;color:var(--dim);margin:0"><strong style="color:var(--amber)">For Codex:</strong> Codex doesn't have hooks, so it relies on <code>rag_search</code> plus AGENTS.md guidance that tells it to search for project rules before acting. The MCP tools are identical for both agents.</p>
+  </div>
+
+  <!-- ═══ QUALITY GATES DETAIL ═══ -->
+  <h2 style="font-size:1.3rem;font-weight:800;color:var(--white);margin:40px 0 24px">Quality Gates (All Paths)</h2>
+  <div class="grid g2">
+    <div class="card" style="border-left:3px solid var(--rose)">
+      <h3 style="font-size:.95rem;color:var(--rose)">Text Validation</h3>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">min 30 chars</code><span style="font-size:.8rem;color:var(--dim)">Short feedback is noise</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">action verb</code><span style="font-size:.8rem;color:var(--dim)">Must contain: use, never, always, avoid, check, run, test, verify...</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">no generics</code><span style="font-size:.8rem;color:var(--dim)">Rejects "Remember to", "Good job", "Be careful"</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">imperative</code><span style="font-size:.8rem;color:var(--dim)">Must be a directive, not a question or description</span></div>
+      </div>
+    </div>
+    <div class="card" style="border-left:3px solid var(--rose)">
+      <h3 style="font-size:.95rem;color:var(--rose)">Metadata &amp; Capacity</h3>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">7 categories</code><span style="font-size:.8rem;color:var(--dim)">testing, code_edit, git, architecture, pr_review, security, debugging</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">intensity 1-5</code><span style="font-size:.8rem;color:var(--dim)">Clamped integer, drives Thompson alpha/beta magnitude</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">max 300</code><span style="font-size:.8rem;color:var(--dim)">Curated lessons capped &mdash; returns error at capacity</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><code style="font-size:.72rem;white-space:nowrap">dedup d&lt;0.40</code><span style="font-size:.8rem;color:var(--dim)">Vectorization skips if embedding too similar to existing</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ LIMITATIONS & DESIGN DECISIONS ═══ -->
+  <h2 style="font-size:1.3rem;font-weight:800;color:var(--white);margin:40px 0 8px">Limitations &amp; Design Decisions</h2>
+  <p style="font-size:.84rem;color:var(--dim);margin-bottom:24px">Things to know before relying on SmartAssist in production. Each item explains what the limitation is, why it exists, and the planned path forward.</p>
+
+  <!-- LIMITATION 1: Categories -->
+  <details style="margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 20px;font-size:.86rem;font-weight:600;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      Categories are organizational labels, not a retrieval mechanism
+    </summary>
+    <div style="padding:4px 20px 20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">What this means</p>
+          <p style="font-size:.76rem;color:var(--dim)">Categories (<code>testing</code>, <code>code_edit</code>, <code>git</code>, etc.) are metadata labels attached to lessons. They are used for display, optional filtering in <code>rag_search</code>, Thompson Sampling grouping, dashboard breakdowns, and they are included in the searchable projection so category terms can help retrieval.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Why it's designed this way</p>
+          <p style="font-size:.76rem;color:var(--dim)">Retrieval should still work even if categorization is imperfect because lesson text carries most of the weight. But categories are useful signal: they improve filtering, reliability grouping, and keyword overlap when the user explicitly mentions a domain like <code>testing</code> or <code>git</code>.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Current behavior</p>
+          <p style="font-size:.76rem;color:var(--dim)">The hook auto-infers categories using a 3-tier fallback: majority vote from recently-reinforced lessons, then keyword matching against the feedback text, then a default. The MCP <code>create_lesson</code> tool currently validates categories against a fixed set of 7 engineering-focused labels and rejects unknown values.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--emerald)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--emerald);margin-bottom:4px">Planned: open categories</p>
+          <p style="font-size:.76rem;color:var(--dim)">Remove the fixed category validation. Any string will be accepted as a category &mdash; <code>"risk_management"</code>, <code>"execution"</code>, <code>"compliance"</code>, whatever fits the project. The 7 engineering categories remain as defaults for keyword inference, but Claude can create lessons with any category via the MCP tool. No config file needed.</p>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- LIMITATION 2: Hook search is keyword-based -->
+  <details style="margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 20px;font-size:.86rem;font-weight:600;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      Hook search is keyword-based &mdash; it won't catch every semantic match
+    </summary>
+    <div style="padding:4px 20px 20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">What this means</p>
+          <p style="font-size:.76rem;color:var(--dim)">The <code>UserPromptSubmit</code> hook uses tokenization + synonym expansion + TF-IDF scoring. It matches literal words and a hardcoded synonym map. If a user says <code>"change the background hue"</code> and the lesson says <code>"Don't use hardcoded colors"</code>, the hook might miss it because <code>"hue"</code> isn't in the synonym map for <code>"color"</code>.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Why it's designed this way</p>
+          <p style="font-size:.76rem;color:var(--dim)">The hook runs on <strong style="color:var(--white)">every single prompt</strong>. It must complete in &lt;50ms with no ML model loading. Loading an embedding model would add 4+ seconds to every prompt. The keyword approach is fast, predictable, and catches most practical matches.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Mitigation</p>
+          <p style="font-size:.76rem;color:var(--dim)">The MCP <code>rag_search</code> tool provides the broader-projection fallback. When Claude encounters a topic that might have project-specific rules, it can call <code>rag_search</code> which searches the canonical SQLite projection across both active lessons and vetted event memory. Together, the two paths cover both fast lesson-only matches and wider project memory retrieval.</p>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- LIMITATION 3: 300 lesson cap -->
+  <details style="margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 20px;font-size:.86rem;font-weight:600;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      Curated lesson corpus is capped at 300
+    </summary>
+    <div style="padding:4px 20px 20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">What this means</p>
+          <p style="font-size:.76rem;color:var(--dim)"><code>add_to_curated()</code> rejects new lessons when the active lesson slice in <code>smartassist.db</code> reaches 300 entries. The MCP tool returns an error asking the user to merge or demote existing lessons first.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Why it's designed this way</p>
+          <p style="font-size:.76rem;color:var(--dim)">The hook loads the active lesson slice from <code>smartassist.db</code> on every prompt and scores every lesson against the query. At 300 lessons this stays comfortably under the 50ms budget. The cap also prevents lesson drift &mdash; a smaller, curated corpus with high-confidence lessons is more useful than a large corpus of noise.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Mitigation</p>
+          <p style="font-size:.76rem;color:var(--dim)">Use <code>merge_lessons</code> to consolidate overlapping lessons. Use <code>demote_lesson</code> to retire low-value entries (auto-retired at boost 0.0 with no positive feedback). Run <code>smartassist maintenance</code> to compact stale data. The broader <code>rag_search</code> projection still includes vetted event memory, so historical feedback remains searchable even after active-corpus cleanup. LanceDB mirrors that projection as a cache.</p>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- LIMITATION 4: Embedding model -->
+  <details style="margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 20px;font-size:.86rem;font-weight:600;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      First-run embedding model download (~400MB)
+    </summary>
+    <div style="padding:4px 20px 20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">What this means</p>
+          <p style="font-size:.76rem;color:var(--dim)">The first time <code>smartassist vectorize</code> runs or the background cache refresh executes, it downloads the <strong>bge-m3</strong> sentence transformer model from Hugging Face (~400MB). <code>rag_search</code> itself is SQLite-backed and works without that download.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Why it's designed this way</p>
+          <p style="font-size:.76rem;color:var(--dim)">Local embedding means no API calls, no tokens consumed, no latency to external services, and no data leaving the machine. Everything runs on-device. The model is only loaded by vectorization tools that rebuild the optional LanceDB cache &mdash; the hook and <code>rag_search</code> never load it.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Impact</p>
+          <p style="font-size:.76rem;color:var(--dim)">The first cache rebuild in a fresh environment has a cold-start download. Prompt injection and <code>rag_search</code> are unaffected because they read the SQLite store directly. In air-gapped or restricted environments, pre-download the model, skip cache rebuilds, or set <code>HF_TOKEN</code> for authenticated access.</p>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- LIMITATION 5: Engineering-focused defaults -->
+  <details style="margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 20px;font-size:.86rem;font-weight:600;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      Default keyword maps and synonyms are engineering-focused
+    </summary>
+    <div style="padding:4px 20px 20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">What this means</p>
+          <p style="font-size:.76rem;color:var(--dim)">The hook's synonym map expands <code>"test"</code> &rarr; <code>{"testing","mock","assertion"}</code> and <code>"git"</code> &rarr; <code>{"commit","branch","merge"}</code>. The category keyword map recognizes <code>"jest"</code>, <code>"detox"</code>, <code>"firebase"</code>. These are software engineering terms. A trading project's domain vocabulary (<code>"sharpe"</code>, <code>"drawdown"</code>, <code>"slippage"</code>) won't have synonym expansions or category mappings out of the box.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">What still works</p>
+          <p style="font-size:.76rem;color:var(--dim)">The hook's keyword search still matches literal words in the lesson text &mdash; if the lesson says <code>"check drawdown limits before sizing"</code> and the user types <code>"drawdown"</code>, it matches directly. No synonym expansion needed. The MCP projection search still works for any domain because it scores the actual lesson and event text, not just hardcoded engineering categories.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--emerald)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Non-engineering domains</p>
+          <p style="font-size:.76rem;color:var(--dim)">SmartAssist's core loop (capture feedback &rarr; create lesson &rarr; surface on relevant prompts) is domain-agnostic. The lesson text and the canonical SQLite projection carry the domain knowledge. Categories and synonyms improve precision for engineering but the system works without them. For non-engineering use: let Claude create lessons via <code>create_lesson</code> with domain-specific categories, and rely on projection search for retrieval.</p>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- LIMITATION 6: Single-project scope -->
+  <details style="margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+    <summary style="cursor:pointer;padding:16px 20px;font-size:.86rem;font-weight:600;color:var(--white);display:flex;align-items:center;gap:10px;user-select:none;list-style:none">
+      <svg class="demo-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+      Lessons are scoped per-project &mdash; no cross-project sharing
+    </summary>
+    <div style="padding:4px 20px 20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">What this means</p>
+          <p style="font-size:.76rem;color:var(--dim)">Each project has its own <code>.claude/smartassist/</code> directory with independent lessons, scores, and vector database. A lesson learned in project A (e.g. "always use semantic colors") is not available in project B unless the user runs <code>smartassist seed</code> with a shared CLAUDE.md or manually migrates lessons.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--amber)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Why it's designed this way</p>
+          <p style="font-size:.76rem;color:var(--dim)">Project-specific lessons are more precise than universal ones. "Use renderWithProviders()" is correct for a React Native project but meaningless in a Python API. Per-project scoping prevents cross-contamination and keeps the lesson corpus relevant.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div style="min-width:4px;border-radius:2px;background:var(--emerald)"></div>
+        <div>
+          <p style="font-size:.8rem;font-weight:600;color:var(--white);margin-bottom:4px">Workaround</p>
+          <p style="font-size:.76rem;color:var(--dim)">Universal lessons (e.g. commit format, code review standards) can be shared via a team CLAUDE.md file. Run <code>smartassist seed</code> in each project to import them. The <code>smartassist migrate PATH</code> command can copy data from one project's SmartAssist directory to another.</p>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <section class="card" style="margin-top:18px;padding:22px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <p class="eyebrow" style="color:var(--cyan);margin-bottom:6px">Automation + Live Demo</p>
+        <h3 style="margin:0 0 6px">One contract system powers CI and the showcase</h3>
+        <p style="margin:0;color:var(--dim);max-width:760px">
+          SmartAssist now ships a deterministic scenario runner that exercises the real hook, MCP, seed,
+          commit, gate, boundary-pack, and projection-rebuild paths. The same artifact bundle backs the
+          regression suite and the shareable demo page, so the public showcase comes from recorded evidence
+          instead of handcrafted examples.
+        </p>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <span class="pill" style="background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.28);color:#86efac">Deterministic QA</span>
+        <span class="pill" style="background:rgba(56,189,248,.14);border-color:rgba(56,189,248,.28);color:#7dd3fc">Artifact Demo</span>
+        <span class="pill" style="background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.28);color:#fcd34d">Watch Mode</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:18px">
+      <div style="padding:16px;border:1px solid var(--border);border-radius:14px;background:rgba(13,18,34,.42)">
+        <p style="font-size:.78rem;font-weight:600;color:var(--white);margin-bottom:6px">Commands</p>
+        <pre style="margin:0;font-size:.74rem;line-height:1.6;color:var(--soft);white-space:pre-wrap"><code>smartassist qa list-scenarios
+smartassist qa run
+smartassist qa run --watch --open
+smartassist qa demo --run-dir qa-artifacts/&lt;run-id&gt;</code></pre>
+      </div>
+      <div style="padding:16px;border:1px solid var(--border);border-radius:14px;background:rgba(13,18,34,.42)">
+        <p style="font-size:.78rem;font-weight:600;color:var(--white);margin-bottom:6px">Default contract suite</p>
+        <p style="font-size:.75rem;color:var(--dim);margin:0">
+          The runner verifies hook/MCP retrieval consistency, feedback-created lessons, compare-only A/B logging,
+          commit promotion, session dedup, auto-retirement, CLAUDE.md seeding, gate statistics, boundary-pack
+          refresh, projection rebuild convergence, corpus capacity enforcement, merge behavior, and doctor readiness.
+        </p>
+      </div>
+      <div style="padding:16px;border:1px solid var(--border);border-radius:14px;background:rgba(13,18,34,.42)">
+        <p style="font-size:.78rem;font-weight:600;color:var(--white);margin-bottom:6px">Artifact bundle</p>
+        <p style="font-size:.75rem;color:var(--dim);margin:0">
+          Each run writes <code>manifest.json</code>, <code>summary.json</code>, per-scenario snapshots,
+          assertions, step logs, canonical SQLite state, compatibility exports, and a static HTML demo page.
+          GitHub Actions uploads the bundle on every run and publishes the latest passing demo from <code>main</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+
+</main>
+</div>
+
+<script>
+const btns=document.querySelectorAll('#sidenav button');
+const panels=document.querySelectorAll('.tab-panel');
+const mainEl=document.getElementById('main');
+function switchTab(id){
+  btns.forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+  panels.forEach(p=>p.classList.toggle('active',p.id==='tab-'+id));
+  mainEl.scrollTop=0;
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+  history.replaceState(null,'','#'+id);
+}
+btns.forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+const hash=location.hash.slice(1);
+if(hash&&document.getElementById('tab-'+hash))switchTab(hash);
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('open');
+}
+document.querySelectorAll('.card').forEach(c=>{
+  c.addEventListener('mousemove',e=>{
+    const r=c.getBoundingClientRect();
+    c.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');
+    c.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');
+  });
+});
+document.addEventListener('keydown',e=>{
+  const ids=Array.from(btns).map(b=>b.dataset.tab);
+  const cur=ids.findIndex(id=>document.getElementById('tab-'+id).classList.contains('active'));
+  if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault();switchTab(ids[(cur+1)%ids.length])}
+  else if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault();switchTab(ids[(cur-1+ids.length)%ids.length])}
+});
+</script>
+</body>
+</html>

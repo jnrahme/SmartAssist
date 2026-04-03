@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 from smartassist.thompson_sampling import CategoryReliability, ThompsonSamplingModel
 
 
@@ -79,7 +81,7 @@ class TestThompsonSampling:
         assert model.reliabilities == {}
         assert model.get_reliability("testing") == 0.5
 
-    def test_get_reliability_does_not_mutate_state(self, set_data_dir):
+    def test_get_reliability_applies_decay_and_persists_state(self, set_data_dir):
         storage = str(set_data_dir / "data")
         model = ThompsonSamplingModel(storage)
         model.reliabilities["testing"] = CategoryReliability(
@@ -103,5 +105,11 @@ class TestThompsonSampling:
             model.reliabilities["testing"].last_updated,
         )
 
-        assert score == 10.0 / 12.0
-        assert after == before
+        assert score == pytest.approx(10.0 / 12.0)
+        assert after[0] < before[0]
+        assert after[1] < before[1]
+        assert after[2] > before[2]
+
+        reloaded = ThompsonSamplingModel(storage)
+        assert reloaded.reliabilities["testing"].alpha == after[0]
+        assert reloaded.reliabilities["testing"].beta == after[1]

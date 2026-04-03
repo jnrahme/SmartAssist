@@ -1,6 +1,9 @@
 {
-  "smartassist": {
-    "command": "smartassist",
-    "args": ["serve"]
+  "mcpServers": {
+    "smartassist": {
+      "type": "stdio",
+      "command": "smartassist",
+      "args": ["serve"]
+    }
   }
 }

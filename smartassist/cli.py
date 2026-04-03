@@ -14,6 +14,7 @@ Usage:
     smartassist maintenance   Run staleness + compaction checks
     smartassist analyze       Show usage analytics
     smartassist dashboard     Generate HTML dashboard
+    smartassist qa            Run QA scenarios and generate demo artifacts
     smartassist seed          Seed database from CLAUDE.md conventions
     smartassist version       Show version information
 """
@@ -135,6 +136,8 @@ def _ensure_project_mcp_registration(log=None) -> Path:
 
 def cmd_init(log=None):
     """Initialize SmartAssist in the current project."""
+    from smartassist.store import initialize_store
+
     cwd = Path.cwd().resolve()
     data_dir = cwd / ".claude" / "smartassist"
     storage = data_dir / "data"
@@ -150,26 +153,7 @@ def cmd_init(log=None):
 
     storage.mkdir(parents=True, exist_ok=True)
     lancedb.mkdir(parents=True, exist_ok=True)
-
-    # Create empty data files
-    feedback_log = storage / "feedback_log.jsonl"
-    if not feedback_log.exists():
-        feedback_log.write_text("")
-
-    reliability = storage / "reliability_scores.json"
-    if not reliability.exists():
-        reliability.write_text("{}")
-
-    vectorization_log = storage / "vectorization_log.json"
-    if not vectorization_log.exists():
-        vectorization_log.write_text(
-            json.dumps(
-                {
-                    "total_vectorized": 0,
-                    "last_vectorization": None,
-                }
-            )
-        )
+    initialize_store(storage)
 
     # Update .gitignore
     gitignore = cwd / ".gitignore"
@@ -191,7 +175,8 @@ def cmd_init(log=None):
         return 0
 
     print(f"\n  Created: {data_dir}/")
-    print(f"    data/       - feedback logs, scores, curated lessons")
+    print(f"    data/       - canonical store + compatibility exports")
+    print(f"      smartassist.db - runtime source of truth")
     print(f"    lancedb/    - vector database")
     print(f"  MCP:          {mcp_path}")
     print(f"\nSmartAssist initialized successfully!")
@@ -818,6 +803,177 @@ def cmd_version():
     return 0
 
 
+def cmd_qa():
+    """Run SmartAssist QA scenarios and generate demo artifacts."""
+    if len(sys.argv) < 3 or sys.argv[2] in ("-h", "--help", "help"):
+        print("Usage: smartassist qa <subcommand> [options]\n")
+        print("Subcommands:")
+        print(f"  {'list-scenarios':<18} Show available QA scenarios")
+        print(f"  {'run':<18} Run deterministic QA scenarios")
+        print(f"  {'clean':<18} Remove QA artifact directories")
+        print(f"  {'demo':<18} Render a static HTML demo from a run directory")
+        print("\nExamples:")
+        print("  smartassist qa list-scenarios")
+        print("  smartassist qa run")
+        print("  smartassist qa run --scenario feedback_creates_active_lesson")
+        print("  smartassist qa run --watch --open")
+        print("  smartassist qa clean")
+        print("  smartassist qa demo --run-dir qa-artifacts/qa-20260402_120000")
+        return 0
+
+    subcmd = sys.argv[2]
+
+    if subcmd == "list-scenarios":
+        from smartassist.qa.runner import list_scenarios
+
+        for scenario in list_scenarios():
+            live = "live" if scenario["live_claude"] else "deterministic"
+            print(f"{scenario['name']:<40} {live:<13} {scenario['description']}")
+        return 0
+
+    if subcmd == "run":
+        from smartassist.qa.runner import run_scenarios
+
+        scenario_names: list[str] = []
+        run_dir = None
+        render_demo = True
+        open_demo = False
+        watch = False
+
+        i = 3
+        while i < len(sys.argv):
+            arg = sys.argv[i]
+            if arg == "--scenario":
+                if i + 1 >= len(sys.argv):
+                    print("Error: --scenario requires a value")
+                    return 1
+                scenario_names.append(sys.argv[i + 1])
+                i += 2
+                continue
+            if arg == "--run-dir":
+                if i + 1 >= len(sys.argv):
+                    print("Error: --run-dir requires a value")
+                    return 1
+                run_dir = sys.argv[i + 1]
+                i += 2
+                continue
+            if arg == "--no-demo":
+                render_demo = False
+                i += 1
+                continue
+            if arg == "--open":
+                open_demo = True
+                i += 1
+                continue
+            if arg == "--watch":
+                watch = True
+                i += 1
+                continue
+            print(f"Unknown option: {arg}")
+            return 1
+
+        if watch:
+            render_demo = True
+
+        summary = run_scenarios(
+            names=scenario_names or None,
+            run_dir=run_dir,
+            render_demo=render_demo,
+            open_demo=open_demo,
+            watch=watch,
+        )
+        print(f"Run directory: {summary['run_dir']}")
+        print(f"Status: {summary['final_status']}")
+        for scenario in summary["scenarios"]:
+            status = str(scenario.get("status", "pending")).upper()
+            print(f"  {status:<4} {scenario['name']}")
+        return 0 if summary["final_status"] == "pass" else 1
+
+    if subcmd == "clean":
+        from smartassist.qa.runner import clean_runs
+
+        run_dir = None
+        i = 3
+        while i < len(sys.argv):
+            arg = sys.argv[i]
+            if arg == "--run-dir":
+                if i + 1 >= len(sys.argv):
+                    print("Error: --run-dir requires a value")
+                    return 1
+                run_dir = sys.argv[i + 1]
+                i += 2
+                continue
+            print(f"Unknown option: {arg}")
+            return 1
+
+        removed = clean_runs(run_dir)
+        if removed:
+            for path in removed:
+                print(f"Removed {path}")
+        else:
+            print("Nothing to clean.")
+        return 0
+
+    if subcmd == "demo":
+        from smartassist.qa.demo import render_demo_site
+
+        run_dir = None
+        output = None
+        open_demo = False
+        auto_refresh = None
+
+        i = 3
+        while i < len(sys.argv):
+            arg = sys.argv[i]
+            if arg == "--run-dir":
+                if i + 1 >= len(sys.argv):
+                    print("Error: --run-dir requires a value")
+                    return 1
+                run_dir = sys.argv[i + 1]
+                i += 2
+                continue
+            if arg == "--output":
+                if i + 1 >= len(sys.argv):
+                    print("Error: --output requires a value")
+                    return 1
+                output = sys.argv[i + 1]
+                i += 2
+                continue
+            if arg == "--open":
+                open_demo = True
+                i += 1
+                continue
+            if arg == "--auto-refresh":
+                if i + 1 >= len(sys.argv):
+                    print("Error: --auto-refresh requires a value")
+                    return 1
+                try:
+                    auto_refresh = int(sys.argv[i + 1])
+                except ValueError:
+                    print("Error: --auto-refresh must be an integer")
+                    return 1
+                i += 2
+                continue
+            print(f"Unknown option: {arg}")
+            return 1
+
+        if not run_dir:
+            print("Error: smartassist qa demo requires --run-dir")
+            return 1
+
+        destination = render_demo_site(
+            run_dir,
+            output_path=output,
+            open_browser=open_demo,
+            auto_refresh_seconds=auto_refresh,
+        )
+        print(destination)
+        return 0
+
+    print(f"Unknown qa subcommand: {subcmd}")
+    return 1
+
+
 def main():
     commands = {
         "setup": cmd_setup,
@@ -831,6 +987,7 @@ def main():
         "maintenance": cmd_maintenance,
         "analyze": cmd_analyze,
         "dashboard": cmd_dashboard,
+        "qa": cmd_qa,
         "seed": cmd_seed,
         "compare-lessons": cmd_compare_lessons,
         "version": cmd_version,
@@ -854,6 +1011,7 @@ def main():
         print(f"  {'maintenance':<15} Run staleness + compaction checks")
         print(f"  {'analyze':<15} Show usage analytics")
         print(f"  {'dashboard':<15} Generate HTML dashboard")
+        print(f"  {'qa':<15} Run QA scenarios and demo generation")
         print(f"  {'seed':<15} Seed database from CLAUDE.md conventions")
         print(
             f"  {'compare-lessons':<15} Show A/B comparison of hook vs Claude lessons"

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import shutil
 from pathlib import Path
 
 from smartassist.claude_config import get_mcp_status
@@ -73,6 +75,63 @@ def _collect_hook_status(settings_path: Path) -> dict:
     return _ok("Hooks", f"All {len(EXPECTED_HOOKS)} SmartAssist hooks are registered")
 
 
+def _command_is_runnable(command: str) -> bool:
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        parts = command.split()
+
+    if not parts:
+        return False
+
+    executable = parts[0]
+    if "/" in executable:
+        path = Path(executable).expanduser()
+        return path.exists() and os.access(path, os.X_OK)
+
+    return shutil.which(executable) is not None
+
+
+def _collect_hook_command_status(settings_path: Path) -> dict:
+    settings = _load_settings(settings_path)
+    hooks = settings.get("hooks", {})
+
+    missing = []
+    checked = 0
+    for event, expected in EXPECTED_HOOKS.items():
+        groups = hooks.get(event, [])
+        matched_command = None
+        for group in groups:
+            matcher = group.get("matcher")
+            if expected["matcher"] is not None and matcher != expected["matcher"]:
+                continue
+            for inner in group.get("hooks", []):
+                command = str(inner.get("command") or "").strip()
+                if command == expected["command"]:
+                    matched_command = command
+                    break
+            if matched_command:
+                break
+
+        if matched_command:
+            checked += 1
+        if matched_command and not _command_is_runnable(matched_command):
+            missing.append(f"{event}:{matched_command}")
+
+    if missing:
+        return _fail(
+            "Hook commands",
+            "Registered hook commands are not executable from PATH: " + ", ".join(missing),
+        )
+    if checked < len(EXPECTED_HOOKS):
+        return _warn(
+            "Hook commands",
+            "Skipped some executability checks because one or more hook registrations are missing",
+        )
+
+    return _ok("Hook commands", "All registered SmartAssist hook commands are executable")
+
+
 def _collect_data_status() -> dict:
     try:
         data_dir = get_data_dir()
@@ -139,6 +198,7 @@ def collect_doctor_report() -> dict:
     settings_path = claude_dir / "settings.json"
     if settings_path.exists():
         checks.append(_collect_hook_status(settings_path))
+        checks.append(_collect_hook_command_status(settings_path))
     else:
         checks.append(
             _fail("Hooks", f"{settings_path} is missing; run 'smartassist setup'")

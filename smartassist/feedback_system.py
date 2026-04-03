@@ -11,6 +11,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from smartassist.config import get_storage_path
+from smartassist.store import append_feedback_event
 
 
 class FeedbackSignal(Enum):
@@ -194,8 +195,7 @@ class FeedbackCapture:
 
     def _store_event(self, event: FeedbackEvent):
         """Store event to JSONL log and write lesson file"""
-        with open(self.log_file, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(asdict(event), ensure_ascii=False) + '\n')
+        append_feedback_event(self.storage_path, asdict(event))
         self._write_lesson_file(event)
 
     def _write_lesson_file(self, event: FeedbackEvent):

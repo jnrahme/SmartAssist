@@ -1,6 +1,7 @@
 """Tests for smartassist.hooks.seed_from_claudemd dynamic CLAUDE.md parsing."""
 
 import textwrap
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -18,9 +19,11 @@ from smartassist.hooks.seed_from_claudemd import (
     code_block_to_lesson,
     create_lessons,
     create_hardcoded_lessons,
+    seed_database,
     MarkdownSection,
 )
 from smartassist.feedback_system import FeedbackCategory
+from smartassist.store import list_lessons
 
 
 # ── find_claudemd ────────────────────────────────────────────────────────
@@ -479,3 +482,29 @@ class TestHardcodedLessons:
             assert "query" in lesson
             assert "response" in lesson
             assert "context" in lesson
+
+
+class TestSeedDatabase:
+    def test_seed_promotes_active_lessons(self, tmp_path, monkeypatch, set_data_dir):
+        sample = textwrap.dedent("""\
+        ## Testing
+
+        - Always use renderWithProviders instead of plain render in tests
+
+        ## Git
+
+        - Never force push to main or release branches
+        """)
+        (tmp_path / "CLAUDE.md").write_text(sample)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "smartassist.hooks.seed_from_claudemd.subprocess.run",
+            lambda *args, **kwargs: SimpleNamespace(stdout='{"status":"vectorized"}', stderr=""),
+        )
+
+        seed_database()
+
+        lessons = list_lessons(set_data_dir / "data")
+        lesson_texts = {lesson["lesson"] for lesson in lessons}
+        assert "Always use renderWithProviders instead of plain render in tests" in lesson_texts
+        assert "Never force push to main or release branches" in lesson_texts
