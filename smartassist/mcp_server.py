@@ -63,7 +63,6 @@ logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 # ── Lazy-loaded singletons ─────────────────────────────────────────────────
 _thompson = None
 _embedder = None
-_db_table = None
 _cross_encoder = None
 
 # Results above this distance are too irrelevant to return.
@@ -119,13 +118,15 @@ def _get_embedder():
 
 
 def _get_table():
-    """Lazy-load the LanceDB documents table."""
-    global _db_table
-    if _db_table is None:
-        import lancedb
-        db = lancedb.connect(str(_get_db()))
-        _db_table = db.open_table("documents")
-    return _db_table
+    """Open the LanceDB documents table fresh for each query.
+
+    The vector cache is rebuilt by separate subprocesses. Reopening the table
+    avoids stale-read issues from holding a long-lived handle across rebuilds.
+    """
+    import lancedb
+
+    db = lancedb.connect(str(_get_db()))
+    return db.open_table("documents")
 
 
 def _get_cross_encoder():
@@ -370,13 +371,16 @@ def rag_search(
             if r.get("_rerank_score") is not None:
                 relevance = max(relevance, min(1.0, (float(r["_rerank_score"]) + 1) / 2))
             semantic_results.append({
+                "doc_id": r.get("doc_id", ""),
                 "id": r.get("source_id", ""),
                 "source_id": r.get("source_id", ""),
+                "source_type": r.get("source_type", "lesson"),
                 "text": r.get("text", ""),
                 "category": r.get("category", "unknown"),
                 "score": relevance,
             })
-        search_backend = "hybrid_semantic+fts5"
+        if semantic_results:
+            search_backend = "hybrid_semantic+fts5"
     except Exception:
         pass  # Fall back to FTS5 only
 

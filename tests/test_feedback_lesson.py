@@ -36,6 +36,7 @@ from smartassist.mcp_server import (
     boost_lesson,
     demote_lesson,
     merge_lessons,
+    rag_search,
     _update_feedback_metrics,
     VALID_CATEGORIES,
 )
@@ -118,6 +119,56 @@ class TestFeedbackSignalDetectionV2:
             sentiment, context = detect_feedback_signal(signal)
             assert sentiment == expected, f"Failed for signal: {signal}"
             assert context == ""
+
+
+class _FakeSemanticTable:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def search(self, vector, query_type=None):  # noqa: ARG002
+        return self
+
+    def rerank(self, reranker=None):  # noqa: ARG002
+        return self
+
+    def limit(self, count):  # noqa: ARG002
+        return self
+
+    def to_list(self):
+        return list(self.rows)
+
+
+class TestRagSearchMemoryLabels:
+    def test_event_hits_stay_in_past_corrections_bucket(self, set_data_dir):
+        rows = [
+            {
+                "doc_id": "event:1",
+                "source_id": "1",
+                "source_type": "event",
+                "text": "Correction: Don't use inline styles in dashboard headers",
+                "category": "code_edit",
+                "_distance": 0.2,
+            }
+        ]
+
+        fake_embedder = MagicMock()
+        fake_embedder.encode.return_value = [0.1, 0.2, 0.3]
+
+        with patch("smartassist.mcp_server._get_storage", return_value=set_data_dir / "data"):
+            with patch("smartassist.mcp_server._get_embedder", return_value=fake_embedder):
+                with patch("smartassist.mcp_server._get_table", return_value=_FakeSemanticTable(rows)):
+                    with patch("smartassist.mcp_server.search_projection_documents", return_value=([], {})):
+                        with patch("smartassist.mcp_server._log_usage"):
+                            with patch("smartassist.thompson_rerank.load_thompson_batch", return_value={}):
+                                with patch(
+                                    "smartassist.thompson_rerank.thompson_rerank",
+                                    side_effect=lambda candidates, data, now=None: candidates,
+                                ):
+                                    result = rag_search("how should I style the dashboard header")
+
+        assert "Past Corrections (episodic memory):" in result
+        assert "Project Rules (semantic memory):" not in result
+        assert "Don't use inline styles in dashboard headers" in result
 
     # V2: Prefix matching — signal + context
     def test_smiley_with_context(self):
