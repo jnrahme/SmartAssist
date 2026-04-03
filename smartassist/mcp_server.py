@@ -15,6 +15,7 @@ Runs via stdio transport. Entry point: `smartassist serve`
 """
 
 import json
+import math
 import sys
 import time
 import subprocess
@@ -61,6 +62,12 @@ logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 
 # ── Lazy-loaded singletons ─────────────────────────────────────────────────
 _thompson = None
+_embedder = None
+_db_table = None
+_cross_encoder = None
+
+# Results above this distance are too irrelevant to return.
+MAX_DISTANCE = 1.30
 
 VALID_CATEGORIES = {"testing", "code_edit", "git", "architecture", "pr_review", "security", "debugging"}
 
@@ -91,6 +98,61 @@ def _trigger_vectorization(full_rebuild: bool = False):
         spawn_managed([sys.executable, "-m", module])
     except Exception:
         pass
+
+
+def _get_db():
+    try:
+        from smartassist.config import get_db_path
+        return get_db_path()
+    except RuntimeError:
+        raise RuntimeError("SmartAssist database not found. Run 'smartassist setup'.")
+
+
+def _get_embedder():
+    """Lazy-load the sentence transformer embedding model."""
+    global _embedder
+    if _embedder is None:
+        from sentence_transformers import SentenceTransformer
+        from smartassist.config import EMBEDDING_MODEL
+        _embedder = SentenceTransformer(EMBEDDING_MODEL)
+    return _embedder
+
+
+def _get_table():
+    """Lazy-load the LanceDB documents table."""
+    global _db_table
+    if _db_table is None:
+        import lancedb
+        db = lancedb.connect(str(_get_db()))
+        _db_table = db.open_table("documents")
+    return _db_table
+
+
+def _get_cross_encoder():
+    """Lazy-load the cross-encoder reranker model."""
+    global _cross_encoder
+    if _cross_encoder is None:
+        from sentence_transformers import CrossEncoder
+        _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    return _cross_encoder
+
+
+def _enhance_query(query: str) -> str:
+    """Transform a user query to better match stored document embeddings."""
+    query = query.strip()
+    if not query:
+        return query
+    return f"Correction for this project: {query}"
+
+
+def _compute_distance_relevance(distance: float) -> float:
+    """Convert L2 distance to a 0-1 relevance score using sqrt scaling."""
+    if distance <= 0:
+        return 1.0
+    if distance >= MAX_DISTANCE:
+        return 0.0
+    normalized = distance / MAX_DISTANCE
+    return math.sqrt(1 - normalized)
 
 
 def _extract_lesson_text(raw_text: str) -> str:
@@ -254,33 +316,120 @@ def rag_search(
     """
     top_k = max(1, min(top_k, 10))
     t0 = time.time()
+    storage = _get_storage()
+    search_backend = "sqlite_fts5"
 
+    # ── Stage 1: SQLite FTS5 keyword search (always available) ────────
     try:
-        storage = _get_storage()
-        results, search_meta = search_projection_documents(
-            storage,
-            query,
-            top_k=top_k,
-            category=category,
+        fts_results, search_meta = search_projection_documents(
+            storage, query, top_k=20, category=category,
         )
     except Exception:
-        _log_usage("rag_search", query, 0, 0)
-        return "Error initializing search. Run 'smartassist health' to diagnose."
+        fts_results, search_meta = [], {}
 
+    # ── Stage 2: LanceDB semantic search (if available) ───────────────
+    semantic_results = []
+    try:
+        embedder = _get_embedder()
+        table = _get_table()
+        enhanced_query = _enhance_query(query)
+        query_vector = embedder.encode(enhanced_query)
+
+        RERANK_POOL = 20
+        try:
+            from lancedb.rerankers import LinearCombinationReranker
+            reranker = LinearCombinationReranker(weight=0.7)
+            raw_results = (
+                table.search(query_vector, query_type="hybrid")
+                .rerank(reranker=reranker)
+                .limit(RERANK_POOL)
+                .to_list()
+            )
+        except Exception:
+            raw_results = table.search(query_vector).limit(RERANK_POOL).to_list()
+
+        # Distance filter
+        raw_results = [r for r in raw_results if r.get("_distance", 99) <= MAX_DISTANCE]
+
+        # Cross-encoder reranking
+        if raw_results and len(raw_results) > 1:
+            try:
+                cross_encoder = _get_cross_encoder()
+                pairs = [[query, r.get("text", "")] for r in raw_results]
+                scores = cross_encoder.predict(pairs)
+                for r, score in zip(raw_results, scores):
+                    r["_rerank_score"] = float(score)
+                raw_results.sort(key=lambda r: r.get("_rerank_score", 0), reverse=True)
+            except Exception:
+                pass
+
+        # Convert to common format
+        for r in raw_results:
+            distance = r.get("_distance", 0)
+            relevance = _compute_distance_relevance(distance)
+            if r.get("_rerank_score") is not None:
+                relevance = max(relevance, min(1.0, (float(r["_rerank_score"]) + 1) / 2))
+            semantic_results.append({
+                "id": r.get("source_id", ""),
+                "source_id": r.get("source_id", ""),
+                "text": r.get("text", ""),
+                "category": r.get("category", "unknown"),
+                "score": relevance,
+            })
+        search_backend = "hybrid_semantic+fts5"
+    except Exception:
+        pass  # Fall back to FTS5 only
+
+    # ── Stage 3: Merge FTS5 + semantic results ────────────────────────
+    seen_ids = set()
+    merged = []
+    # Prefer semantic results (higher quality), then FTS5 for anything missed
+    for r in semantic_results:
+        rid = r.get("id") or r.get("source_id", "")
+        if rid and rid not in seen_ids:
+            seen_ids.add(rid)
+            merged.append(r)
+    for r in fts_results:
+        rid = r.get("id") or r.get("source_id", "")
+        if rid and rid not in seen_ids:
+            seen_ids.add(rid)
+            merged.append(r)
+
+    # ── Stage 4: Thompson Sampling reranking ──────────────────────────
+    try:
+        from smartassist.thompson_rerank import thompson_rerank, load_thompson_batch
+        lesson_ids = [r.get("id") or r.get("source_id", "") for r in merged if r.get("id") or r.get("source_id")]
+        thompson_data = load_thompson_batch(storage, lesson_ids) if lesson_ids else {}
+        merged = thompson_rerank(merged, thompson_data)
+    except Exception:
+        pass  # Fall back to non-Thompson ranking
+
+    # ── Stage 5: Category filter + top-K ──────────────────────────────
+    if category:
+        cat_lower = category.lower()
+        merged = [r for r in merged if cat_lower in r.get("category", "").lower()]
+
+    results = merged[:top_k]
     latency = (time.time() - t0) * 1000
 
+    # ── Logging: full decision funnel ─────────────────────────────────
     lessons_log = []
     for r in results:
-        relevance = _compute_relevance(r.get("score", 0))
+        score = r.get("final_score", r.get("score", 0))
         lesson_text = _extract_lesson_text(r.get("text", ""))
         lessons_log.append({
             "category": r.get("category", "unknown"),
-            "relevance_pct": round(relevance * 100),
+            "relevance_pct": round(min(1.0, max(0.0, score)) * 100),
             "lesson_text": lesson_text[:120],
+            "thompson_mean": round(r.get("thompson_mean", 0.5), 3),
         })
 
-    search_meta = dict(search_meta)
-    search_meta["search_backend"] = "sqlite_projection"
+    search_meta = dict(search_meta) if search_meta else {}
+    search_meta["search_backend"] = search_backend
+    search_meta["fts_candidates"] = len(fts_results)
+    search_meta["semantic_candidates"] = len(semantic_results)
+    search_meta["merged_candidates"] = len(merged)
+    search_meta["enhanced_query"] = _enhance_query(query) if semantic_results else None
 
     _log_usage("rag_search", query, len(results), latency,
                lessons=lessons_log, search_meta=search_meta)
@@ -288,14 +437,27 @@ def rag_search(
     if not results:
         return f"No relevant lessons found for: {query}"
 
-    output_parts = [f"Found {len(results)} relevant lesson(s) for: \"{query}\"\n"]
+    # Separate results by memory type (MemAlign dual-memory pattern)
+    lessons = [r for r in results if r.get("source_type", "lesson") != "event"]
+    episodes = [r for r in results if r.get("source_type") == "event"]
 
-    for i, result in enumerate(results, 1):
-        raw_text = result.get("text", "").strip()
-        relevance_score = result.get("score", 0)
-        cat = result.get("category", "unknown")
-        lesson = _format_lesson(raw_text, cat, relevance_score)
-        output_parts.append(lesson)
+    output_parts = [f"Found {len(results)} relevant result(s) for: \"{query}\"\n"]
+
+    if lessons:
+        output_parts.append("Project Rules (semantic memory):")
+        for result in lessons:
+            raw_text = result.get("text", "").strip()
+            score = result.get("final_score", result.get("score", 0))
+            cat = result.get("category", "unknown")
+            output_parts.append(_format_lesson(raw_text, cat, score))
+
+    if episodes:
+        output_parts.append("Past Corrections (episodic memory):")
+        for result in episodes:
+            raw_text = result.get("text", "").strip()
+            score = result.get("final_score", result.get("score", 0))
+            cat = result.get("category", "unknown")
+            output_parts.append(_format_lesson(raw_text, cat, score))
 
     return "\n".join(output_parts)
 

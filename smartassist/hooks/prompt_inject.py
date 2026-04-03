@@ -479,6 +479,27 @@ def main():
         # Hook-level reinforcement — no Claude involvement needed
         reinforcement_results = reinforce_recent_lessons(sentiment)
 
+        # Per-lesson Thompson attribution — the RLHF reinforcement loop
+        try:
+            storage_path_for_thompson = get_storage_path()
+            from smartassist.thompson_rerank import attribute_feedback, update_thompson_batch
+            last = load_last_injection()
+            if last:
+                injected_for_attribution = []
+                for key, lesson_id in last.items():
+                    if key.startswith("_"):
+                        continue
+                    injected_for_attribution.append({
+                        "id": lesson_id,
+                        "score": 0.5,  # default relevance weight
+                        "injection_timestamp": last.get("_timestamp", time.time()),
+                    })
+                if injected_for_attribution:
+                    attributions = attribute_feedback(sentiment, injected_for_attribution)
+                    update_thompson_batch(storage_path_for_thompson, attributions)
+        except Exception:
+            pass  # Never break the hook over Thompson updates
+
         # Immediate lesson creation — guaranteed, no LLM dependency
         created_id, created_lesson = None, None
         if user_context:
@@ -554,7 +575,18 @@ def main():
     expanded = expand_query(query_tokens)
     idf = build_idf(lessons)
     results = search_lessons(query_tokens, lessons, idf, lesson_scores=lesson_scores)
-    results = [r for r in results if r["score"] >= 0.20]
+    results = [r for r in results if r["score"] >= 0.15]
+
+    # Thompson Sampling reranking — the RLHF reinforcement loop
+    try:
+        from smartassist.thompson_rerank import thompson_rerank, load_thompson_batch, record_injection
+        lesson_ids = [r.get("id", "") for r in results if r.get("id")]
+        if lesson_ids:
+            thompson_data = load_thompson_batch(storage_path, lesson_ids)
+            results = thompson_rerank(results, thompson_data)
+            results = [r for r in results if r.get("final_score", r.get("score", 0)) >= 0.10]
+    except Exception:
+        pass  # Fall back to non-Thompson ranking
 
     # Session deduplication
     session_id = hook_input.get("session_id", "")
@@ -575,27 +607,67 @@ def main():
     if not results:
         return
 
+    # Record injection for Thompson tracking
+    try:
+        from smartassist.thompson_rerank import record_injection
+        injected_ids = [r.get("id") for r in results if r.get("id")]
+        if injected_ids:
+            record_injection(storage_path, injected_ids)
+    except Exception:
+        pass
+
     if session_id:
         new_ids = {r.get("id") for r in results if r.get("id")}
         already_injected.update(new_ids)
         save_session_state(session_id, already_injected)
 
-    # V2: Include lesson IDs in injection format (H2: sanitize lesson content)
+    # ── MemAlign dual-memory injection ─────────────────────────────────
+    # Semantic memory (lessons/principles) + Episodic memory (past corrections/examples)
     def _sanitize(text):
         """Strip characters that could be interpreted as prompt directives."""
-        # Remove common injection prefixes
         for prefix in ("ignore ", "disregard ", "forget "):
             if text.lower().startswith(prefix + "all ") or text.lower().startswith(prefix + "previous "):
                 text = text[len(prefix):]
-        # Collapse newlines (prevents multi-line injection payloads)
         return text.replace("\n", " ").replace("\r", " ").strip()
 
-    injection_lessons = [
-        f"[{r.get('id', '?')}] [{r['category']}] {_sanitize(r['lesson'])}"
-        for r in results
-    ]
-    context = "Project-specific lessons from our RAG knowledge base:\n"
-    context += "\n".join(f"- {l}" for l in injection_lessons)
+    # Retrieve episodic memory (recent corrections/feedback events matching this query)
+    episodes = []
+    try:
+        from smartassist.store import search_projection_documents
+        ep_results, _ = search_projection_documents(
+            storage_path, user_message, top_k=3, category=None,
+        )
+        for ep in ep_results:
+            if ep.get("source_type") == "event":
+                episodes.append(ep)
+    except Exception:
+        pass
+
+    # Split results into lessons (semantic memory) and any events that came through
+    semantic_lessons = [r for r in results if r.get("source_type", "lesson") == "lesson" or "id" in r]
+
+    # Format semantic memory (principles)
+    parts = []
+    if semantic_lessons:
+        lesson_lines = [
+            f"[{r.get('id', '?')}] [{r['category']}] {_sanitize(r['lesson'])}"
+            for r in semantic_lessons
+        ]
+        parts.append("Project-specific rules (apply these):\n" + "\n".join(f"- {l}" for l in lesson_lines))
+
+    # Format episodic memory (past corrections relevant to this query)
+    if episodes:
+        episode_lines = []
+        for ep in episodes[:2]:  # max 2 episodes to avoid context bloat
+            text = _sanitize(ep.get("text", ""))
+            cat = ep.get("category", "")
+            episode_lines.append(f"[{cat}] {text}")
+        parts.append("Past corrections on similar work:\n" + "\n".join(f"- {l}" for l in episode_lines))
+
+    if not parts:
+        return
+
+    context = "\n\n".join(parts)
 
     output = {
         "hookSpecificOutput": {
