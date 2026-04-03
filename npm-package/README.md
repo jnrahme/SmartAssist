@@ -1,21 +1,24 @@
 # SmartAssist Memory
 
-AI memory system that learns from developer feedback. Works with Claude Code and Codex.
+AI memory that learns from developer feedback. Works with Claude Code and Codex.
 
 ## Install
 
 ```bash
-npm install -g smartassist-memory
+npx smartassist-memory init
 ```
 
-## Setup
+That's it. One command installs SmartAssist and sets up MCP in your current project.
+
+## Register with your AI agent
 
 ```bash
-cd your-project
-smartassist setup
-```
+# Claude Code
+claude mcp add smartassist -- npx -y smartassist-memory serve
 
-That's it. SmartAssist learns from your feedback and injects relevant lessons into every prompt.
+# Codex
+codex mcp add smartassist -- npx -y smartassist-memory serve
+```
 
 ## How It Works
 
@@ -31,11 +34,16 @@ That's it. SmartAssist learns from your feedback and injects relevant lessons in
 - **Dual-memory injection** — project rules + past corrections (MemAlign pattern)
 - **Hybrid search** — keyword matching + semantic vectors + cross-encoder reranking
 - **Works with Claude Code and Codex** — same MCP tools, same memory
-- **Zero config** — `smartassist setup` handles everything
+- **Zero config** — one command setup
 - **Project-scoped** — each project has its own knowledge base
-- **SQLite canonical store** — one file, ACID transactions, no data loss
+
+## Requirements
+
+- Node.js 18+ (for npx)
+- Python 3.10+ (for the SmartAssist runtime)
+- pipx or pip3
 
 ## Links
 
 - Website: https://smartassist-memory.com
-- Issues: https://github.com/jnrahme/SmartAssist/issues
+- Documentation: https://smartassist-memory.com/docs

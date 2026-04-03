@@ -1,7 +1,7 @@
 {
   "name": "smartassist-memory",
-  "version": "1.1.0-beta.2",
-  "description": "AI memory system that learns from developer feedback. Works with Claude Code and Codex.",
+  "version": "1.1.0-beta.3",
+  "description": "AI memory that learns from developer feedback. Works with Claude Code and Codex.",
   "author": "Joey Rahme",
   "license": "BUSL-1.1",
   "homepage": "https://smartassist-memory.com",
@@ -18,30 +18,18 @@
     "mcp",
     "developer-tools",
     "reinforcement-learning",
-    "thompson-sampling"
+    "thompson-sampling",
+    "smartassist"
   ],
   "bin": {
-    "smartassist": "./bin/smartassist",
-    "claude-sa": "./bin/claude-sa",
-    "smartassist-prompt-inject": "./bin/smartassist-prompt-inject",
-    "smartassist-session-start": "./bin/smartassist-session-start",
-    "smartassist-session-end": "./bin/smartassist-session-end",
-    "smartassist-commit-hook": "./bin/smartassist-commit-hook",
-    "smartassist-show-lessons": "./bin/smartassist-show-lessons",
-    "smartassist-monitor": "./bin/smartassist-monitor"
-  },
-  "scripts": {
-    "postinstall": "node scripts/postinstall.js"
-  },
-  "os": ["darwin", "linux"],
-  "cpu": ["x64", "arm64"],
-  "engines": {
-    "node": ">=18"
+    "smartassist-memory": "./bin/cli.js"
   },
   "files": [
     "bin/",
-    "scripts/",
     "LICENSE",
     "README.md"
-  ]
+  ],
+  "engines": {
+    "node": ">=18"
+  }
 }
