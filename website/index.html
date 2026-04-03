@@ -1288,7 +1288,7 @@ function animate() {
 
   // Slow rotation of entire scene
   // Top-down view, gentle up/down tilt only
-  nodeCloud.rotation.x = -1.3 + Math.sin(time * 0.04) * 0.15;
+  nodeCloud.rotation.x = -1.3 + Math.sin(time * 0.04) * 0.15 + scrollFactor * 0.7;
   nodeCloud.rotation.y = 0;
   nodeCloud.rotation.z = 0;
   lines.rotation.copy(nodeCloud.rotation);
