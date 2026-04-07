@@ -343,7 +343,7 @@ details > summary::-webkit-details-marker { display: none; }
     <div class="card"><div class="card-icon ci-g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><h3>Learns &amp; Improves</h3><p>Thompson Sampling tracks reliability. Good lessons boosted, bad retired. Smarter per-project.</p></div>
   </div>
   <div class="stats">
-    <div class="stat"><div class="stat-n">8</div><div class="stat-l">MCP Tools</div></div>
+    <div class="stat"><div class="stat-n">9</div><div class="stat-l">MCP Tools</div></div>
     <div class="stat"><div class="stat-n">5</div><div class="stat-l">Hook Points</div></div>
     <div class="stat"><div class="stat-n">7</div><div class="stat-l">Categories</div></div>
     <div class="stat"><div class="stat-n">1024</div><div class="stat-l">Embed Dims</div></div>
@@ -595,13 +595,14 @@ details > summary::-webkit-details-marker { display: none; }
 <div class="page">
   <div class="page-header">
     <div class="overline">MCP Server</div>
-    <h1>8 Tools Exposed to Claude</h1>
+    <h1>9 Tools Exposed to Claude</h1>
     <p>Served via stdio transport for retrieval, lesson management, and feedback.</p>
   </div>
   <div class="grid g2">
     <div class="tool-c"><div class="tool-dot" style="background:var(--blue);box-shadow:0 0 8px rgba(56,189,248,.5)"></div><div><div class="tn">rag_search</div><div class="td">SQLite-backed search over the canonical projection with token expansion, lesson boosts, and 0-100% relevance</div></div></div>
     <div class="tool-c"><div class="tool-dot" style="background:var(--emerald);box-shadow:0 0 8px rgba(52,211,153,.5)"></div><div><div class="tn">rag_dashboard</div><div class="td">Thompson scores per category, feedback counts, weak categories, corpus stats</div></div></div>
     <div class="tool-c"><div class="tool-dot" style="background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,.5)"></div><div><div class="tn">rag_feedback</div><div class="td">Updates lesson_scores, records to Thompson Sampling, auto-retires at boost floor</div></div></div>
+    <div class="tool-c"><div class="tool-dot" style="background:var(--pink);box-shadow:0 0 8px rgba(232,121,249,.5)"></div><div><div class="tn">apply_feedback_protocol</div><div class="td">High-level feedback workflow: dedupe, boost overlaps, suggest merges, or create a new lesson only when needed</div></div></div>
     <div class="tool-c"><div class="tool-dot" style="background:var(--violet);box-shadow:0 0 8px rgba(139,92,246,.5)"></div><div><div class="tn">create_lesson</div><div class="td">Quality gates: &gt;30 chars, imperative, action verb. 7 categories, intensity 1-5</div></div></div>
     <div class="tool-c"><div class="tool-dot" style="background:var(--cyan);box-shadow:0 0 8px rgba(34,211,238,.5)"></div><div><div class="tn">compare_lesson</div><div class="td">Draft without storing. Logged for unbiased A/B evaluation</div></div></div>
     <div class="tool-c"><div class="tool-dot" style="background:var(--emerald);box-shadow:0 0 8px rgba(52,211,153,.5)"></div><div><div class="tn">boost_lesson</div><div class="td">boost += 0.3 (cap 3.0), ups++, Thompson alpha update, re-vectorize</div></div></div>

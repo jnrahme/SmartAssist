@@ -871,11 +871,12 @@ a { color: inherit; text-decoration: none; }
           <button class="tool-list-item active" onclick="switchTool(0)">rag_search</button>
           <button class="tool-list-item" onclick="switchTool(1)">rag_dashboard</button>
           <button class="tool-list-item" onclick="switchTool(2)">rag_feedback</button>
-          <button class="tool-list-item" onclick="switchTool(3)">create_lesson</button>
-          <button class="tool-list-item" onclick="switchTool(4)">compare_lesson</button>
-          <button class="tool-list-item" onclick="switchTool(5)">boost_lesson</button>
-          <button class="tool-list-item" onclick="switchTool(6)">demote_lesson</button>
-          <button class="tool-list-item" onclick="switchTool(7)">merge_lessons</button>
+          <button class="tool-list-item" onclick="switchTool(3)">apply_feedback_protocol</button>
+          <button class="tool-list-item" onclick="switchTool(4)">create_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(5)">compare_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(6)">boost_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(7)">demote_lesson</button>
+          <button class="tool-list-item" onclick="switchTool(8)">merge_lessons</button>
         </div>
         <div class="tool-detail">
           <div class="tool-detail-name">rag_search</div>
@@ -1558,6 +1559,7 @@ const toolData = [
   { name: 'rag_search', desc: 'Search your project knowledge base for relevant lessons, corrections, and conventions.', example: '> rag_search("database testing patterns")\n\nFound 3 lessons:\n  #47 Use real DB connections in tests\n  #23 Prefer transactions for test isolation\n  #51 Mock only external APIs' },
   { name: 'rag_dashboard', desc: 'View category reliability, corpus health, and feedback metrics at a glance.', example: '> rag_dashboard()\n\n  Categories:  12 active\n  Lessons:     47 total, 38 positive\n  Reliability: 81% average' },
   { name: 'rag_feedback', desc: 'Record whether a suggestion was helpful to train the ranking system.', example: '> rag_feedback(lesson_id=47, helpful=true)\n\n\u2713 Feedback recorded\n  Lesson #47 score: 0.72 \u2192 0.78' },
+  { name: 'apply_feedback_protocol', desc: 'Turn one feedback event into the right memory action: dedupe, boost, merge suggestion, or create.', example: '> apply_feedback_protocol("always use semantic theme tokens instead of hardcoded hex values")\n\n\u2713 Existing overlap detected\n  Boosted lesson #47\n  No duplicate created' },
   { name: 'create_lesson', desc: 'Save a new project-specific lesson synthesized from the current conversation context.', example: '> create_lesson("Always use snake_case for Python functions")\n\n\u2713 Lesson #52 created\n  Category: code_style\n  Embedded and indexed' },
   { name: 'compare_lesson', desc: 'Draft a lesson for A/B comparison without committing it to the knowledge base.', example: '> compare_lesson("Prefer pathlib over os.path")\n\n  Draft created (not saved)\n  Compare against lesson #31\n  Use rag_feedback to pick winner' },
   { name: 'boost_lesson', desc: 'Increase a lesson\'s Thompson Sampling priority after confirmed positive impact.', example: '> boost_lesson(lesson_id=47)\n\n\u2713 Lesson #47 boosted\n  Priority: normal \u2192 high\n  Will appear more frequently' },
