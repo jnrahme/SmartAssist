@@ -9,8 +9,8 @@ Use these files as reference only.
 - [README.md](../../README.md)
 - [smartassist-overview.html](../../smartassist-overview.html)
 - [MEMORY.md](../../MEMORY.md)
-- [PRODUCTION_PLAN.md](../../PRODUCTION_PLAN.md)
-- [docs/plans/](../plans/)
+
+Planning docs such as `PRODUCTION_PLAN.md` and files under `docs/plans/` are reference material, not the current product contract.
 
 ## Archived groups
 
