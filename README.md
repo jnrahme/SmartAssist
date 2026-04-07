@@ -131,6 +131,23 @@ Every feedback signal makes the system smarter:
 
 ---
 
+## Deep Seed — LLM-Powered Codebase Analysis
+
+```bash
+smartassist seed --deep
+```
+
+Analyzes your codebase (git history, PR reviews, configs, test utilities, CI pipelines, code structure) and dynamically calculates how many lessons to create based on project complexity:
+
+- 973 source files → 46 lessons
+- 50 source files → 20 lessons
+- Monorepo with CI + custom test utils → more testing and build lessons
+- Simple project → fewer, more focused lessons
+
+The LLM reads the full analysis and calls `create_lesson` for each pattern — architect-level lessons that reference actual file paths, commands, and conventions in YOUR codebase.
+
+---
+
 ## Commands
 
 ```bash
@@ -141,6 +158,7 @@ smartassist init               # Initialize current project
 smartassist serve              # Start MCP server (stdio)
 smartassist health             # Run health checks
 smartassist seed               # Seed lessons from CLAUDE.md
+smartassist seed --deep        # LLM-powered codebase analysis (architect-level lessons)
 smartassist vectorize          # Rebuild vector cache
 smartassist maintenance        # Run staleness + compaction
 smartassist analyze            # Show usage analytics
