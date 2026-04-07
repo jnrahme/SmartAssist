@@ -23,6 +23,7 @@ from smartassist.config import (
 from smartassist.store import (
     add_lesson,
     append_feedback_event,
+    ensure_lesson,
     list_lessons,
     load_last_injection_map,
     load_lesson_scores_dict,
@@ -174,13 +175,19 @@ def apply_feedback(command):
         entry["ups"] += 1
         entry["boost"] = min(entry["boost"] + BOOST_INCREMENT, BOOST_CAP)
         save_lesson_scores(scores)
-        return True, f"Promoted {lesson_id} (boost: {entry['boost']:.1f}x, ups: {entry['ups']})"
+        return (
+            True,
+            f"Promoted {lesson_id} (boost: {entry['boost']:.1f}x, ups: {entry['ups']})",
+        )
 
     if action == "-":
         entry["downs"] += 1
         entry["boost"] = max(entry["boost"] - DEMOTE_DECREMENT, BOOST_FLOOR)
         save_lesson_scores(scores)
-        return True, f"Demoted {lesson_id} (boost: {entry['boost']:.1f}x, downs: {entry['downs']})"
+        return (
+            True,
+            f"Demoted {lesson_id} (boost: {entry['boost']:.1f}x, downs: {entry['downs']})",
+        )
 
     if action == "x":
         entry["blocked"] = True
@@ -253,7 +260,9 @@ def reinforce_recent_lessons(sentiment, max_age=900):
             if entry["boost"] <= BOOST_FLOOR and entry.get("ups", 0) == 0:
                 entry["blocked"] = True
                 entry["retired"] = True
-                entry["retired_reason"] = "auto-retired: boost 0.0 with 0 positive feedback"
+                entry["retired_reason"] = (
+                    "auto-retired: boost 0.0 with 0 positive feedback"
+                )
                 entry["retired_at"] = datetime.now().isoformat()
                 retired = True
                 remove_from_curated(storage_path, lesson_id)
@@ -272,22 +281,121 @@ def add_to_curated(storage_path, lesson_text, category):
     return add_lesson(storage_path, lesson_text, category, origin="lesson_feedback")
 
 
+def normalize_feedback_sentiment(feedback_text, sentiment=""):
+    normalized = sentiment.lower().strip() if sentiment else ""
+    if normalized in {"positive", "negative"}:
+        return normalized
+
+    lower = str(feedback_text or "").strip().lower()
+    positive_hints = (
+        "good job",
+        "great job",
+        "nice job",
+        "good use of",
+        "great use of",
+        "love how",
+        "love the",
+        "i like how",
+        "i liked how",
+        "thumbs up",
+        "thumbs_up",
+        "thumb-up",
+        "thumb up",
+        ":)",
+        "👍",
+        "+1",
+    )
+    negative_hints = (
+        "dont ",
+        "don't ",
+        "never ",
+        "wrong",
+        "bad ",
+        "thumbs down",
+        "thumbs_down",
+        "thumb-down",
+        "thumb down",
+        ":(",
+        "👎",
+        "-1",
+        "we dont",
+        "we don't",
+        "should not",
+    )
+    if any(hint in lower for hint in positive_hints):
+        return "positive"
+    if any(hint in lower for hint in negative_hints):
+        return "negative"
+    return "negative"
+
+
+def estimate_feedback_intensity(feedback_text):
+    lower = str(feedback_text or "").lower()
+    strong_hints = ("never", "always", "must", "we don't", "we dont", "should not")
+    medium_hints = ("prefer", "avoid", "use", "don't", "dont")
+    if any(hint in lower for hint in strong_hints):
+        return 4
+    if any(hint in lower for hint in medium_hints):
+        return 3
+    return 3
+
+
 # ── Shared quality-gate constants (used by both hook path and MCP tools) ──
 
 ACTION_VERBS = {
     # existing 31 verbs
-    "use", "never", "always", "avoid", "prefer", "check", "run", "ensure",
-    "include", "test", "verify", "add", "remove", "replace", "apply", "call",
-    "import", "export", "wrap", "split", "move", "keep", "delete", "update",
-    "follow", "mock", "assert", "validate", "configure", "set", "create",
+    "use",
+    "never",
+    "always",
+    "avoid",
+    "prefer",
+    "check",
+    "run",
+    "ensure",
+    "include",
+    "test",
+    "verify",
+    "add",
+    "remove",
+    "replace",
+    "apply",
+    "call",
+    "import",
+    "export",
+    "wrap",
+    "split",
+    "move",
+    "keep",
+    "delete",
+    "update",
+    "follow",
+    "mock",
+    "assert",
+    "validate",
+    "configure",
+    "set",
+    "create",
     # new additions
-    "don't", "do", "handle", "implement", "extract", "document", "define",
+    "don't",
+    "do",
+    "handle",
+    "implement",
+    "extract",
+    "document",
+    "define",
     "initialize",
 }
 
 GENERIC_STARTS = {
-    "good job", "be careful", "remember to", "nice work", "well done",
-    "great job", "bad job", "try to", "make sure to",
+    "good job",
+    "be careful",
+    "remember to",
+    "nice work",
+    "well done",
+    "great job",
+    "bad job",
+    "try to",
+    "make sure to",
 }
 
 # ── Feedback transforms: (prefix, replacement) ───────────────────────────
@@ -295,47 +403,47 @@ GENERIC_STARTS = {
 
 _FEEDBACK_TRANSFORMS = [
     # "use of X" patterns — preserve the verb as "Use X"
-    ("good use of ",      "Use "),
-    ("great use of ",     "Use "),
-    ("nice use of ",      "Use "),
+    ("good use of ", "Use "),
+    ("great use of ", "Use "),
+    ("nice use of ", "Use "),
     ("excellent use of ", "Use "),
     # "job on X" patterns — strip completely
-    ("good job on ",  ""),
+    ("good job on ", ""),
     ("great job on ", ""),
-    ("nice job on ",  ""),
-    ("good job ",     ""),
-    ("great job ",    ""),
-    ("nice job ",     ""),
+    ("nice job on ", ""),
+    ("good job ", ""),
+    ("great job ", ""),
+    ("nice job ", ""),
     # "i like/love" patterns — strip, remaining text has the verb
-    ("i like how you ",  ""),
+    ("i like how you ", ""),
     ("i liked how you ", ""),
-    ("i like the ",      ""),
-    ("i liked the ",     ""),
-    ("love how you ",    ""),
-    ("love the ",        ""),
+    ("i like the ", ""),
+    ("i liked the ", ""),
+    ("love how you ", ""),
+    ("love the ", ""),
     # bare adjectives — strip
-    ("good ",      ""),
-    ("great ",     ""),
-    ("nice ",      ""),
+    ("good ", ""),
+    ("great ", ""),
+    ("nice ", ""),
     ("excellent ", ""),
-    ("bad ",       ""),
-    ("poor ",      ""),
-    ("terrible ",  ""),
+    ("bad ", ""),
+    ("poor ", ""),
+    ("terrible ", ""),
 ]
 
 # ── Contraction normalization ─────────────────────────────────────────────
 
 _CONTRACTIONS = {
-    "dont":     "don't",
-    "cant":     "can't",
+    "dont": "don't",
+    "cant": "can't",
     "shouldnt": "shouldn't",
-    "wouldnt":  "wouldn't",
-    "isnt":     "isn't",
-    "hasnt":    "hasn't",
-    "didnt":    "didn't",
-    "doesnt":   "doesn't",
-    "couldnt":  "couldn't",
-    "wont":     "won't",
+    "wouldnt": "wouldn't",
+    "isnt": "isn't",
+    "hasnt": "hasn't",
+    "didnt": "didn't",
+    "doesnt": "doesn't",
+    "couldnt": "couldn't",
+    "wont": "won't",
 }
 
 
@@ -358,14 +466,16 @@ def _context_to_lesson(user_context):
     lower = text.lower()
 
     # 1. Apply praise/complaint transforms (longest prefix first)
-    for prefix, replacement in sorted(_FEEDBACK_TRANSFORMS, key=lambda t: len(t[0]), reverse=True):
+    for prefix, replacement in sorted(
+        _FEEDBACK_TRANSFORMS, key=lambda t: len(t[0]), reverse=True
+    ):
         if lower.startswith(prefix):
-            text = replacement + text[len(prefix):]
+            text = replacement + text[len(prefix) :]
             break
 
     # 2. Normalize contractions ("dont" → "don't")
     for informal, formal in _CONTRACTIONS.items():
-        text = re.sub(r'\b' + informal + r'\b', formal, text, flags=re.IGNORECASE)
+        text = re.sub(r"\b" + informal + r"\b", formal, text, flags=re.IGNORECASE)
 
     # 3. Strip conversational wrapping + capitalize + strip emojis
     text = sanitize_to_lesson(text)
@@ -392,10 +502,28 @@ def _context_to_lesson(user_context):
 
 
 _CATEGORY_KEYWORDS = {
-    "testing": ["test", "jest", "mock", "e2e", "coverage", "detox", "assertion", "spec"],
+    "testing": [
+        "test",
+        "jest",
+        "mock",
+        "e2e",
+        "coverage",
+        "detox",
+        "assertion",
+        "spec",
+    ],
     "git": ["git", "commit", "branch", "merge", "push", "rebase", "ticket"],
-    "code_edit": ["style", "lint", "format", "component", "import", "color", "theme",
-                  "pattern", "refactor"],
+    "code_edit": [
+        "style",
+        "lint",
+        "format",
+        "component",
+        "import",
+        "color",
+        "theme",
+        "pattern",
+        "refactor",
+    ],
     "architecture": ["architecture", "structure", "directory", "module", "folder"],
     "security": ["security", "auth", "credential", "token", "secret", "env"],
     "debugging": ["debug", "error", "crash", "log", "stack trace"],
@@ -420,6 +548,78 @@ def _infer_category_from_text(text):
     return None
 
 
+def infer_feedback_category(storage_path, feedback_text, category_hint=""):
+    normalized = category_hint.lower().strip() if category_hint else ""
+    if normalized in _CATEGORY_KEYWORDS:
+        return normalized
+
+    matched = _infer_category_from_text(feedback_text)
+    if matched:
+        return matched
+
+    lessons = list_lessons(storage_path)
+    lower = str(feedback_text or "").lower()
+    for lesson in lessons:
+        category = str(lesson.get("category") or "")
+        lesson_text = str(lesson.get("lesson") or "").lower()
+        if category and lesson_text and lesson_text in lower:
+            return category
+
+    return "code_edit"
+
+
+def find_similar_lessons(storage_path, lesson_text, category="", *, limit=3):
+    from smartassist.tools.cleanup_and_vectorize import normalize_text
+
+    normalized_target = normalize_text(lesson_text)
+    target_tokens = {token for token in normalized_target.split() if token}
+    candidates = []
+
+    for lesson in list_lessons(storage_path):
+        lesson_id = str(lesson.get("id") or "")
+        existing_text = str(lesson.get("lesson") or "")
+        existing_category = str(lesson.get("category") or "")
+        if not lesson_id or not existing_text:
+            continue
+        if category and existing_category and existing_category != category:
+            continue
+
+        normalized_existing = normalize_text(existing_text)
+        existing_tokens = {token for token in normalized_existing.split() if token}
+        if not existing_tokens or not target_tokens:
+            continue
+
+        overlap = target_tokens & existing_tokens
+        union = target_tokens | existing_tokens
+        similarity = len(overlap) / len(union) if union else 0.0
+        exact = normalized_existing == normalized_target
+        containment = (
+            normalized_existing in normalized_target
+            or normalized_target in normalized_existing
+        )
+
+        candidates.append(
+            {
+                "id": lesson_id,
+                "lesson": existing_text,
+                "category": existing_category,
+                "similarity": similarity,
+                "exact": exact,
+                "containment": containment,
+            }
+        )
+
+    candidates.sort(
+        key=lambda item: (
+            not item["exact"],
+            not item["containment"],
+            -item["similarity"],
+            item["id"],
+        )
+    )
+    return candidates[:limit]
+
+
 def _infer_category(reinforcement_results, storage_path, user_context=""):
     """Infer lesson category from boosted lessons, then feedback text, then default."""
     # 1. Majority vote from reinforced lessons
@@ -436,7 +636,7 @@ def _infer_category(reinforcement_results, storage_path, user_context=""):
                 counts[cat] = counts.get(cat, 0) + 1
 
         if counts:
-            return max(counts, key=counts.get)
+            return max(counts.items(), key=lambda item: item[1])[0]
 
     # 2. Keyword match against the user's feedback text
     if user_context:
@@ -459,13 +659,19 @@ def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
     storage_path = get_storage_path()
     category = _infer_category(reinforcement_results, storage_path, user_context)
 
-    new_id, error = add_to_curated(storage_path, lesson_text, category)
+    new_id, error, _created = ensure_lesson(
+        storage_path,
+        lesson_text,
+        category,
+        origin="lesson_feedback",
+    )
     if error:
         return None, None
 
     # Update Thompson Sampling for the new lesson's category
     try:
         from smartassist.thompson_sampling import ThompsonSamplingModel
+
         thompson = ThompsonSamplingModel(str(storage_path))
         if sentiment == "positive":
             thompson.record_success(category, 3)
@@ -475,22 +681,26 @@ def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
         pass
 
     signal = "thumbs_up" if sentiment == "positive" else "correction"
-    append_feedback_event(storage_path, {
-        "timestamp": time.time(),
-        "signal": signal,
-        "category": category,
-        "intensity": 3,
-        "query": "",
-        "response": "",
-        "correction": lesson_text,
-        "context": f"hook-created from feedback: {user_context}",
-    })
+    append_feedback_event(
+        storage_path,
+        {
+            "timestamp": time.time(),
+            "signal": signal,
+            "category": category,
+            "intensity": 3,
+            "query": "",
+            "response": "",
+            "correction": lesson_text,
+            "context": f"hook-created from feedback: {user_context}",
+        },
+    )
 
     return new_id, lesson_text
 
 
-def log_comparison_entry(storage_path, source, sentiment, feedback_context,
-                         lesson_text, passed_gates):
+def log_comparison_entry(
+    storage_path, source, sentiment, feedback_context, lesson_text, passed_gates
+):
     """Log a lesson draft to the comparison file for A/B analysis.
 
     Args:
@@ -526,10 +736,14 @@ def format_scores_table(scores=None):
 
     lines = []
     lines.append(f"  {'ID':<6} {'Boost':>6} {'Ups':>4} {'Downs':>5} {'Status':<10}")
-    lines.append(f"  {chr(9472)*6} {chr(9472)*6} {chr(9472)*4} {chr(9472)*5} {chr(9472)*10}")
+    lines.append(
+        f"  {chr(9472) * 6} {chr(9472) * 6} {chr(9472) * 4} {chr(9472) * 5} {chr(9472) * 10}"
+    )
     for lid in sorted(scores.keys()):
         s = scores[lid]
         status = "\033[31mBLOCKED\033[0m" if s.get("blocked") else "active"
         boost = f"{s.get('boost', 1.0):.1f}x"
-        lines.append(f"  {lid:<6} {boost:>6} {s.get('ups', 0):>4} {s.get('downs', 0):>5} {status:<10}")
+        lines.append(
+            f"  {lid:<6} {boost:>6} {s.get('ups', 0):>4} {s.get('downs', 0):>5} {status:<10}"
+        )
     return "\n".join(lines)

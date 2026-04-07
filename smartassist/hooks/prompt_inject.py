@@ -43,32 +43,133 @@ SKIP_PATTERNS = [
 
 # ── Feedback signals ─────────────────────────────────────────────────
 FEEDBACK_SIGNALS = {
-    ":)": "positive", ":-)": "positive",
-    ":(": "negative", ":-(": "negative",
-    "thumbs_up": "positive", "thumbs up": "positive",
-    "thumbs_down": "negative", "thumbs down": "negative",
-    "thumbs-up": "positive", "thumbs-down": "negative",
-    "thumb-up": "positive", "thumb-down": "negative",
-    "thumb up": "positive", "thumb down": "negative",
-    "thumb_up": "positive", "thumb_down": "negative",
-    "👍": "positive", "👎": "negative",
-    "+1": "positive", "-1": "negative",
+    ":)": "positive",
+    ":-)": "positive",
+    ":(": "negative",
+    ":-(": "negative",
+    "thumbs_up": "positive",
+    "thumbs up": "positive",
+    "thumbs_down": "negative",
+    "thumbs down": "negative",
+    "thumbs-up": "positive",
+    "thumbs-down": "negative",
+    "thumb-up": "positive",
+    "thumb-down": "negative",
+    "thumb up": "positive",
+    "thumb down": "negative",
+    "thumb_up": "positive",
+    "thumb_down": "negative",
+    "👍": "positive",
+    "👎": "negative",
+    "+1": "positive",
+    "-1": "negative",
 }
 
 # ── Stop words ───────────────────────────────────────────────────────────
 STOP_WORDS = {
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "can", "shall", "this", "that", "these",
-    "those", "me", "my", "your", "his", "its", "our", "their", "what",
-    "which", "who", "how", "when", "where", "why", "in", "on", "at",
-    "to", "for", "with", "by", "from", "of", "and", "or", "but", "not",
-    "so", "if", "as", "up", "out", "about", "into", "through", "all",
-    "some", "any", "other", "more", "most", "very", "just", "also",
-    "now", "here", "there", "please", "make", "let", "get", "see",
-    "look", "need", "want", "going", "using", "like", "new", "file",
-    "thing", "way", "lot", "really", "stuff", "right", "something",
-    "everything", "much", "still", "even", "than", "too", "been",
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "shall",
+    "this",
+    "that",
+    "these",
+    "those",
+    "me",
+    "my",
+    "you",
+    "your",
+    "his",
+    "its",
+    "our",
+    "their",
+    "what",
+    "which",
+    "who",
+    "how",
+    "when",
+    "where",
+    "why",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "with",
+    "by",
+    "from",
+    "of",
+    "and",
+    "or",
+    "but",
+    "not",
+    "so",
+    "if",
+    "as",
+    "up",
+    "out",
+    "about",
+    "into",
+    "through",
+    "all",
+    "some",
+    "any",
+    "other",
+    "more",
+    "most",
+    "very",
+    "just",
+    "also",
+    "now",
+    "here",
+    "there",
+    "please",
+    "make",
+    "let",
+    "get",
+    "see",
+    "look",
+    "need",
+    "want",
+    "going",
+    "using",
+    "like",
+    "new",
+    "file",
+    "thing",
+    "way",
+    "lot",
+    "really",
+    "stuff",
+    "right",
+    "something",
+    "everything",
+    "much",
+    "still",
+    "even",
+    "than",
+    "too",
+    "been",
 }
 
 # ── Synonym expansion ────────────────────────────────────────────────────
@@ -98,7 +199,7 @@ MAX_INJECTION_AGE = 900  # 15 minutes
 
 
 def tokenize(text):
-    words = re.findall(r'[a-z][a-z0-9_.]+', text.lower())
+    words = re.findall(r"[a-z][a-z0-9_.]+", text.lower())
     return [w for w in words if w not in STOP_WORDS and len(w) > 2]
 
 
@@ -159,14 +260,27 @@ def search_lessons(query_tokens, lessons, idf, top_k=5, lesson_scores=None):
         boost = score_entry.get("boost", DEFAULT_BOOST)
         relevance *= boost
 
-        scored.append({
-            "id": lesson_id,
-            "lesson": lesson["lesson"],
-            "category": lesson["category"],
-            "score": relevance,
-            "matched": matched,
-        })
-    scored.sort(key=lambda x: -x["score"])
+        scored.append(
+            {
+                "id": lesson_id,
+                "lesson": lesson["lesson"],
+                "category": lesson["category"],
+                "score": relevance,
+                "matched": matched,
+            }
+        )
+
+    def _sort_key(item):
+        lesson_id = str(item.get("id", ""))
+        try:
+            lesson_num = (
+                int(lesson_id[1:]) if lesson_id.startswith("L") else int(lesson_id)
+            )
+        except ValueError:
+            lesson_num = 0
+        return (-item["score"], -len(item["matched"]), -lesson_num)
+
+    scored.sort(key=_sort_key)
     return scored[:top_k]
 
 
@@ -183,10 +297,14 @@ def write_counter(storage_path, prompt_count, inject_count):
     counter_file = storage_path / "rag_prompt_counter.json"
     try:
         from smartassist.config import atomic_write_json
-        atomic_write_json(counter_file, {
-            "prompt_count": prompt_count,
-            "inject_count": inject_count,
-        })
+
+        atomic_write_json(
+            counter_file,
+            {
+                "prompt_count": prompt_count,
+                "inject_count": inject_count,
+            },
+        )
     except Exception:
         pass
 
@@ -200,13 +318,19 @@ def _rotate_live_log(live_log):
         if live_log.exists() and live_log.stat().st_size > _MAX_LIVE_LOG_BYTES:
             # Keep the last half
             data = live_log.read_bytes()
-            live_log.write_bytes(data[len(data) // 2:])
+            live_log.write_bytes(data[len(data) // 2 :])
     except OSError:
         pass
 
 
-def write_to_live_log(storage_path, user_message, results, query_tokens=None,
-                      expanded_tokens=None, deduped_results=None):
+def write_to_live_log(
+    storage_path,
+    user_message,
+    results,
+    query_tokens=None,
+    expanded_tokens=None,
+    deduped_results=None,
+):
     """Write formatted output to rag_live.log for the monitor terminal."""
     live_log = storage_path / "rag_live.log"
     _rotate_live_log(live_log)
@@ -230,10 +354,10 @@ def write_to_live_log(storage_path, user_message, results, query_tokens=None,
     lines.append(f"\033[90m  {now}  |  Prompt #{prompt_count}\033[0m")
     lines.append(f"\033[36m\033[1m  PROMPT\033[0m")
 
-    preview = user_message.strip().replace('\n', ' ')[:80]
+    preview = user_message.strip().replace("\n", " ")[:80]
     if len(user_message.strip()) > 80:
         preview += "..."
-    lines.append(f"  \033[97m\"{preview}\"\033[0m")
+    lines.append(f'  \033[97m"{preview}"\033[0m')
 
     if query_tokens:
         tokens_str = ", ".join(sorted(query_tokens))
@@ -288,10 +412,14 @@ def write_to_live_log(storage_path, user_message, results, query_tokens=None,
                 suffix = ""
 
             cc = cat_colors.get(cat, "\033[37m")
-            lines.append(f"  #{idx:<2} {score_color}{lid}  {pct:>3}%\033[0m  {cc}{cat:<14}\033[0m  {text}{suffix}")
+            lines.append(
+                f"  #{idx:<2} {score_color}{lid}  {pct:>3}%\033[0m  {cc}{cat:<14}\033[0m  {text}{suffix}"
+            )
 
     lines.append("")
-    lines.append(f"  \033[90mStats: {prompt_count} prompts | {inject_count} injected | {hit_rate}% hit rate\033[0m")
+    lines.append(
+        f"  \033[90mStats: {prompt_count} prompts | {inject_count} injected | {hit_rate}% hit rate\033[0m"
+    )
     lines.append(f"  \033[90mFeedback: +N promote | -N demote | xN block\033[0m")
     lines.append("")
 
@@ -328,12 +456,12 @@ def detect_feedback_signal(message):
         if stripped.startswith(signal) and len(stripped) > len(signal):
             # Word boundary check: char after signal must be whitespace
             char_after = stripped[len(signal)]
-            if char_after not in (' ', '\t', '\n'):
+            if char_after not in (" ", "\t", "\n"):
                 continue
-            rest = stripped[len(signal):].strip()
+            rest = stripped[len(signal) :].strip()
             if rest:
                 # Preserve original case for context
-                return sentiment, message.strip()[len(signal):].strip()
+                return sentiment, message.strip()[len(signal) :].strip()
 
     return None, None
 
@@ -355,8 +483,7 @@ def _reconstruct_injected_lessons(storage_path):
         return []
 
     curated_map = {
-        lesson.get("id", ""): lesson
-        for lesson in list_lessons(storage_path)
+        lesson.get("id", ""): lesson for lesson in list_lessons(storage_path)
     }
 
     # Load scores
@@ -374,15 +501,19 @@ def _reconstruct_injected_lessons(storage_path):
         # Laplace smoothing: confidence = ups / (ups + downs + 2)
         confidence = ups / (ups + downs + 2)
 
-        reconstructed.append({
-            "id": lesson_id,
-            "category": curated.get("category", "unknown"),
-            "lesson": curated.get("lesson", f"[lesson text not found for {lesson_id}]"),
-            "boost": boost,
-            "ups": ups,
-            "downs": downs,
-            "confidence": confidence,
-        })
+        reconstructed.append(
+            {
+                "id": lesson_id,
+                "category": curated.get("category", "unknown"),
+                "lesson": curated.get(
+                    "lesson", f"[lesson text not found for {lesson_id}]"
+                ),
+                "boost": boost,
+                "ups": ups,
+                "downs": downs,
+                "confidence": confidence,
+            }
+        )
 
     return reconstructed
 
@@ -422,8 +553,9 @@ def build_rich_feedback_context(sentiment, user_context, reinforcement_results):
     return "\n".join(parts)
 
 
-def write_to_live_log_feedback(storage_path, signal_text, sentiment,
-                               user_context="", reinforcement_results=None):
+def write_to_live_log_feedback(
+    storage_path, signal_text, sentiment, user_context="", reinforcement_results=None
+):
     """Write feedback detection event to rag_live.log for the monitor terminal."""
     live_log = storage_path / "rag_live.log"
     now = datetime.now().strftime("%H:%M:%S")
@@ -442,19 +574,23 @@ def write_to_live_log_feedback(storage_path, signal_text, sentiment,
     lines.append(f"  Sentiment: {sentiment}")
 
     if user_context:
-        lines.append(f"  Context: \"{user_context}\"")
+        lines.append(f'  Context: "{user_context}"')
 
     if reinforcement_results:
         action_label = "BOOST" if sentiment == "positive" else "DEMOTE"
         for lid, old_b, new_b, retired in reinforcement_results:
             suffix = " → RETIRED" if retired else ""
             action_color = "\033[32m" if sentiment == "positive" else "\033[31m"
-            lines.append(f"  {action_color}{action_label}: {lid} {old_b:.1f}x → {new_b:.1f}x{suffix}\033[0m")
+            lines.append(
+                f"  {action_color}{action_label}: {lid} {old_b:.1f}x → {new_b:.1f}x{suffix}\033[0m"
+            )
     else:
         lines.append(f"  \033[90m0 lesson(s) reinforced\033[0m")
 
     if user_context and len(user_context.strip()) >= 15:
-        lines.append(f"  \033[36m→ A/B comparison: hook logged, Claude will draft via compare_lesson\033[0m")
+        lines.append(
+            f"  \033[36m→ A/B comparison: hook logged, Claude will draft via compare_lesson\033[0m"
+        )
 
     lines.append("")
 
@@ -474,28 +610,39 @@ def main():
     user_message = hook_input.get("prompt", "")
 
     # ── Check for feedback signals before length filter ──────────────
-    sentiment, user_context = detect_feedback_signal(user_message) if user_message else (None, None)
+    sentiment, user_context = (
+        detect_feedback_signal(user_message) if user_message else (None, None)
+    )
     if sentiment:
+        user_context = user_context or ""
         # Hook-level reinforcement — no Claude involvement needed
         reinforcement_results = reinforce_recent_lessons(sentiment)
 
         # Per-lesson Thompson attribution — the RLHF reinforcement loop
         try:
             storage_path_for_thompson = get_storage_path()
-            from smartassist.thompson_rerank import attribute_feedback, update_thompson_batch
+            from smartassist.thompson_rerank import (
+                attribute_feedback,
+                update_thompson_batch,
+            )
+
             last = load_last_injection()
             if last:
                 injected_for_attribution = []
                 for key, lesson_id in last.items():
                     if key.startswith("_"):
                         continue
-                    injected_for_attribution.append({
-                        "id": lesson_id,
-                        "score": 0.5,  # default relevance weight
-                        "injection_timestamp": last.get("_timestamp", time.time()),
-                    })
+                    injected_for_attribution.append(
+                        {
+                            "id": lesson_id,
+                            "score": 0.5,  # default relevance weight
+                            "injection_timestamp": last.get("_timestamp", time.time()),
+                        }
+                    )
                 if injected_for_attribution:
-                    attributions = attribute_feedback(sentiment, injected_for_attribution)
+                    attributions = attribute_feedback(
+                        sentiment, injected_for_attribution
+                    )
                     update_thompson_batch(storage_path_for_thompson, attributions)
         except Exception:
             pass  # Never break the hook over Thompson updates
@@ -504,13 +651,18 @@ def main():
         created_id, created_lesson = None, None
         if user_context:
             created_id, created_lesson = create_lesson_from_feedback(
-                user_context, sentiment, reinforcement_results,
+                user_context,
+                sentiment,
+                reinforcement_results,
             )
             if created_id:
                 # Fire-and-forget: make lesson searchable via rag_search
                 try:
                     from smartassist.config import spawn_managed
-                    spawn_managed([sys.executable, "-m", "smartassist.hooks.vectorize_learnings"])
+
+                    spawn_managed(
+                        [sys.executable, "-m", "smartassist.hooks.vectorize_learnings"]
+                    )
                 except Exception:
                     pass
 
@@ -520,12 +672,18 @@ def main():
             # Log hook's result for A/B comparison
             if user_context and len(user_context.strip()) >= 15:
                 log_comparison_entry(
-                    storage_path, "hook", sentiment, user_context,
-                    created_lesson, created_lesson is not None,
+                    storage_path,
+                    "hook",
+                    sentiment,
+                    user_context,
+                    created_lesson,
+                    created_lesson is not None,
                 )
 
             write_to_live_log_feedback(
-                storage_path, user_message.strip(), sentiment,
+                storage_path,
+                user_message.strip(),
+                sentiment,
                 user_context=user_context,
                 reinforcement_results=reinforcement_results,
             )
@@ -534,7 +692,9 @@ def main():
 
         # ALSO tell the LLM to create a better version with full context
         context = build_rich_feedback_context(
-            sentiment, user_context, reinforcement_results,
+            sentiment,
+            user_context,
+            reinforcement_results,
         )
         output = {
             "hookSpecificOutput": {
@@ -579,12 +739,19 @@ def main():
 
     # Thompson Sampling reranking — the RLHF reinforcement loop
     try:
-        from smartassist.thompson_rerank import thompson_rerank, load_thompson_batch, record_injection
+        from smartassist.thompson_rerank import (
+            thompson_rerank,
+            load_thompson_batch,
+            record_injection,
+        )
+
         lesson_ids = [r.get("id", "") for r in results if r.get("id")]
         if lesson_ids:
             thompson_data = load_thompson_batch(storage_path, lesson_ids)
             results = thompson_rerank(results, thompson_data)
-            results = [r for r in results if r.get("final_score", r.get("score", 0)) >= 0.10]
+            results = [
+                r for r in results if r.get("final_score", r.get("score", 0)) >= 0.10
+            ]
     except Exception:
         pass  # Fall back to non-Thompson ranking
 
@@ -597,8 +764,14 @@ def main():
         deduped_results = [r for r in results if r.get("id") in already_injected]
         results = [r for r in results if r.get("id") not in already_injected]
 
-    write_to_live_log(storage_path, user_message, results, query_tokens, expanded,
-                      deduped_results=deduped_results)
+    write_to_live_log(
+        storage_path,
+        user_message,
+        results,
+        query_tokens,
+        expanded,
+        deduped_results=deduped_results,
+    )
 
     all_candidates = list(results) + list(deduped_results)
     if all_candidates:
@@ -610,14 +783,15 @@ def main():
     # Record injection for Thompson tracking
     try:
         from smartassist.thompson_rerank import record_injection
-        injected_ids = [r.get("id") for r in results if r.get("id")]
+
+        injected_ids = [str(r["id"]) for r in results if r.get("id")]
         if injected_ids:
             record_injection(storage_path, injected_ids)
     except Exception:
         pass
 
     if session_id:
-        new_ids = {r.get("id") for r in results if r.get("id")}
+        new_ids = {str(r["id"]) for r in results if r.get("id")}
         already_injected.update(new_ids)
         save_session_state(session_id, already_injected)
 
@@ -626,25 +800,32 @@ def main():
     def _sanitize(text):
         """Strip characters that could be interpreted as prompt directives."""
         for prefix in ("ignore ", "disregard ", "forget "):
-            if text.lower().startswith(prefix + "all ") or text.lower().startswith(prefix + "previous "):
-                text = text[len(prefix):]
+            if text.lower().startswith(prefix + "all ") or text.lower().startswith(
+                prefix + "previous "
+            ):
+                text = text[len(prefix) :]
         return text.replace("\n", " ").replace("\r", " ").strip()
 
     # Retrieve episodic memory (recent corrections/feedback events matching this query)
     episodes = []
     try:
         from smartassist.store import search_projection_documents
+
         ep_results, _ = search_projection_documents(
-            storage_path, user_message, top_k=3, category=None,
+            storage_path,
+            user_message,
+            top_k=3,
+            category=None,
+            source_types=["event"],
         )
-        for ep in ep_results:
-            if ep.get("source_type") == "event":
-                episodes.append(ep)
+        episodes.extend(ep_results[:2])
     except Exception:
         pass
 
     # Split results into lessons (semantic memory) and any events that came through
-    semantic_lessons = [r for r in results if r.get("source_type", "lesson") == "lesson" or "id" in r]
+    semantic_lessons = [
+        r for r in results if r.get("source_type", "lesson") == "lesson" or "id" in r
+    ]
 
     # Format semantic memory (principles)
     parts = []
@@ -653,7 +834,10 @@ def main():
             f"[{r.get('id', '?')}] [{r['category']}] {_sanitize(r['lesson'])}"
             for r in semantic_lessons
         ]
-        parts.append("Project-specific rules (apply these):\n" + "\n".join(f"- {l}" for l in lesson_lines))
+        parts.append(
+            "Project-specific rules (apply these):\n"
+            + "\n".join(f"- {l}" for l in lesson_lines)
+        )
 
     # Format episodic memory (past corrections relevant to this query)
     if episodes:
@@ -662,7 +846,10 @@ def main():
             text = _sanitize(ep.get("text", ""))
             cat = ep.get("category", "")
             episode_lines.append(f"[{cat}] {text}")
-        parts.append("Past corrections on similar work:\n" + "\n".join(f"- {l}" for l in episode_lines))
+        parts.append(
+            "Past corrections on similar work:\n"
+            + "\n".join(f"- {l}" for l in episode_lines)
+        )
 
     if not parts:
         return

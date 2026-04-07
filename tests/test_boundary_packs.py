@@ -47,10 +47,21 @@ def _write_reliabilities(storage, categories):
             "last_updated": now,
             "total_samples": int(alpha + beta - 2),
         }
-    (storage / "reliability_scores.json").write_text(json.dumps(payload), encoding="utf-8")
+    (storage / "reliability_scores.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
 
 
-def _event(*, category, correction, timestamp, signal="correction", intensity=4, query="", context=""):
+def _event(
+    *,
+    category,
+    correction,
+    timestamp,
+    signal="correction",
+    intensity=4,
+    query="",
+    context="",
+):
     return {
         "signal": signal,
         "intensity": intensity,
@@ -182,13 +193,19 @@ class TestPromotionEngine:
         assert updated["rules"][0]["id"] == "deny-node-modules-delete"
         assert len(updated["promoted_boundaries"]) == 1
 
-    def test_build_promoted_boundaries_ignores_singletons_and_non_actionable_feedback(self):
+    def test_build_promoted_boundaries_ignores_singletons_and_non_actionable_feedback(
+        self,
+    ):
         repeated = (
             "Use semantic color tokens from the shared theme instead of hardcoded hex "
             "values in component styles."
         )
         events = [
-            _event(category="code_edit", correction="Done - fixed in the next commit", timestamp=100.0),
+            _event(
+                category="code_edit",
+                correction="Done - fixed in the next commit",
+                timestamp=100.0,
+            ),
             _event(category="code_edit", correction=repeated, timestamp=200.0),
             _event(category="code_edit", correction=repeated, timestamp=300.0),
             _event(
@@ -251,7 +268,9 @@ class TestBoundaryPackAssembly:
         assert pack_path is not None
         assert pack_path.exists()
 
-        _append_feedback_event(storage, _event(category="git", correction=repeated, timestamp=300.0))
+        _append_feedback_event(
+            storage, _event(category="git", correction=repeated, timestamp=300.0)
+        )
         os.utime(storage / "feedback_log.jsonl", None)
 
         refreshed = ensure_boundary_pack(storage)
@@ -327,10 +346,24 @@ class TestSessionHookIntegration:
         output = format_lessons_for_session()
 
         assert "SMARTASSIST BOUNDARY PACK" in output
+        assert "SMARTASSIST FEEDBACK PROTOCOL" in output
         assert "Areas needing attention" in output
-        assert "Use feature branches and open a PR instead of pushing directly to main" in output
+        assert (
+            "Use feature branches and open a PR instead of pushing directly to main"
+            in output
+        )
 
-    def test_session_end_refreshes_boundary_pack_and_logs_summary(self, monkeypatch, capsys, set_data_dir):
+    def test_session_start_includes_feedback_protocol_without_boundary_pack(
+        self, set_data_dir
+    ):
+        output = format_lessons_for_session()
+
+        assert "SMARTASSIST FEEDBACK PROTOCOL" in output
+        assert "apply_feedback_protocol" in output
+
+    def test_session_end_refreshes_boundary_pack_and_logs_summary(
+        self, monkeypatch, capsys, set_data_dir
+    ):
         storage = _storage_path(set_data_dir)
         repeated = (
             "Use feature branches and open a PR instead of pushing directly to main "
@@ -358,7 +391,10 @@ class TestSessionHookIntegration:
         capture_session_learning()
 
         output = capsys.readouterr().out
-        assert "Updated boundary pack: 1 promoted rule(s), 1 recent lesson(s) carried forward" in output
+        assert (
+            "Updated boundary pack: 1 promoted rule(s), 1 recent lesson(s) carried forward"
+            in output
+        )
         assert "Updating RAG database with new learnings..." in output
         assert captured["args"][-1] == "smartassist.hooks.vectorize_learnings"
 

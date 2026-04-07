@@ -31,6 +31,7 @@ from smartassist.hooks.prompt_inject import (
     MAX_INJECTION_AGE,
 )
 from smartassist.mcp_server import (
+    apply_feedback_protocol,
     create_lesson,
     compare_lesson,
     boost_lesson,
@@ -154,17 +155,34 @@ class TestRagSearchMemoryLabels:
         fake_embedder = MagicMock()
         fake_embedder.encode.return_value = [0.1, 0.2, 0.3]
 
-        with patch("smartassist.mcp_server._get_storage", return_value=set_data_dir / "data"):
-            with patch("smartassist.mcp_server._get_embedder", return_value=fake_embedder):
-                with patch("smartassist.mcp_server._get_table", return_value=_FakeSemanticTable(rows)):
-                    with patch("smartassist.mcp_server.search_projection_documents", return_value=([], {})):
+        with patch(
+            "smartassist.mcp_server._get_storage", return_value=set_data_dir / "data"
+        ):
+            with patch(
+                "smartassist.mcp_server._get_embedder", return_value=fake_embedder
+            ):
+                with patch(
+                    "smartassist.mcp_server._get_table",
+                    return_value=_FakeSemanticTable(rows),
+                ):
+                    with patch(
+                        "smartassist.mcp_server.search_projection_documents",
+                        return_value=([], {}),
+                    ):
                         with patch("smartassist.mcp_server._log_usage"):
-                            with patch("smartassist.thompson_rerank.load_thompson_batch", return_value={}):
+                            with patch(
+                                "smartassist.thompson_rerank.load_thompson_batch",
+                                return_value={},
+                            ):
                                 with patch(
                                     "smartassist.thompson_rerank.thompson_rerank",
-                                    side_effect=lambda candidates, data, now=None: candidates,
+                                    side_effect=lambda candidates, data, now=None: (
+                                        candidates
+                                    ),
                                 ):
-                                    result = rag_search("how should I style the dashboard header")
+                                    result = rag_search(
+                                        "how should I style the dashboard header"
+                                    )
 
         assert "Past Corrections (episodic memory):" in result
         assert "Project Rules (semantic memory):" not in result
@@ -174,17 +192,17 @@ class TestRagSearchMemoryLabels:
     def test_smiley_with_context(self):
         sentiment, ctx = detect_feedback_signal(":) good use of theme colors")
         assert sentiment == "positive"
-        assert "good use of theme colors" in ctx
+        assert "good use of theme colors" in (ctx or "")
 
     def test_frown_with_context(self):
         sentiment, ctx = detect_feedback_signal(":( dont do this to the theme")
         assert sentiment == "negative"
-        assert "dont do this to the theme" in ctx
+        assert "dont do this to the theme" in (ctx or "")
 
     def test_thumbs_down_with_context(self):
         sentiment, ctx = detect_feedback_signal("thumbs_down bad approach to testing")
         assert sentiment == "negative"
-        assert "bad approach to testing" in ctx
+        assert "bad approach to testing" in (ctx or "")
 
     def test_context_preserves_original_case(self):
         sentiment, ctx = detect_feedback_signal(":) Great Use of Semantic Colors")
@@ -235,7 +253,7 @@ class TestRagSearchMemoryLabels:
     def test_thumb_hyphen_with_context(self):
         sentiment, ctx = detect_feedback_signal("thumbs-up great work on colors")
         assert sentiment == "positive"
-        assert "great work on colors" in ctx
+        assert "great work on colors" in (ctx or "")
 
     def test_minus_one_boundary(self):
         """-100 should NOT match -1 (word boundary check)."""
@@ -391,8 +409,15 @@ class TestReinforceRecentLessons:
         """Blocked/retired lessons are untouched."""
         save_last_injection([{"id": "L001"}, {"id": "L002"}])
         scores = {
-            "L001": {"boost": 0.0, "ups": 0, "downs": 5, "blocked": True,
-                     "retired": True, "retired_reason": "test", "retired_at": None},
+            "L001": {
+                "boost": 0.0,
+                "ups": 0,
+                "downs": 5,
+                "blocked": True,
+                "retired": True,
+                "retired_reason": "test",
+                "retired_at": None,
+            },
         }
         save_lesson_scores(scores)
         results = reinforce_recent_lessons("positive")
@@ -410,8 +435,15 @@ class TestReinforceRecentLessons:
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
         save_last_injection([{"id": "L001"}, {"id": "L002"}])
         scores = {
-            "L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
-                     "retired": False, "retired_reason": "", "retired_at": None},
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            },
         }
         save_lesson_scores(scores)
 
@@ -433,21 +465,27 @@ class TestReinforceRecentLessons:
     @patch("smartassist.lesson_feedback.spawn_managed")
     def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "bad lesson", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "bad lesson", "category": "testing"},
+                ]
+            )
+        )
         save_last_injection([{"id": "L001"}])
-        save_lesson_scores({
-            "L001": {
-                "boost": 0.3,
-                "ups": 0,
-                "downs": 2,
-                "blocked": False,
-                "retired": False,
-                "retired_reason": "",
-                "retired_at": None,
+        save_lesson_scores(
+            {
+                "L001": {
+                    "boost": 0.3,
+                    "ups": 0,
+                    "downs": 2,
+                    "blocked": False,
+                    "retired": False,
+                    "retired_reason": "",
+                    "retired_at": None,
+                }
             }
-        })
+        )
 
         reinforce_recent_lessons("negative")
 
@@ -463,8 +501,17 @@ class TestReinforceRecentLessons:
     def test_boost_capped(self, set_data_dir):
         """Boost cannot exceed BOOST_CAP."""
         save_last_injection([{"id": "L001"}])
-        scores = {"L001": {"boost": BOOST_CAP - 0.1, "ups": 9, "downs": 0, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": BOOST_CAP - 0.1,
+                "ups": 9,
+                "downs": 0,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         results = reinforce_recent_lessons("positive")
@@ -473,8 +520,17 @@ class TestReinforceRecentLessons:
     def test_demote_floored(self, set_data_dir):
         """Boost cannot go below BOOST_FLOOR."""
         save_last_injection([{"id": "L001"}])
-        scores = {"L001": {"boost": 0.1, "ups": 3, "downs": 5, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.1,
+                "ups": 3,
+                "downs": 5,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         results = reinforce_recent_lessons("negative")
@@ -488,11 +544,15 @@ class TestContextToLesson:
     """Test converting user feedback context to imperative lesson text."""
 
     def test_strips_good_use_of_prefix(self):
-        result = _context_to_lesson("good use of pre-commit checks and behavior testing")
+        result = _context_to_lesson(
+            "good use of pre-commit checks and behavior testing"
+        )
         assert result == "Use pre-commit checks and behavior testing"
 
     def test_strips_great_use_of(self):
-        result = _context_to_lesson("great use of semantic theme colors in styling components")
+        result = _context_to_lesson(
+            "great use of semantic theme colors in styling components"
+        )
         assert result == "Use semantic theme colors in styling components"
 
     def test_strips_i_like_how_you(self):
@@ -501,13 +561,17 @@ class TestContextToLesson:
         assert result is None
 
     def test_preserves_already_imperative(self):
-        assert _context_to_lesson("always use semantic colors from theme tokens") == \
-            "Always use semantic colors from theme tokens"
+        assert (
+            _context_to_lesson("always use semantic colors from theme tokens")
+            == "Always use semantic colors from theme tokens"
+        )
 
     def test_returns_none_for_too_short(self):
         assert _context_to_lesson("good job") is None
         assert _context_to_lesson("nice") is None
-        assert _context_to_lesson("good use of theme colors") is None  # 16 chars after transform
+        assert (
+            _context_to_lesson("good use of theme colors") is None
+        )  # 16 chars after transform
 
     def test_capitalizes_first_letter(self):
         result = _context_to_lesson("dont hardcode colors in any component styling")
@@ -517,7 +581,10 @@ class TestContextToLesson:
     def test_preserves_long_context_with_verb(self):
         ctx = "always check pre-commit hooks and behavior testing with toBeVisible assertions"
         result = _context_to_lesson(ctx)
-        assert result == "Always check pre-commit hooks and behavior testing with toBeVisible assertions"
+        assert (
+            result
+            == "Always check pre-commit hooks and behavior testing with toBeVisible assertions"
+        )
 
     def test_rejects_long_context_without_verb(self):
         ctx = "pre-commit checks and behavior testing with toBeVisible assertions"
@@ -529,11 +596,15 @@ class TestContextToLesson:
         assert result == "Don't hardcode colors in component styles ever"
 
     def test_rejects_non_imperative(self):
-        result = _context_to_lesson("nice error handling approach with the try-catch blocks")
+        result = _context_to_lesson(
+            "nice error handling approach with the try-catch blocks"
+        )
         assert result is None  # no action verb after stripping "nice "
 
     def test_sanitizes_conversational_prefix(self):
-        result = _context_to_lesson("i think we should always use semantic colors from the theme")
+        result = _context_to_lesson(
+            "i think we should always use semantic colors from the theme"
+        )
         assert result == "Always use semantic colors from the theme"
 
     def test_rejects_generic_start(self):
@@ -541,11 +612,15 @@ class TestContextToLesson:
         assert result is None  # too short after stripping, or no verb
 
     def test_normalizes_cant_contraction(self):
-        result = _context_to_lesson("cant use hardcoded values in the component styles here")
+        result = _context_to_lesson(
+            "cant use hardcoded values in the component styles here"
+        )
         assert result == "Can't use hardcoded values in the component styles here"
 
     def test_strips_excellent_use_of(self):
-        result = _context_to_lesson("excellent use of design tokens instead of hardcoded hex values")
+        result = _context_to_lesson(
+            "excellent use of design tokens instead of hardcoded hex values"
+        )
         assert result == "Use design tokens instead of hardcoded hex values"
 
 
@@ -562,7 +637,9 @@ class TestCreateLessonFromFeedback:
 
         results = [("L001", 1.0, 1.3, False)]
         new_id, lesson_text = create_lesson_from_feedback(
-            "always use pre-commit checks and behavior testing", "positive", results,
+            "always use pre-commit checks and behavior testing",
+            "positive",
+            results,
         )
         assert new_id is not None
         assert lesson_text is not None
@@ -585,9 +662,15 @@ class TestCreateLessonFromFeedback:
         ]
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
 
-        results = [("L001", 1.0, 1.3, False), ("L002", 1.0, 1.3, False), ("L003", 1.0, 1.3, False)]
+        results = [
+            ("L001", 1.0, 1.3, False),
+            ("L002", 1.0, 1.3, False),
+            ("L003", 1.0, 1.3, False),
+        ]
         new_id, _ = create_lesson_from_feedback(
-            "always use toBeVisible assertions for behavior testing", "positive", results,
+            "always use toBeVisible assertions for behavior testing",
+            "positive",
+            results,
         )
         curated_after = json.loads((storage / "curated_lessons.json").read_text())
         new_lesson = [l for l in curated_after if l["id"] == new_id][0]
@@ -597,7 +680,9 @@ class TestCreateLessonFromFeedback:
         storage = set_data_dir / "data"
         results = []
         create_lesson_from_feedback(
-            "always use semantic colors from the design system", "positive", results,
+            "always use semantic colors from the design system",
+            "positive",
+            results,
         )
         feedback_log = storage / "feedback_log.jsonl"
         assert feedback_log.exists()
@@ -607,7 +692,9 @@ class TestCreateLessonFromFeedback:
     def test_defaults_category_when_no_boosted(self, set_data_dir):
         storage = set_data_dir / "data"
         new_id, _ = create_lesson_from_feedback(
-            "always use semantic colors from the design system", "positive", [],
+            "always use semantic colors from the design system",
+            "positive",
+            [],
         )
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert curated[0]["category"] == "code_edit"  # default
@@ -622,8 +709,12 @@ class TestComparisonLogging:
     def test_log_comparison_entry_hook(self, set_data_dir):
         storage = set_data_dir / "data"
         log_comparison_entry(
-            storage, "hook", "positive", "good use of theme colors",
-            "Use theme colors", True,
+            storage,
+            "hook",
+            "positive",
+            "good use of theme colors",
+            "Use theme colors",
+            True,
         )
         log_path = storage / "lesson_comparison.jsonl"
         assert log_path.exists()
@@ -638,8 +729,12 @@ class TestComparisonLogging:
     def test_log_comparison_entry_claude(self, set_data_dir):
         storage = set_data_dir / "data"
         log_comparison_entry(
-            storage, "claude", "negative", "dont hardcode colors",
-            "Don't hardcode colors in components", True,
+            storage,
+            "claude",
+            "negative",
+            "dont hardcode colors",
+            "Don't hardcode colors in components",
+            True,
         )
         entry = json.loads((storage / "lesson_comparison.jsonl").read_text().strip())
         assert entry["source"] == "claude"
@@ -648,8 +743,17 @@ class TestComparisonLogging:
     def test_entries_pair_by_context(self, set_data_dir):
         storage = set_data_dir / "data"
         ctx = "good use of semantic colors instead of hex values"
-        log_comparison_entry(storage, "hook", "positive", ctx, "Use semantic colors", True)
-        log_comparison_entry(storage, "claude", "positive", ctx, "Use semantic color tokens from the theme", True)
+        log_comparison_entry(
+            storage, "hook", "positive", ctx, "Use semantic colors", True
+        )
+        log_comparison_entry(
+            storage,
+            "claude",
+            "positive",
+            ctx,
+            "Use semantic color tokens from the theme",
+            True,
+        )
         lines = (storage / "lesson_comparison.jsonl").read_text().strip().split("\n")
         entries = [json.loads(l) for l in lines]
         assert len(entries) == 2
@@ -671,7 +775,9 @@ class TestComparisonLogging:
 class TestCompareLessonTool:
     """Test the compare_lesson MCP tool — logs but does NOT store."""
 
-    VALID_LESSON = "Always use semantic colors from theme instead of hardcoded hex values"
+    VALID_LESSON = (
+        "Always use semantic colors from theme instead of hardcoded hex values"
+    )
 
     def test_logs_to_comparison_file(self, set_data_dir):
         storage = set_data_dir / "data"
@@ -764,7 +870,9 @@ class TestBuildRichFeedbackContext:
         """User context >= 15 chars → instructs LLM to call create_lesson."""
         results = [("L001", 1.0, 1.3, False), ("L002", 1.0, 1.3, False)]
         context = build_rich_feedback_context(
-            "positive", "good use of theme colors instead of hardcoded values", results,
+            "positive",
+            "good use of theme colors instead of hardcoded values",
+            results,
         )
         assert "create_lesson" in context
         assert "MUST" in context
@@ -795,7 +903,9 @@ class TestBuildRichFeedbackContext:
     def test_negative_with_context_instructs_create_lesson(self, set_data_dir):
         results = [("L001", 1.0, 0.6, False)]
         context = build_rich_feedback_context(
-            "negative", "dont do this to the theme ever again", results,
+            "negative",
+            "dont do this to the theme ever again",
+            results,
         )
         assert "create_lesson" in context
         assert "demoted" in context
@@ -807,7 +917,9 @@ class TestBuildRichFeedbackContext:
 
     def test_empty_results_with_long_context(self, set_data_dir):
         context = build_rich_feedback_context(
-            "positive", "good use of semantic colors instead of hex", [],
+            "positive",
+            "good use of semantic colors instead of hex",
+            [],
         )
         assert "create_lesson" in context
         assert "0 lesson(s)" in context
@@ -861,14 +973,18 @@ class TestWriteToLiveLogFeedback:
 
     def test_includes_user_context(self, set_data_dir):
         storage = set_data_dir / "data"
-        write_to_live_log_feedback(storage, ":( bad theme", "negative", user_context="bad theme")
+        write_to_live_log_feedback(
+            storage, ":( bad theme", "negative", user_context="bad theme"
+        )
         content = (storage / "rag_live.log").read_text()
         assert "bad theme" in content
 
     def test_shows_per_lesson_results(self, set_data_dir):
         storage = set_data_dir / "data"
         results = [("L001", 1.0, 1.3, False), ("L002", 1.3, 1.6, False)]
-        write_to_live_log_feedback(storage, ":)", "positive", reinforcement_results=results)
+        write_to_live_log_feedback(
+            storage, ":)", "positive", reinforcement_results=results
+        )
         content = (storage / "rag_live.log").read_text()
         assert "BOOST: L001" in content
         assert "BOOST: L002" in content
@@ -883,7 +999,9 @@ class TestWriteToLiveLogFeedback:
     def test_shows_demote_for_negative(self, set_data_dir):
         storage = set_data_dir / "data"
         results = [("L001", 1.0, 0.6, False)]
-        write_to_live_log_feedback(storage, ":(", "negative", reinforcement_results=results)
+        write_to_live_log_feedback(
+            storage, ":(", "negative", reinforcement_results=results
+        )
         content = (storage / "rag_live.log").read_text()
         assert "DEMOTE: L001" in content
 
@@ -896,9 +1014,13 @@ class TestBoostLessonTool:
 
     def test_boosts_score(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
         result = boost_lesson("L001")
         assert "Boosted" in result
         scores = load_lesson_scores()
@@ -907,27 +1029,58 @@ class TestBoostLessonTool:
 
     def test_boost_capped_at_max(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
         # Pre-set near cap
-        scores = {"L001": {"boost": BOOST_CAP - 0.1, "ups": 9, "downs": 0, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": BOOST_CAP - 0.1,
+                "ups": 9,
+                "downs": 0,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         result = boost_lesson("L001")
         scores = load_lesson_scores()
         assert scores["L001"]["boost"] <= BOOST_CAP
 
     def test_rejects_blocked_lesson(self, set_data_dir):
-        scores = {"L001": {"boost": 0.0, "ups": 0, "downs": 5, "blocked": True,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.0,
+                "ups": 0,
+                "downs": 5,
+                "blocked": True,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         result = boost_lesson("L001")
         assert "blocked" in result.lower()
 
     def test_rejects_retired_lesson(self, set_data_dir):
-        scores = {"L001": {"boost": 0.0, "ups": 0, "downs": 5, "blocked": True,
-                           "retired": True, "retired_reason": "test", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.0,
+                "ups": 0,
+                "downs": 5,
+                "blocked": True,
+                "retired": True,
+                "retired_reason": "test",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         result = boost_lesson("L001")
         assert "retired" in result.lower()
@@ -952,9 +1105,13 @@ class TestBoostLessonTool:
 
     def test_updates_metrics(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
         boost_lesson("L001")
         metrics_path = storage / "feedback_metrics.json"
         assert metrics_path.exists()
@@ -963,9 +1120,13 @@ class TestBoostLessonTool:
 
     def test_case_insensitive_id(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
         result = boost_lesson("l001")
         assert "L001" in result
 
@@ -978,22 +1139,41 @@ class TestDemoteLessonTool:
 
     def test_demotes_score(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
         result = demote_lesson("L001")
         assert "Demoted" in result
         scores = load_lesson_scores()
         assert scores["L001"]["downs"] == 1
-        assert scores["L001"]["boost"] == max(DEFAULT_BOOST - DEMOTE_DECREMENT, BOOST_FLOOR)
+        assert scores["L001"]["boost"] == max(
+            DEFAULT_BOOST - DEMOTE_DECREMENT, BOOST_FLOOR
+        )
 
     def test_demote_floored_at_zero(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
-        scores = {"L001": {"boost": 0.1, "ups": 3, "downs": 5, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
+        scores = {
+            "L001": {
+                "boost": 0.1,
+                "ups": 3,
+                "downs": 5,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         demote_lesson("L001")
         scores = load_lesson_scores()
@@ -1005,8 +1185,17 @@ class TestDemoteLessonTool:
         curated = [{"id": "L001", "lesson": "bad lesson", "category": "testing"}]
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
         # Start at low boost, 0 ups
-        scores = {"L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         result = demote_lesson("L001")
@@ -1024,8 +1213,17 @@ class TestDemoteLessonTool:
             {"id": "L002", "lesson": "good lesson", "category": "code_edit"},
         ]
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
-        scores = {"L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         demote_lesson("L001")
@@ -1038,11 +1236,24 @@ class TestDemoteLessonTool:
     @patch("smartassist.mcp_server.spawn_managed")
     def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "bad lesson", "category": "testing"},
-        ]))
-        scores = {"L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "bad lesson", "category": "testing"},
+                ]
+            )
+        )
+        scores = {
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         demote_lesson("L001")
@@ -1054,11 +1265,24 @@ class TestDemoteLessonTool:
     def test_no_auto_retire_with_ups(self, set_data_dir):
         """Lesson with ups > 0 should NOT be auto-retired even at 0.0 boost."""
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
-        scores = {"L001": {"boost": 0.3, "ups": 3, "downs": 8, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
+        scores = {
+            "L001": {
+                "boost": 0.3,
+                "ups": 3,
+                "downs": 8,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         result = demote_lesson("L001")
         assert "RETIRED" not in result
@@ -1067,19 +1291,41 @@ class TestDemoteLessonTool:
 
     def test_warns_strong_positive_history(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
-        scores = {"L001": {"boost": 1.0, "ups": 5, "downs": 0, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
+        scores = {
+            "L001": {
+                "boost": 1.0,
+                "ups": 5,
+                "downs": 0,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         result = demote_lesson("L001")
         assert "Warning" in result
         assert "5 positive" in result
 
     def test_rejects_blocked_lesson(self, set_data_dir):
-        scores = {"L001": {"boost": 0.0, "ups": 0, "downs": 5, "blocked": True,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.0,
+                "ups": 0,
+                "downs": 5,
+                "blocked": True,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         result = demote_lesson("L001")
         assert "already blocked" in result.lower()
@@ -1097,9 +1343,13 @@ class TestDemoteLessonTool:
 
     def test_updates_metrics(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test lesson", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test lesson", "category": "testing"},
+                ]
+            )
+        )
         demote_lesson("L001")
         metrics_path = storage / "feedback_metrics.json"
         metrics = json.loads(metrics_path.read_text())
@@ -1119,7 +1369,9 @@ class TestDemoteLessonTool:
 class TestMergeLessonsTool:
     """Test the merge_lessons MCP tool."""
 
-    VALID_MERGED = "Always use semantic design tokens from the theme for all color values"
+    VALID_MERGED = (
+        "Always use semantic design tokens from the theme for all color values"
+    )
 
     def _seed_curated(self, set_data_dir, lessons):
         storage = set_data_dir / "data"
@@ -1130,7 +1382,11 @@ class TestMergeLessonsTool:
     def test_merge_two_lessons(self, mock_spawn, set_data_dir):
         curated = [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
+            {
+                "id": "L002",
+                "lesson": "Avoid hardcoded hex values",
+                "category": "code_edit",
+            },
         ]
         self._seed_curated(set_data_dir, curated)
 
@@ -1141,11 +1397,22 @@ class TestMergeLessonsTool:
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_removes_sources_from_curated(self, mock_spawn, set_data_dir):
-        storage = self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
-            {"id": "L003", "lesson": "Keep other lesson", "category": "testing"},
-        ])
+        storage = self._seed_curated(
+            set_data_dir,
+            [
+                {
+                    "id": "L001",
+                    "lesson": "Use semantic colors",
+                    "category": "code_edit",
+                },
+                {
+                    "id": "L002",
+                    "lesson": "Avoid hardcoded hex values",
+                    "category": "code_edit",
+                },
+                {"id": "L003", "lesson": "Keep other lesson", "category": "testing"},
+            ],
+        )
 
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
 
@@ -1157,10 +1424,21 @@ class TestMergeLessonsTool:
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_adds_new_lesson_to_curated(self, mock_spawn, set_data_dir):
-        storage = self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
-        ])
+        storage = self._seed_curated(
+            set_data_dir,
+            [
+                {
+                    "id": "L001",
+                    "lesson": "Use semantic colors",
+                    "category": "code_edit",
+                },
+                {
+                    "id": "L002",
+                    "lesson": "Avoid hardcoded hex values",
+                    "category": "code_edit",
+                },
+            ],
+        )
 
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
 
@@ -1169,15 +1447,40 @@ class TestMergeLessonsTool:
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_combines_scores(self, mock_spawn, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
-        ])
+        self._seed_curated(
+            set_data_dir,
+            [
+                {
+                    "id": "L001",
+                    "lesson": "Use semantic colors",
+                    "category": "code_edit",
+                },
+                {
+                    "id": "L002",
+                    "lesson": "Avoid hardcoded hex values",
+                    "category": "code_edit",
+                },
+            ],
+        )
         scores = {
-            "L001": {"boost": 2.0, "ups": 5, "downs": 1, "blocked": False,
-                     "retired": False, "retired_reason": "", "retired_at": None},
-            "L002": {"boost": 1.5, "ups": 3, "downs": 0, "blocked": False,
-                     "retired": False, "retired_reason": "", "retired_at": None},
+            "L001": {
+                "boost": 2.0,
+                "ups": 5,
+                "downs": 1,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            },
+            "L002": {
+                "boost": 1.5,
+                "ups": 3,
+                "downs": 0,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            },
         }
         save_lesson_scores(scores)
 
@@ -1193,10 +1496,21 @@ class TestMergeLessonsTool:
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_marks_sources_superseded(self, mock_spawn, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
-        ])
+        self._seed_curated(
+            set_data_dir,
+            [
+                {
+                    "id": "L001",
+                    "lesson": "Use semantic colors",
+                    "category": "code_edit",
+                },
+                {
+                    "id": "L002",
+                    "lesson": "Avoid hardcoded hex values",
+                    "category": "code_edit",
+                },
+            ],
+        )
 
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
 
@@ -1211,18 +1525,23 @@ class TestMergeLessonsTool:
         assert "at least 2" in result
 
     def test_merge_rejects_duplicate_ids(self, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "a", "category": "code_edit"},
-            {"id": "L002", "lesson": "b", "category": "code_edit"},
-        ])
+        self._seed_curated(
+            set_data_dir,
+            [
+                {"id": "L001", "lesson": "a", "category": "code_edit"},
+                {"id": "L002", "lesson": "b", "category": "code_edit"},
+            ],
+        )
         result = merge_lessons("L001,L001", self.VALID_MERGED, "code_edit")
         assert "unique lesson ids" in result.lower()
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_works_at_capacity(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
-        lessons = [{"id": f"L{i:03d}", "lesson": f"lesson {i}", "category": "testing"}
-                   for i in range(1, MAX_CURATED_LESSONS + 1)]
+        lessons = [
+            {"id": f"L{i:03d}", "lesson": f"lesson {i}", "category": "testing"}
+            for i in range(1, MAX_CURATED_LESSONS + 1)
+        ]
         (storage / "curated_lessons.json").write_text(json.dumps(lessons))
         result = merge_lessons("L001,L002", self.VALID_MERGED, "testing")
         assert "Merged L001, L002" in result
@@ -1231,53 +1550,86 @@ class TestMergeLessonsTool:
 
     def test_merge_rejects_missing_ids(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "test", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "test", "category": "testing"},
+                ]
+            )
+        )
         result = merge_lessons("L001,L999", self.VALID_MERGED, "code_edit")
         assert "L999" in result
         assert "not found" in result.lower()
 
     def test_merge_rejects_short_lesson(self, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "a", "category": "code_edit"},
-            {"id": "L002", "lesson": "b", "category": "code_edit"},
-        ])
+        self._seed_curated(
+            set_data_dir,
+            [
+                {"id": "L001", "lesson": "a", "category": "code_edit"},
+                {"id": "L002", "lesson": "b", "category": "code_edit"},
+            ],
+        )
         result = merge_lessons("L001,L002", "Too short", "code_edit")
         assert "too short" in result.lower()
 
     def test_merge_rejects_invalid_category(self, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "a", "category": "code_edit"},
-            {"id": "L002", "lesson": "b", "category": "code_edit"},
-        ])
+        self._seed_curated(
+            set_data_dir,
+            [
+                {"id": "L001", "lesson": "a", "category": "code_edit"},
+                {"id": "L002", "lesson": "b", "category": "code_edit"},
+            ],
+        )
         result = merge_lessons("L001,L002", self.VALID_MERGED, "invalid")
         assert "invalid category" in result.lower()
 
     def test_merge_rejects_generic_start(self, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "a", "category": "code_edit"},
-            {"id": "L002", "lesson": "b", "category": "code_edit"},
-        ])
-        result = merge_lessons("L001,L002", "Remember to use semantic colors in all components", "code_edit")
+        self._seed_curated(
+            set_data_dir,
+            [
+                {"id": "L001", "lesson": "a", "category": "code_edit"},
+                {"id": "L002", "lesson": "b", "category": "code_edit"},
+            ],
+        )
+        result = merge_lessons(
+            "L001,L002",
+            "Remember to use semantic colors in all components",
+            "code_edit",
+        )
         assert "generic" in result.lower()
 
     def test_merge_rejects_no_action_verb(self, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "a", "category": "code_edit"},
-            {"id": "L002", "lesson": "b", "category": "code_edit"},
-        ])
-        result = merge_lessons("L001,L002",
-                               "Semantic colors are better than hex values in all situations",
-                               "code_edit")
+        self._seed_curated(
+            set_data_dir,
+            [
+                {"id": "L001", "lesson": "a", "category": "code_edit"},
+                {"id": "L002", "lesson": "b", "category": "code_edit"},
+            ],
+        )
+        result = merge_lessons(
+            "L001,L002",
+            "Semantic colors are better than hex values in all situations",
+            "code_edit",
+        )
         assert "action verb" in result.lower()
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_writes_to_feedback_log(self, mock_spawn, set_data_dir):
-        storage = self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
-        ])
+        storage = self._seed_curated(
+            set_data_dir,
+            [
+                {
+                    "id": "L001",
+                    "lesson": "Use semantic colors",
+                    "category": "code_edit",
+                },
+                {
+                    "id": "L002",
+                    "lesson": "Avoid hardcoded hex values",
+                    "category": "code_edit",
+                },
+            ],
+        )
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
 
         feedback_log = storage / "feedback_log.jsonl"
@@ -1288,10 +1640,21 @@ class TestMergeLessonsTool:
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_fires_vectorization(self, mock_spawn, set_data_dir):
-        self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
-        ])
+        self._seed_curated(
+            set_data_dir,
+            [
+                {
+                    "id": "L001",
+                    "lesson": "Use semantic colors",
+                    "category": "code_edit",
+                },
+                {
+                    "id": "L002",
+                    "lesson": "Avoid hardcoded hex values",
+                    "category": "code_edit",
+                },
+            ],
+        )
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
         mock_spawn.assert_called_once()
         cmd = mock_spawn.call_args.args[0]
@@ -1299,10 +1662,21 @@ class TestMergeLessonsTool:
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_merge_updates_metrics(self, mock_spawn, set_data_dir):
-        storage = self._seed_curated(set_data_dir, [
-            {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
-            {"id": "L002", "lesson": "Avoid hardcoded hex values", "category": "code_edit"},
-        ])
+        storage = self._seed_curated(
+            set_data_dir,
+            [
+                {
+                    "id": "L001",
+                    "lesson": "Use semantic colors",
+                    "category": "code_edit",
+                },
+                {
+                    "id": "L002",
+                    "lesson": "Avoid hardcoded hex values",
+                    "category": "code_edit",
+                },
+            ],
+        )
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
         metrics = json.loads((storage / "feedback_metrics.json").read_text())
         assert metrics["merges"] == 1
@@ -1314,7 +1688,9 @@ class TestMergeLessonsTool:
 class TestCreateLessonV2:
     """Test create_lesson with V2 dual-path write."""
 
-    VALID_LESSON = "Always use semantic colors from theme instead of hardcoded hex values"
+    VALID_LESSON = (
+        "Always use semantic colors from theme instead of hardcoded hex values"
+    )
     VALID_CATEGORY = "code_edit"
 
     @patch("smartassist.mcp_server.spawn_managed")
@@ -1345,9 +1721,13 @@ class TestCreateLessonV2:
     @patch("smartassist.mcp_server.spawn_managed")
     def test_increments_id(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L005", "lesson": "existing", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L005", "lesson": "existing", "category": "testing"},
+                ]
+            )
+        )
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert curated[-1]["id"] == "L006"
@@ -1356,8 +1736,10 @@ class TestCreateLessonV2:
     def test_cap_enforcement(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         # Seed with MAX_CURATED_LESSONS lessons
-        lessons = [{"id": f"L{i:03d}", "lesson": f"lesson {i}", "category": "testing"}
-                   for i in range(1, MAX_CURATED_LESSONS + 1)]
+        lessons = [
+            {"id": f"L{i:03d}", "lesson": f"lesson {i}", "category": "testing"}
+            for i in range(1, MAX_CURATED_LESSONS + 1)
+        ]
         (storage / "curated_lessons.json").write_text(json.dumps(lessons))
 
         result = create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
@@ -1382,11 +1764,15 @@ class TestCreateLessonV2:
         assert "invalid category" in result.lower()
 
     def test_rejects_invalid_sentiment(self, set_data_dir):
-        result = create_lesson(lesson=self.VALID_LESSON, category="code_edit", sentiment="neutral")
+        result = create_lesson(
+            lesson=self.VALID_LESSON, category="code_edit", sentiment="neutral"
+        )
         assert "invalid sentiment" in result.lower()
 
     def test_rejects_invalid_intensity(self, set_data_dir):
-        result = create_lesson(lesson=self.VALID_LESSON, category="code_edit", intensity="high")
+        result = create_lesson(
+            lesson=self.VALID_LESSON, category="code_edit", intensity="high"
+        )
         assert "invalid intensity" in result.lower()
 
     def test_rejects_no_action_verb(self, set_data_dir):
@@ -1415,7 +1801,9 @@ class TestCreateLessonV2:
         )
         feedback_log = storage / "feedback_log.jsonl"
         assert feedback_log.exists()
-        entries = [json.loads(line) for line in feedback_log.read_text().strip().split("\n")]
+        entries = [
+            json.loads(line) for line in feedback_log.read_text().strip().split("\n")
+        ]
         assert len(entries) == 1
         assert entries[0]["correction"] == self.VALID_LESSON
 
@@ -1429,7 +1817,12 @@ class TestCreateLessonV2:
         with patch("smartassist.mcp_server._get_thompson") as mock_get:
             mock_thompson = MagicMock()
             mock_get.return_value = mock_thompson
-            create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY, sentiment="positive", intensity=4)
+            create_lesson(
+                lesson=self.VALID_LESSON,
+                category=self.VALID_CATEGORY,
+                sentiment="positive",
+                intensity=4,
+            )
             mock_thompson.record_success.assert_called_once_with("code_edit", 4)
 
     @patch("smartassist.mcp_server.spawn_managed")
@@ -1439,9 +1832,79 @@ class TestCreateLessonV2:
             mock_get.return_value = mock_thompson
             create_lesson(
                 lesson="Never use snapshot tests, always prefer toBeVisible behavior assertions",
-                category="testing", sentiment="negative", intensity=5,
+                category="testing",
+                sentiment="negative",
+                intensity=5,
             )
             mock_thompson.record_failure.assert_called_once_with("testing", 5)
+
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_returns_existing_lesson_instead_of_creating_duplicate(
+        self, mock_spawn, set_data_dir
+    ):
+        storage = set_data_dir / "data"
+        create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
+
+        result = create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
+
+        curated = json.loads((storage / "curated_lessons.json").read_text())
+        assert len(curated) == 1
+        assert "already recorded" in result.lower()
+
+
+class TestApplyFeedbackProtocol:
+    VALID_LESSON = (
+        "Always use semantic colors from theme instead of hardcoded hex values"
+    )
+
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_creates_new_lesson_when_no_overlap(self, mock_spawn, set_data_dir):
+        storage = set_data_dir / "data"
+
+        result = apply_feedback_protocol(
+            feedback="always use semantic colors from theme instead of hardcoded hex values",
+            sentiment="negative",
+        )
+
+        curated = json.loads((storage / "curated_lessons.json").read_text())
+        assert len(curated) == 1
+        assert "create_new" in result
+
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_boosts_existing_duplicate(self, mock_spawn, set_data_dir):
+        storage = set_data_dir / "data"
+        create_lesson(lesson=self.VALID_LESSON, category="code_edit")
+
+        result = apply_feedback_protocol(
+            feedback="always use semantic colors from theme instead of hardcoded hex values",
+            sentiment="negative",
+        )
+
+        scores = load_lesson_scores()
+        assert "boost_existing" in result
+        assert scores["L001"]["ups"] == 1
+        curated = json.loads((storage / "curated_lessons.json").read_text())
+        assert len(curated) == 1
+
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_suggests_merge_for_overlapping_lessons(self, mock_spawn, set_data_dir):
+        create_lesson(
+            lesson="Always use semantic colors from theme instead of hardcoded hex values in styles",
+            category="code_edit",
+        )
+        create_lesson(
+            lesson="Avoid hardcoded hex values in styles and use theme color tokens instead",
+            category="code_edit",
+        )
+
+        result = apply_feedback_protocol(
+            feedback="always use theme color tokens instead of hardcoded hex values in styles",
+            sentiment="negative",
+        )
+
+        assert "merge_suggested" in result
+        assert "L001" in result
+        assert "L002" in result
 
 
 # ── TestAddToCurated ──────────────────────────────────────────────────────
@@ -1459,9 +1922,13 @@ class TestAddToCurated:
 
     def test_appends_to_existing(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "existing", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "existing", "category": "testing"},
+                ]
+            )
+        )
         new_id, error = add_to_curated(storage, "New lesson here", "code_edit")
         assert new_id == "L002"
         curated = json.loads((storage / "curated_lessons.json").read_text())
@@ -1469,20 +1936,27 @@ class TestAddToCurated:
 
     def test_cap_at_max(self, set_data_dir):
         storage = set_data_dir / "data"
-        lessons = [{"id": f"L{i:03d}", "lesson": f"l{i}", "category": "testing"}
-                   for i in range(1, MAX_CURATED_LESSONS + 1)]
+        lessons = [
+            {"id": f"L{i:03d}", "lesson": f"l{i}", "category": "testing"}
+            for i in range(1, MAX_CURATED_LESSONS + 1)
+        ]
         (storage / "curated_lessons.json").write_text(json.dumps(lessons))
 
         new_id, error = add_to_curated(storage, "Over capacity lesson", "testing")
         assert new_id is None
+        assert error is not None
         assert "capacity" in error.lower()
 
     def test_generates_correct_id_sequence(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L010", "lesson": "existing", "category": "testing"},
-            {"id": "L003", "lesson": "existing", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L010", "lesson": "existing", "category": "testing"},
+                    {"id": "L003", "lesson": "existing", "category": "testing"},
+                ]
+            )
+        )
         new_id, _ = add_to_curated(storage, "New lesson", "testing")
         assert new_id == "L011"
 
@@ -1496,7 +1970,11 @@ class TestAddToCurated:
         """Corrupted JSON is treated as empty list and recovered (C3/C4 fix)."""
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text("{invalid")
-        new_id, error = add_to_curated(storage, "First lesson that is long enough to pass the quality gate", "testing")
+        new_id, error = add_to_curated(
+            storage,
+            "First lesson that is long enough to pass the quality gate",
+            "testing",
+        )
         assert new_id == "L001"
         assert error is None
 
@@ -1509,10 +1987,14 @@ class TestRemoveFromCurated:
 
     def test_removes_lesson(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "to remove", "category": "testing"},
-            {"id": "L002", "lesson": "to keep", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "to remove", "category": "testing"},
+                    {"id": "L002", "lesson": "to keep", "category": "testing"},
+                ]
+            )
+        )
         remove_from_curated(storage, "L001")
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 1
@@ -1525,9 +2007,13 @@ class TestRemoveFromCurated:
 
     def test_noop_when_id_missing(self, set_data_dir):
         storage = set_data_dir / "data"
-        (storage / "curated_lessons.json").write_text(json.dumps([
-            {"id": "L001", "lesson": "keep this", "category": "testing"},
-        ]))
+        (storage / "curated_lessons.json").write_text(
+            json.dumps(
+                [
+                    {"id": "L001", "lesson": "keep this", "category": "testing"},
+                ]
+            )
+        )
         remove_from_curated(storage, "L999")
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 1
@@ -1582,8 +2068,17 @@ class TestAutoRetire:
         storage = set_data_dir / "data"
         curated = [{"id": "L001", "lesson": "bad", "category": "testing"}]
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
-        scores = {"L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         demote_lesson("L001")
@@ -1596,8 +2091,17 @@ class TestAutoRetire:
         storage = set_data_dir / "data"
         curated = [{"id": "L001", "lesson": "bad", "category": "testing"}]
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
-        scores = {"L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         demote_lesson("L001")
@@ -1608,8 +2112,17 @@ class TestAutoRetire:
 
     def test_no_retire_with_positive_feedback(self, set_data_dir):
         """Even at 0.0 boost, if ups > 0, don't retire."""
-        scores = {"L001": {"boost": 0.4, "ups": 1, "downs": 5, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.4,
+                "ups": 1,
+                "downs": 5,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
         demote_lesson("L001")
         scores = load_lesson_scores()
@@ -1622,8 +2135,17 @@ class TestAutoRetire:
             {"id": "L002", "lesson": "good", "category": "code_edit"},
         ]
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
-        scores = {"L001": {"boost": 0.3, "ups": 0, "downs": 2, "blocked": False,
-                           "retired": False, "retired_reason": "", "retired_at": None}}
+        scores = {
+            "L001": {
+                "boost": 0.3,
+                "ups": 0,
+                "downs": 2,
+                "blocked": False,
+                "retired": False,
+                "retired_reason": "",
+                "retired_at": None,
+            }
+        }
         save_lesson_scores(scores)
 
         demote_lesson("L001")
@@ -1640,7 +2162,11 @@ class TestFeedbackLogRotation:
     """Test feedback_log.jsonl rotation in maintenance."""
 
     def test_no_rotation_under_threshold(self, set_data_dir):
-        from smartassist.tools.maintenance import rotate_feedback_log, FEEDBACK_LOG_MAX_LINES
+        from smartassist.tools.maintenance import (
+            rotate_feedback_log,
+            FEEDBACK_LOG_MAX_LINES,
+        )
+
         storage = set_data_dir / "data"
         # Write 100 lines
         feedback_log = storage / "feedback_log.jsonl"
@@ -1655,8 +2181,11 @@ class TestFeedbackLogRotation:
 
     def test_rotation_over_threshold(self, set_data_dir):
         from smartassist.tools.maintenance import (
-            rotate_feedback_log, FEEDBACK_LOG_MAX_LINES, FEEDBACK_LOG_KEEP_LINES,
+            rotate_feedback_log,
+            FEEDBACK_LOG_MAX_LINES,
+            FEEDBACK_LOG_KEEP_LINES,
         )
+
         storage = set_data_dir / "data"
         feedback_log = storage / "feedback_log.jsonl"
         total = FEEDBACK_LOG_MAX_LINES + 500
@@ -1673,13 +2202,17 @@ class TestFeedbackLogRotation:
 
         # Archive should exist
         import glob
+
         archives = list(storage.glob("feedback_log.jsonl.*.bak"))
         assert len(archives) == 1
 
     def test_rotation_resets_vectorization_counter(self, set_data_dir):
         from smartassist.tools.maintenance import (
-            rotate_feedback_log, FEEDBACK_LOG_MAX_LINES, FEEDBACK_LOG_KEEP_LINES,
+            rotate_feedback_log,
+            FEEDBACK_LOG_MAX_LINES,
+            FEEDBACK_LOG_KEEP_LINES,
         )
+
         storage = set_data_dir / "data"
         feedback_log = storage / "feedback_log.jsonl"
         total = FEEDBACK_LOG_MAX_LINES + 100
@@ -1699,8 +2232,11 @@ class TestFeedbackLogRotation:
 
     def test_rotation_remaps_partial_processed_count(self, set_data_dir):
         from smartassist.tools.maintenance import (
-            rotate_feedback_log, FEEDBACK_LOG_MAX_LINES, FEEDBACK_LOG_KEEP_LINES,
+            rotate_feedback_log,
+            FEEDBACK_LOG_MAX_LINES,
+            FEEDBACK_LOG_KEEP_LINES,
         )
+
         storage = set_data_dir / "data"
         feedback_log = storage / "feedback_log.jsonl"
         total = FEEDBACK_LOG_MAX_LINES + 100
@@ -1721,6 +2257,7 @@ class TestFeedbackLogRotation:
 
     def test_no_crash_when_log_missing(self, set_data_dir):
         from smartassist.tools.maintenance import rotate_feedback_log
+
         # Should not raise
         rotate_feedback_log()
 
@@ -1760,11 +2297,15 @@ class TestPromptInjectMainFeedback:
         context = output["hookSpecificOutput"]["additionalContext"]
         assert "demoted" in context.lower() or "0 lesson(s)" in context
 
-    def test_signal_with_context_creates_lesson_and_instructs_llm(self, set_data_dir, capsys):
+    def test_signal_with_context_creates_lesson_and_instructs_llm(
+        self, set_data_dir, capsys
+    ):
         from smartassist.hooks.prompt_inject import main
         import io
 
-        hook_input = json.dumps({"prompt": ":( dont hardcode colors in components", "session_id": "test123"})
+        hook_input = json.dumps(
+            {"prompt": ":( dont hardcode colors in components", "session_id": "test123"}
+        )
         with patch("sys.stdin", io.StringIO(hook_input)):
             main()
 
@@ -1778,6 +2319,7 @@ class TestPromptInjectMainFeedback:
 
         # Hook ALSO created its own lesson immediately (guaranteed reinforcement loop)
         from smartassist.store import list_lessons
+
         storage = set_data_dir / "data"
         lessons = list_lessons(storage)
         assert any("hardcode colors" in l.get("lesson", "").lower() for l in lessons)
@@ -1798,8 +2340,10 @@ class TestPromptInjectMainFeedback:
         from smartassist.hooks.prompt_inject import main
         import io
 
-        with patch("smartassist.hooks.prompt_inject.reinforce_recent_lessons",
-                    return_value=[("L001", 1.0, 1.3, False)]) as mock_reinforce:
+        with patch(
+            "smartassist.hooks.prompt_inject.reinforce_recent_lessons",
+            return_value=[("L001", 1.0, 1.3, False)],
+        ) as mock_reinforce:
             hook_input = json.dumps({"prompt": ":)", "session_id": "test123"})
             with patch("sys.stdin", io.StringIO(hook_input)):
                 main()
@@ -1810,8 +2354,10 @@ class TestPromptInjectMainFeedback:
         from smartassist.hooks.prompt_inject import main
         import io
 
-        with patch("smartassist.hooks.prompt_inject.reinforce_recent_lessons",
-                    return_value=[("L001", 1.0, 0.6, False)]) as mock_reinforce:
+        with patch(
+            "smartassist.hooks.prompt_inject.reinforce_recent_lessons",
+            return_value=[("L001", 1.0, 0.6, False)],
+        ) as mock_reinforce:
             hook_input = json.dumps({"prompt": ":(", "session_id": "test123"})
             with patch("sys.stdin", io.StringIO(hook_input)):
                 main()
@@ -1822,8 +2368,10 @@ class TestPromptInjectMainFeedback:
         from smartassist.hooks.prompt_inject import main
         import io
 
-        with patch("smartassist.hooks.prompt_inject.reinforce_recent_lessons",
-                    return_value=[("L022", 1.0, 1.3, False), ("L020", 1.0, 1.3, False)]):
+        with patch(
+            "smartassist.hooks.prompt_inject.reinforce_recent_lessons",
+            return_value=[("L022", 1.0, 1.3, False), ("L020", 1.0, 1.3, False)],
+        ):
             hook_input = json.dumps({"prompt": ":)", "session_id": "test123"})
             with patch("sys.stdin", io.StringIO(hook_input)):
                 main()
@@ -1840,15 +2388,20 @@ class TestPromptInjectMainFeedback:
 
         storage = set_data_dir / "data"
         curated = [
-            {"id": "L001", "lesson": "Always use semantic colors from theme tokens for styling",
-             "category": "code_edit"},
+            {
+                "id": "L001",
+                "lesson": "Always use semantic colors from theme tokens for styling",
+                "category": "code_edit",
+            },
         ]
         (storage / "curated_lessons.json").write_text(json.dumps(curated))
 
-        hook_input = json.dumps({
-            "prompt": "I need to style this component with semantic theme colors and tokens",
-            "session_id": "test123",
-        })
+        hook_input = json.dumps(
+            {
+                "prompt": "I need to style this component with semantic theme colors and tokens",
+                "session_id": "test123",
+            }
+        )
         with patch("sys.stdin", io.StringIO(hook_input)):
             main()
 

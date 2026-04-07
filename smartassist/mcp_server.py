@@ -6,6 +6,7 @@ Provides tools:
   - rag_search: Semantic search across past lessons, corrections, and feedback
   - rag_dashboard: View current reliability scores and system stats
   - rag_feedback: Record feedback on suggestions
+  - apply_feedback_protocol: High-level feedback-to-memory workflow
   - create_lesson: Create new project-specific lesson (dual-path: feedback_log + curated)
   - boost_lesson: Increase a lesson's score (V2 per-lesson feedback)
   - demote_lesson: Decrease a lesson's score, auto-retire if warranted
@@ -14,6 +15,7 @@ Provides tools:
 Runs via stdio transport. Entry point: `smartassist serve`
 """
 
+import importlib
 import json
 import math
 import sys
@@ -30,12 +32,16 @@ from smartassist.config import (
     spawn_managed,
 )
 from smartassist.lesson_feedback import (
+    _context_to_lesson,
     load_lesson_scores,
     save_lesson_scores,
     get_or_create_score,
-    add_to_curated,
+    estimate_feedback_intensity,
+    find_similar_lessons,
+    infer_feedback_category,
     remove_from_curated,
     log_comparison_entry,
+    normalize_feedback_sentiment,
     DEFAULT_BOOST,
     BOOST_INCREMENT,
     DEMOTE_DECREMENT,
@@ -47,6 +53,7 @@ from smartassist.lesson_feedback import (
 )
 from smartassist.store import (
     append_feedback_event,
+    ensure_lesson,
     get_feedback_stats as get_feedback_stats_from_store,
     increment_feedback_metric,
     list_lessons,
@@ -68,8 +75,36 @@ _cross_encoder = None
 # Results above this distance are too irrelevant to return.
 MAX_DISTANCE = 1.30
 
-VALID_CATEGORIES = {"testing", "code_edit", "git", "architecture", "pr_review", "security", "debugging"}
+VALID_CATEGORIES = {
+    "testing",
+    "code_edit",
+    "git",
+    "architecture",
+    "pr_review",
+    "security",
+    "debugging",
+}
 
+
+def _looks_like_duplicate(candidate: dict) -> bool:
+    return bool(
+        candidate.get("exact")
+        or float(candidate.get("similarity", 0.0)) >= 0.92
+        or (
+            candidate.get("containment")
+            and float(candidate.get("similarity", 0.0)) >= 0.72
+        )
+    )
+
+
+def _looks_like_merge_candidate(candidate: dict) -> bool:
+    return bool(
+        float(candidate.get("similarity", 0.0)) >= 0.58
+        or (
+            candidate.get("containment")
+            and float(candidate.get("similarity", 0.0)) >= 0.45
+        )
+    )
 
 
 def _get_storage():
@@ -81,6 +116,7 @@ def _get_storage():
             "Run 'smartassist setup' in your project root, or set "
             "SMARTASSIST_DATA_DIR in your environment."
         )
+
 
 def _usage_log_path():
     return _get_storage() / "usage_log.jsonl"
@@ -102,6 +138,7 @@ def _trigger_vectorization(full_rebuild: bool = False):
 def _get_db():
     try:
         from smartassist.config import get_db_path
+
         return get_db_path()
     except RuntimeError:
         raise RuntimeError("SmartAssist database not found. Run 'smartassist setup'.")
@@ -111,8 +148,10 @@ def _get_embedder():
     """Lazy-load the sentence transformer embedding model."""
     global _embedder
     if _embedder is None:
-        from sentence_transformers import SentenceTransformer
         from smartassist.config import EMBEDDING_MODEL
+
+        sentence_transformers = importlib.import_module("sentence_transformers")
+        SentenceTransformer = getattr(sentence_transformers, "SentenceTransformer")
         _embedder = SentenceTransformer(EMBEDDING_MODEL)
     return _embedder
 
@@ -123,8 +162,7 @@ def _get_table():
     The vector cache is rebuilt by separate subprocesses. Reopening the table
     avoids stale-read issues from holding a long-lived handle across rebuilds.
     """
-    import lancedb
-
+    lancedb = importlib.import_module("lancedb")
     db = lancedb.connect(str(_get_db()))
     return db.open_table("documents")
 
@@ -133,7 +171,8 @@ def _get_cross_encoder():
     """Lazy-load the cross-encoder reranker model."""
     global _cross_encoder
     if _cross_encoder is None:
-        from sentence_transformers import CrossEncoder
+        sentence_transformers = importlib.import_module("sentence_transformers")
+        CrossEncoder = getattr(sentence_transformers, "CrossEncoder")
         _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     return _cross_encoder
 
@@ -161,7 +200,7 @@ def _extract_lesson_text(raw_text: str) -> str:
     if raw_text.startswith("["):
         bracket_end = raw_text.find("] ")
         if bracket_end != -1:
-            text = raw_text[bracket_end + 2:]
+            text = raw_text[bracket_end + 2 :]
             ctx_idx = text.find(" Context: ")
             if ctx_idx != -1:
                 text = text[:ctx_idx]
@@ -183,8 +222,14 @@ def _compute_relevance(score: float) -> float:
     return max(0.0, min(1.0, float(score)))
 
 
-def _log_usage(tool: str, query: str = "", results_count: int = 0, latency_ms: float = 0,
-               lessons: list = None, search_meta: dict = None):
+def _log_usage(
+    tool: str,
+    query: str = "",
+    results_count: int = 0,
+    latency_ms: float = 0,
+    lessons: list | None = None,
+    search_meta: dict | None = None,
+):
     """Append a usage event to the usage log for evidence tracking."""
     try:
         entry = {
@@ -203,11 +248,13 @@ def _log_usage(tool: str, query: str = "", results_count: int = 0, latency_ms: f
     except Exception:
         pass  # Never let logging break the tool
 
+
 def _get_thompson():
     """Lazy-load the Thompson Sampling model."""
     global _thompson
     if _thompson is None:
         from smartassist.thompson_sampling import ThompsonSamplingModel
+
         _thompson = ThompsonSamplingModel(str(_get_storage()))
     return _thompson
 
@@ -240,20 +287,29 @@ def _update_thompson_for_lesson(lesson_id, storage, success=True):
 
 
 def _write_to_live_log(storage, action, message):
-    """Append a tool action result to rag_live.log for the monitor terminal."""
     try:
         live_log = storage / "rag_live.log"
         now = datetime.now().strftime("%H:%M:%S")
         color = {
-            "boost": "\033[32m",    # green
-            "demote": "\033[31m",   # red
-            "merge": "\033[33m",    # yellow
-            "create": "\033[36m",   # cyan
-            "retire": "\033[31m",   # red
+            "boost": "\033[32m",  # green
+            "demote": "\033[31m",  # red
+            "merge": "\033[33m",  # yellow
+            "create": "\033[36m",  # cyan
+            "retire": "\033[31m",  # red
+            "search": "\033[36m",
+            "dashboard": "\033[35m",
+            "feedback": "\033[35m",
         }.get(action, "\033[0m")
-        line = f"  {color}{action.upper()}: {message}\033[0m\n"
+        clean_message = " ".join(str(message).split())
+        lines = [
+            "",
+            f"\033[90m{'=' * 60}\033[0m",
+            f"\033[90m  {now}  |  MCP {action.upper()}\033[0m",
+            f"  {color}{action.upper()}: {clean_message}\033[0m",
+            "",
+        ]
         with open(live_log, "a", encoding="utf-8") as f:
-            f.write(line)
+            f.write("\n".join(lines))
     except Exception:
         pass
 
@@ -323,7 +379,10 @@ def rag_search(
     # ── Stage 1: SQLite FTS5 keyword search (always available) ────────
     try:
         fts_results, search_meta = search_projection_documents(
-            storage, query, top_k=20, category=category,
+            storage,
+            query,
+            top_k=20,
+            category=category,
         )
     except Exception:
         fts_results, search_meta = [], {}
@@ -338,7 +397,8 @@ def rag_search(
 
         RERANK_POOL = 20
         try:
-            from lancedb.rerankers import LinearCombinationReranker
+            rerankers = importlib.import_module("lancedb.rerankers")
+            LinearCombinationReranker = getattr(rerankers, "LinearCombinationReranker")
             reranker = LinearCombinationReranker(weight=0.7)
             raw_results = (
                 table.search(query_vector, query_type="hybrid")
@@ -369,16 +429,20 @@ def rag_search(
             distance = r.get("_distance", 0)
             relevance = _compute_distance_relevance(distance)
             if r.get("_rerank_score") is not None:
-                relevance = max(relevance, min(1.0, (float(r["_rerank_score"]) + 1) / 2))
-            semantic_results.append({
-                "doc_id": r.get("doc_id", ""),
-                "id": r.get("source_id", ""),
-                "source_id": r.get("source_id", ""),
-                "source_type": r.get("source_type", "lesson"),
-                "text": r.get("text", ""),
-                "category": r.get("category", "unknown"),
-                "score": relevance,
-            })
+                relevance = max(
+                    relevance, min(1.0, (float(r["_rerank_score"]) + 1) / 2)
+                )
+            semantic_results.append(
+                {
+                    "doc_id": r.get("doc_id", ""),
+                    "id": r.get("source_id", ""),
+                    "source_id": r.get("source_id", ""),
+                    "source_type": r.get("source_type", "lesson"),
+                    "text": r.get("text", ""),
+                    "category": r.get("category", "unknown"),
+                    "score": relevance,
+                }
+            )
         if semantic_results:
             search_backend = "hybrid_semantic+fts5"
     except Exception:
@@ -402,7 +466,12 @@ def rag_search(
     # ── Stage 4: Thompson Sampling reranking ──────────────────────────
     try:
         from smartassist.thompson_rerank import thompson_rerank, load_thompson_batch
-        lesson_ids = [r.get("id") or r.get("source_id", "") for r in merged if r.get("id") or r.get("source_id")]
+
+        lesson_ids = [
+            r.get("id") or r.get("source_id", "")
+            for r in merged
+            if r.get("id") or r.get("source_id")
+        ]
         thompson_data = load_thompson_batch(storage, lesson_ids) if lesson_ids else {}
         merged = thompson_rerank(merged, thompson_data)
     except Exception:
@@ -421,12 +490,14 @@ def rag_search(
     for r in results:
         score = r.get("final_score", r.get("score", 0))
         lesson_text = _extract_lesson_text(r.get("text", ""))
-        lessons_log.append({
-            "category": r.get("category", "unknown"),
-            "relevance_pct": round(min(1.0, max(0.0, score)) * 100),
-            "lesson_text": lesson_text[:120],
-            "thompson_mean": round(r.get("thompson_mean", 0.5), 3),
-        })
+        lessons_log.append(
+            {
+                "category": r.get("category", "unknown"),
+                "relevance_pct": round(min(1.0, max(0.0, score)) * 100),
+                "lesson_text": lesson_text[:120],
+                "thompson_mean": round(r.get("thompson_mean", 0.5), 3),
+            }
+        )
 
     search_meta = dict(search_meta) if search_meta else {}
     search_meta["search_backend"] = search_backend
@@ -435,8 +506,17 @@ def rag_search(
     search_meta["merged_candidates"] = len(merged)
     search_meta["enhanced_query"] = _enhance_query(query) if semantic_results else None
 
-    _log_usage("rag_search", query, len(results), latency,
-               lessons=lessons_log, search_meta=search_meta)
+    _log_usage(
+        "rag_search",
+        query,
+        len(results),
+        latency,
+        lessons=lessons_log,
+        search_meta=search_meta,
+    )
+    _write_to_live_log(
+        storage, "search", f'rag_search "{query[:100]}" -> {len(results)} result(s)'
+    )
 
     if not results:
         return f"No relevant lessons found for: {query}"
@@ -445,7 +525,7 @@ def rag_search(
     lessons = [r for r in results if r.get("source_type", "lesson") != "event"]
     episodes = [r for r in results if r.get("source_type") == "event"]
 
-    output_parts = [f"Found {len(results)} relevant result(s) for: \"{query}\"\n"]
+    output_parts = [f'Found {len(results)} relevant result(s) for: "{query}"\n']
 
     if lessons:
         output_parts.append("Project Rules (semantic memory):")
@@ -475,10 +555,10 @@ def _format_lesson(raw_text: str, category: str, score: float) -> str:
         ctx_idx = raw_text.find(" Context: ")
         if ctx_idx != -1:
             bracket_end = raw_text.find("] ")
-            full_text = raw_text[bracket_end + 2:] if bracket_end != -1 else raw_text
+            full_text = raw_text[bracket_end + 2 :] if bracket_end != -1 else raw_text
             ctx_idx2 = full_text.find(" Context: ")
             if ctx_idx2 != -1:
-                context = full_text[ctx_idx2 + 10:].strip()
+                context = full_text[ctx_idx2 + 10 :].strip()
     else:
         for line in raw_text.split("\n"):
             stripped = line.strip()
@@ -506,6 +586,7 @@ def rag_dashboard() -> str:
     corpus capacity and feedback action breakdown.
     """
     t0 = time.time()
+    storage = None
     try:
         thompson = _get_thompson()
     except Exception as e:
@@ -516,6 +597,10 @@ def rag_dashboard() -> str:
     weak = thompson.get_weak_categories(threshold=0.70)
     stats = _get_feedback_stats()
     _log_usage("rag_dashboard", "", 0, (time.time() - t0) * 1000)
+    try:
+        _write_to_live_log(_get_storage(), "dashboard", "rag_dashboard snapshot opened")
+    except Exception:
+        pass
 
     lines = ["RLHF System Dashboard", "=" * 40, ""]
 
@@ -535,11 +620,19 @@ def rag_dashboard() -> str:
 
         lesson_scores = load_lesson_scores()
         active_count = total_lessons
-        retired_count = sum(1 for s in lesson_scores.values() if s.get("retired", False))
+        retired_count = sum(
+            1 for s in lesson_scores.values() if s.get("retired", False)
+        )
 
-        pct = int((total_lessons / MAX_CURATED_LESSONS) * 100) if MAX_CURATED_LESSONS > 0 else 0
+        pct = (
+            int((total_lessons / MAX_CURATED_LESSONS) * 100)
+            if MAX_CURATED_LESSONS > 0
+            else 0
+        )
         lines.append("")
-        lines.append(f"Corpus: {total_lessons}/{MAX_CURATED_LESSONS} lessons ({pct}% capacity)")
+        lines.append(
+            f"Corpus: {total_lessons}/{MAX_CURATED_LESSONS} lessons ({pct}% capacity)"
+        )
         lines.append(f"  Active: {active_count}  |  Retired: {retired_count}")
     except Exception:
         pass
@@ -549,8 +642,10 @@ def rag_dashboard() -> str:
         metrics = load_feedback_metrics_dict(storage)
         lines.append("")
         lines.append("Feedback Actions:")
-        lines.append(f"  Boosts: {metrics.get('boosts', 0)}  |  Demotes: {metrics.get('demotes', 0)}  |  "
-                     f"Creates: {metrics.get('creates', 0)}  |  Merges: {metrics.get('merges', 0)}")
+        lines.append(
+            f"  Boosts: {metrics.get('boosts', 0)}  |  Demotes: {metrics.get('demotes', 0)}  |  "
+            f"Creates: {metrics.get('creates', 0)}  |  Merges: {metrics.get('merges', 0)}"
+        )
         pos = metrics.get("positive_signals", 0)
         neg = metrics.get("negative_signals", 0)
         lines.append(f"  Total signals: {pos + neg} (positive: {pos}, negative: {neg})")
@@ -604,25 +699,135 @@ def rag_feedback(
         else:
             thompson.record_failure(cat, intensity=3)
 
-    append_feedback_event(_get_storage(), {
-        "timestamp": time.time(),
-        "signal": "thumbs_up" if helpful else "thumbs_down",
-        "category": cat or "unknown",
-        "intensity": 3,
-        "query": "",
-        "response": "",
-        "correction": notes,
-        "context": "rag_feedback MCP tool",
-    })
+    append_feedback_event(
+        _get_storage(),
+        {
+            "timestamp": time.time(),
+            "signal": "thumbs_up" if helpful else "thumbs_down",
+            "category": cat or "unknown",
+            "intensity": 3,
+            "query": "",
+            "response": "",
+            "correction": notes,
+            "context": "rag_feedback MCP tool",
+        },
+    )
 
     latency = (time.time() - t0) * 1000
     _log_usage("rag_feedback", f"helpful={helpful} cat={cat}", 0, latency)
+    result = (
+        f"Feedback recorded: {'helpful' if helpful else 'not helpful'} for {cat} (reliability: {thompson.get_reliability(cat):.1%})"
+        if cat
+        else f"Feedback recorded: {'helpful' if helpful else 'not helpful'}"
+    )
+    _write_to_live_log(_get_storage(), "feedback", result)
 
-    if cat:
-        score = thompson.get_reliability(cat)
-        return f"Feedback recorded: {'helpful' if helpful else 'not helpful'} for {cat} (reliability: {score:.1%})"
-    else:
-        return f"Feedback recorded: {'helpful' if helpful else 'not helpful'}"
+    return result
+
+
+@mcp.tool()
+def apply_feedback_protocol(
+    feedback: str,
+    sentiment: str = "",
+    category: str = "",
+    intensity: int = 0,
+    context: str = "",
+) -> str:
+    """Apply SmartAssist's cross-agent feedback protocol from one feedback event.
+
+    Use this as the default tool when the user corrects your approach,
+    confirms a reusable pattern, rejects generated code, or reveals a
+    project-specific convention.
+
+    The tool will:
+    - normalize the feedback into a project-specific lesson
+    - check for existing duplicate or overlapping lessons
+    - boost an existing lesson when the rule already exists
+    - suggest a merge when multiple lessons overlap
+    - create a new lesson only when no existing lesson covers it
+
+    Args:
+        feedback: The user's correction, praise, or rule statement
+        sentiment: Optional positive/negative hint; inferred when omitted
+        category: Optional category hint; inferred when omitted
+        intensity: Optional importance level 1-5; inferred when <= 0
+        context: Optional extra context; used as the lesson source when provided
+    """
+    t0 = time.time()
+
+    feedback = feedback.strip() if feedback else ""
+    context = context.strip() if context else ""
+    source_text = context or feedback
+    if not source_text:
+        return (
+            "Feedback is empty. Provide the user's correction, praise, or project rule."
+        )
+
+    normalized_sentiment = normalize_feedback_sentiment(source_text, sentiment)
+    storage = _get_storage()
+    lesson_text = _context_to_lesson(source_text)
+    if not lesson_text:
+        latency = (time.time() - t0) * 1000
+        _log_usage("apply_feedback_protocol", source_text[:100], 0, latency)
+        _write_to_live_log(
+            storage, "feedback", f"Ignored feedback: {source_text[:100]}"
+        )
+        return (
+            "Feedback protocol -> ignore. I couldn't extract a project-specific, "
+            "actionable lesson from that feedback."
+        )
+
+    inferred_category = infer_feedback_category(storage, source_text, category)
+    if inferred_category not in VALID_CATEGORIES:
+        inferred_category = "code_edit"
+
+    candidates = find_similar_lessons(storage, lesson_text, inferred_category, limit=3)
+    duplicate = next(
+        (candidate for candidate in candidates if _looks_like_duplicate(candidate)),
+        None,
+    )
+    if duplicate is not None:
+        result = boost_lesson(str(duplicate["id"]))
+        latency = (time.time() - t0) * 1000
+        _log_usage("apply_feedback_protocol", f"boost:{duplicate['id']}", 1, latency)
+        return (
+            f"Feedback protocol -> boost_existing [{duplicate['id']}] "
+            f"({duplicate['similarity']:.0%} match). {result}"
+        )
+
+    merge_candidates = [
+        candidate for candidate in candidates if _looks_like_merge_candidate(candidate)
+    ]
+    if merge_candidates:
+        merge_ids = ",".join(candidate["id"] for candidate in merge_candidates)
+        latency = (time.time() - t0) * 1000
+        _log_usage(
+            "apply_feedback_protocol", f"merge_suggested:{merge_ids}", 0, latency
+        )
+        _write_to_live_log(
+            storage,
+            "feedback",
+            f"Merge suggested [{merge_ids}] for {lesson_text[:100]}",
+        )
+        return (
+            f"Feedback protocol -> merge_suggested [{merge_ids}]. "
+            f"Candidate lesson: {lesson_text} "
+            "Review the overlap and call merge_lessons only if the principles should be consolidated."
+        )
+
+    if intensity <= 0:
+        intensity = estimate_feedback_intensity(source_text)
+
+    result = create_lesson(
+        lesson=lesson_text,
+        category=inferred_category,
+        sentiment=normalized_sentiment,
+        intensity=intensity,
+        context=context or source_text,
+    )
+    latency = (time.time() - t0) * 1000
+    _log_usage("apply_feedback_protocol", lesson_text[:100], 1, latency)
+    return f"Feedback protocol -> create_new [{inferred_category}] {result}"
 
 
 @mcp.tool()
@@ -641,6 +846,9 @@ def create_lesson(
     - You discover a project convention by reading code, configs, or docs
     - A PR review or code discussion reveals a team standard
     - The hook instructs you to (via ACTION REQUIRED in additionalContext)
+
+    Prefer `apply_feedback_protocol` when you are reacting to a live user
+    feedback event, because it handles duplicate detection and overlap first.
 
     The lesson should be specific to THIS project, not generic programming advice.
     Write it as an imperative statement that your future self can act on.
@@ -684,8 +892,10 @@ def create_lesson(
             return f"Lesson starts with generic phrase '{generic}'. Be project-specific and actionable."
 
     # ── Quality gate: must contain action verb ────────────────────────
-    has_verb = any(f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
-                    for verb in ACTION_VERBS)
+    has_verb = any(
+        f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
+        for verb in ACTION_VERBS
+    )
     if not has_verb:
         return (
             f"Lesson must contain an action verb. Include one of: "
@@ -699,21 +909,34 @@ def create_lesson(
         return f"Error accessing storage: {e}"
 
     # ── V2: Dual-path write — add to curated first to avoid partial state ─
-    new_id, cap_error = add_to_curated(storage_path, lesson, cat)
+    new_id, cap_error, created = ensure_lesson(
+        storage_path,
+        lesson,
+        cat,
+        origin="create_lesson",
+    )
     if cap_error:
         return f"Cannot create lesson: {cap_error}"
+    if not created:
+        return (
+            f"Lesson already recorded [ID: {new_id}] {lesson[:80]}"
+            f"{'...' if len(lesson) > 80 else ''}. Use boost_lesson if you want to reinforce it."
+        )
 
     signal = "thumbs_up" if sentiment == "positive" else "correction"
-    append_feedback_event(storage_path, {
-        "timestamp": time.time(),
-        "signal": signal,
-        "category": cat,
-        "intensity": intensity,
-        "query": "",
-        "response": "",
-        "correction": lesson,
-        "context": context or "create_lesson MCP tool",
-    })
+    append_feedback_event(
+        storage_path,
+        {
+            "timestamp": time.time(),
+            "signal": signal,
+            "category": cat,
+            "intensity": intensity,
+            "query": "",
+            "response": "",
+            "correction": lesson,
+            "context": context or "create_lesson MCP tool",
+        },
+    )
 
     curated_msg = f" [ID: {new_id}]"
 
@@ -786,7 +1009,9 @@ def compare_lesson(
             log_comparison_entry(storage, "claude", sentiment, context, lesson, False)
         except Exception:
             pass
-        return f"Lesson too short ({len(lesson)} chars). Must be at least 30 characters."
+        return (
+            f"Lesson too short ({len(lesson)} chars). Must be at least 30 characters."
+        )
 
     # ── Quality gate: reject generic starts ───────────────────────────
     lesson_lower = lesson.lower()
@@ -794,14 +1019,18 @@ def compare_lesson(
         if lesson_lower.startswith(generic):
             try:
                 storage = _get_storage()
-                log_comparison_entry(storage, "claude", sentiment, context, lesson, False)
+                log_comparison_entry(
+                    storage, "claude", sentiment, context, lesson, False
+                )
             except Exception:
                 pass
             return f"Lesson starts with generic phrase '{generic}'."
 
     # ── Quality gate: must contain action verb ────────────────────────
-    has_verb = any(f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
-                    for verb in ACTION_VERBS)
+    has_verb = any(
+        f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
+        for verb in ACTION_VERBS
+    )
     if not has_verb:
         try:
             storage = _get_storage()
@@ -867,8 +1096,10 @@ def boost_lesson(lesson_id: str) -> str:
     latency = (time.time() - t0) * 1000
     _log_usage("boost_lesson", lesson_id, 0, latency)
 
-    result = (f"Boosted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
-              f"(ups: {entry['ups']}, downs: {entry['downs']})")
+    result = (
+        f"Boosted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+        f"(ups: {entry['ups']}, downs: {entry['downs']})"
+    )
     try:
         _write_to_live_log(_get_storage(), "boost", result)
     except Exception:
@@ -945,17 +1176,21 @@ def demote_lesson(lesson_id: str) -> str:
         warning = f" (Warning: this lesson has {entry['ups']} positive feedbacks — consider merging instead)"
 
     if auto_retired:
-        result = (f"RETIRED {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
-                  f"(ups: {entry['ups']}, downs: {entry['downs']}) — "
-                  f"removed from corpus (never had positive feedback)")
+        result = (
+            f"RETIRED {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+            f"(ups: {entry['ups']}, downs: {entry['downs']}) — "
+            f"removed from corpus (never had positive feedback)"
+        )
         try:
             _write_to_live_log(_get_storage(), "retire", result)
         except Exception:
             pass
         return result
     else:
-        result = (f"Demoted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
-                  f"(ups: {entry['ups']}, downs: {entry['downs']}){warning}")
+        result = (
+            f"Demoted {lesson_id}: {old_boost:.1f}x → {entry['boost']:.1f}x "
+            f"(ups: {entry['ups']}, downs: {entry['downs']}){warning}"
+        )
         try:
             _write_to_live_log(_get_storage(), "demote", result)
         except Exception:
@@ -999,8 +1234,10 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
         if lesson_lower.startswith(generic):
             return f"Lesson starts with generic phrase '{generic}'. Be project-specific and actionable."
 
-    has_verb = any(f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
-                    for verb in ACTION_VERBS)
+    has_verb = any(
+        f" {verb} " in f" {lesson_lower} " or lesson_lower.startswith(f"{verb} ")
+        for verb in ACTION_VERBS
+    )
     if not has_verb:
         return (
             f"Lesson must contain an action verb. Include one of: "
@@ -1042,16 +1279,19 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     save_lesson_scores(scores)
 
     # Write to feedback_log for vectorization
-    append_feedback_event(storage, {
-        "timestamp": time.time(),
-        "signal": "merge",
-        "category": cat,
-        "intensity": 3,
-        "query": "",
-        "response": "",
-        "correction": new_lesson,
-        "context": f"Merged from: {', '.join(ids)}",
-    })
+    append_feedback_event(
+        storage,
+        {
+            "timestamp": time.time(),
+            "signal": "merge",
+            "category": cat,
+            "intensity": 3,
+            "query": "",
+            "response": "",
+            "correction": new_lesson,
+            "context": f"Merged from: {', '.join(ids)}",
+        },
+    )
 
     # Rebuild from curated lessons so superseded source lessons disappear from search.
     _trigger_vectorization(full_rebuild=True)
@@ -1062,9 +1302,11 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
     latency = (time.time() - t0) * 1000
     _log_usage("merge_lessons", f"{ids} -> {new_id}", 0, latency)
 
-    result = (f"Merged {', '.join(ids)} → {new_id} [{cat}] "
-              f"{new_lesson[:60]}{'...' if len(new_lesson) > 60 else ''} "
-              f"(ups: {combined_ups}, boost: {max_boost:.1f}x)")
+    result = (
+        f"Merged {', '.join(ids)} → {new_id} [{cat}] "
+        f"{new_lesson[:60]}{'...' if len(new_lesson) > 60 else ''} "
+        f"(ups: {combined_ups}, boost: {max_boost:.1f}x)"
+    )
     try:
         _write_to_live_log(storage, "merge", result)
     except Exception:
