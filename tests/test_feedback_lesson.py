@@ -38,6 +38,7 @@ from smartassist.mcp_server import (
     demote_lesson,
     merge_lessons,
     rag_search,
+    rag_feedback,
     _update_feedback_metrics,
     VALID_CATEGORIES,
 )
@@ -61,6 +62,8 @@ from smartassist.lesson_feedback import (
     ACTION_VERBS,
     GENERIC_STARTS,
 )
+from smartassist.thompson_rerank import load_thompson_batch
+from smartassist.store import add_lesson, append_feedback_event, load_last_rag_results
 
 
 # ── TestFeedbackSignalDetectionV2 ──────────────────────────────────────────
@@ -187,6 +190,67 @@ class TestRagSearchMemoryLabels:
         assert "Past Corrections (episodic memory):" in result
         assert "Project Rules (semantic memory):" not in result
         assert "Don't use inline styles in dashboard headers" in result
+
+
+class TestMcpRetrievalLearningLoop:
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_rag_feedback_attributes_recent_rag_search_results(
+        self, mock_spawn, set_data_dir
+    ):
+        storage = set_data_dir / "data"
+
+        create_lesson(
+            lesson="Always use semantic theme tokens instead of hardcoded hex values",
+            category="code_edit",
+        )
+        create_lesson(
+            lesson="Use semantic theme tokens in styles.ts and avoid hardcoded hex values",
+            category="code_edit",
+        )
+
+        search_result = rag_search("semantic theme tokens hardcoded hex values")
+        assert "Project Rules (semantic memory):" in search_result
+
+        feedback_result = rag_feedback(
+            helpful=False,
+            category="code_edit",
+            notes="The last guidance still missed the styling issue",
+        )
+
+        recent = load_last_rag_results(storage, max_age=900)
+        thompson = load_thompson_batch(storage, ["L001", "L002"])
+
+        assert [item["id"] for item in recent] == ["L001", "L002"]
+        assert "Attributed to 2 recent lesson(s)" in feedback_result
+        assert thompson["L001"]["injection_count"] == 1
+        assert thompson["L002"]["injection_count"] == 1
+        assert thompson["L001"]["beta"] > 1.0
+        assert thompson["L002"]["beta"] > 1.0
+
+    def test_rag_search_surfaces_rules_and_past_corrections_together(
+        self, set_data_dir
+    ):
+        storage = set_data_dir / "data"
+        lesson_text = "Always use semantic theme tokens instead of hardcoded hex values"
+
+        add_lesson(storage, lesson_text, "code_edit")
+        append_feedback_event(
+            storage,
+            {
+                "timestamp": time.time(),
+                "signal": "correction",
+                "category": "code_edit",
+                "intensity": 4,
+                "correction": lesson_text,
+                "context": "Last time hardcoded styles broke theme switching",
+            },
+        )
+
+        result = rag_search("semantic theme tokens hardcoded hex values")
+
+        assert "Project Rules (semantic memory):" in result
+        assert "Past Corrections (episodic memory):" in result
+        assert "theme switching" in result
 
     # V2: Prefix matching — signal + context
     def test_smiley_with_context(self):

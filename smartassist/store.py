@@ -517,8 +517,7 @@ def _rebuild_search_projection(conn: sqlite3.Connection) -> None:
 
         category = str(row["category_key"])
         dedup_key = f"event:{category}:{get_dedup_key(lesson_text)}"
-        lesson_dedup_key = f"lesson:{category}:{get_dedup_key(lesson_text)}"
-        if dedup_key in seen_keys or lesson_dedup_key in seen_keys:
+        if dedup_key in seen_keys:
             continue
         seen_keys.add(dedup_key)
 
@@ -1025,6 +1024,69 @@ def export_session_state(conn: sqlite3.Connection, storage: Path | None = None) 
             },
         )
     _update_signature_meta(conn, "legacy_sig:session_state", path)
+
+
+def load_last_rag_results(
+    storage_path: Path | str | None = None,
+    *,
+    max_age: float | None = None,
+) -> list[dict[str, Any]]:
+    with open_store(storage_path) as conn:
+        raw = _get_meta(conn, "last_rag_results_json", "")
+        if not raw:
+            return []
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+
+    if not isinstance(payload, dict):
+        return []
+
+    timestamp = float(payload.get("timestamp", 0) or 0)
+    if max_age is not None and timestamp and (time.time() - timestamp) > max_age:
+        return []
+
+    results = payload.get("results", [])
+    if not isinstance(results, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        lesson_id = str(item.get("id") or "").strip()
+        if not lesson_id:
+            continue
+        normalized.append(
+            {
+                "id": lesson_id,
+                "score": float(item.get("score", 0.5) or 0.5),
+                "injection_timestamp": timestamp,
+            }
+        )
+    return normalized
+
+
+def save_last_rag_results(
+    storage_path: Path | str | None,
+    results: Iterable[dict[str, Any]],
+) -> None:
+    storage = _resolve_storage_path(storage_path)
+    payload = {
+        "timestamp": time.time(),
+        "results": [
+            {
+                "id": str(item.get("id") or "").strip(),
+                "score": float(item.get("score", 0.5) or 0.5),
+            }
+            for item in results
+            if str(item.get("id") or "").strip()
+        ],
+    }
+    with open_store(storage) as conn:
+        _set_meta(conn, "last_rag_results_json", json.dumps(payload))
+        conn.commit()
 
 
 def export_feedback_metrics(

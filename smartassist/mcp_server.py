@@ -57,8 +57,10 @@ from smartassist.store import (
     get_feedback_stats as get_feedback_stats_from_store,
     increment_feedback_metric,
     list_lessons,
+    load_last_rag_results,
     load_feedback_metrics_dict,
     merge_lessons_in_store,
+    save_last_rag_results,
     search_projection_documents,
 )
 
@@ -84,6 +86,8 @@ VALID_CATEGORIES = {
     "security",
     "debugging",
 }
+
+LAST_RAG_RESULTS_MAX_AGE = 900
 
 
 def _looks_like_duplicate(candidate: dict) -> bool:
@@ -464,8 +468,13 @@ def rag_search(
             merged.append(r)
 
     # ── Stage 4: Thompson Sampling reranking ──────────────────────────
+    record_injection = None
     try:
-        from smartassist.thompson_rerank import thompson_rerank, load_thompson_batch
+        from smartassist.thompson_rerank import (
+            load_thompson_batch,
+            record_injection,
+            thompson_rerank,
+        )
 
         lesson_ids = [
             r.get("id") or r.get("source_id", "")
@@ -482,7 +491,21 @@ def rag_search(
         cat_lower = category.lower()
         merged = [r for r in merged if cat_lower in r.get("category", "").lower()]
 
-    results = merged[:top_k]
+    all_lessons = [r for r in merged if r.get("source_type", "lesson") != "event"]
+    all_episodes = [r for r in merged if r.get("source_type") == "event"]
+
+    episode_limit = min(2, top_k)
+    if all_lessons and episode_limit > 0:
+        episode_limit = min(episode_limit, max(0, top_k - 1))
+    episodes = all_episodes[:episode_limit]
+    lesson_limit = top_k - len(episodes)
+    lessons = all_lessons[:lesson_limit]
+
+    if len(lessons) + len(episodes) < top_k and len(episodes) < len(all_episodes):
+        remaining = top_k - len(lessons) - len(episodes)
+        episodes.extend(all_episodes[len(episodes) : len(episodes) + remaining])
+
+    results = lessons + episodes
     latency = (time.time() - t0) * 1000
 
     # ── Logging: full decision funnel ─────────────────────────────────
@@ -505,6 +528,26 @@ def rag_search(
     search_meta["semantic_candidates"] = len(semantic_results)
     search_meta["merged_candidates"] = len(merged)
     search_meta["enhanced_query"] = _enhance_query(query) if semantic_results else None
+    search_meta["displayed_semantic"] = len(lessons)
+    search_meta["displayed_episodic"] = len(episodes)
+
+    feedback_candidates = [
+        {
+            "id": str(r.get("id") or r.get("source_id", "")),
+            "score": float(r.get("final_score", r.get("score", 0.5)) or 0.5),
+        }
+        for r in results
+        if (r.get("id") or r.get("source_id"))
+        and r.get("source_type", "lesson") != "event"
+    ]
+    if feedback_candidates:
+        save_last_rag_results(storage, feedback_candidates)
+        if record_injection is not None:
+            record_injection(
+                storage, [candidate["id"] for candidate in feedback_candidates]
+            )
+    else:
+        save_last_rag_results(storage, [])
 
     _log_usage(
         "rag_search",
@@ -520,10 +563,6 @@ def rag_search(
 
     if not results:
         return f"No relevant lessons found for: {query}"
-
-    # Separate results by memory type (MemAlign dual-memory pattern)
-    lessons = [r for r in results if r.get("source_type", "lesson") != "event"]
-    episodes = [r for r in results if r.get("source_type") == "event"]
 
     output_parts = [f'Found {len(results)} relevant result(s) for: "{query}"\n']
 
@@ -699,8 +738,30 @@ def rag_feedback(
         else:
             thompson.record_failure(cat, intensity=3)
 
+    storage = _get_storage()
+    attributed_count = 0
+    try:
+        from smartassist.thompson_rerank import (
+            attribute_feedback,
+            update_thompson_batch,
+        )
+
+        recent_results = load_last_rag_results(
+            storage, max_age=LAST_RAG_RESULTS_MAX_AGE
+        )
+        if recent_results:
+            attributions = attribute_feedback(
+                "positive" if helpful else "negative",
+                recent_results,
+            )
+            if attributions:
+                update_thompson_batch(storage, attributions)
+                attributed_count = len(attributions)
+    except Exception:
+        attributed_count = 0
+
     append_feedback_event(
-        _get_storage(),
+        storage,
         {
             "timestamp": time.time(),
             "signal": "thumbs_up" if helpful else "thumbs_down",
@@ -720,7 +781,9 @@ def rag_feedback(
         if cat
         else f"Feedback recorded: {'helpful' if helpful else 'not helpful'}"
     )
-    _write_to_live_log(_get_storage(), "feedback", result)
+    if attributed_count:
+        result += f" | Attributed to {attributed_count} recent lesson(s)"
+    _write_to_live_log(storage, "feedback", result)
 
     return result
 
