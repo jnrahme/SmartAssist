@@ -1,8 +1,12 @@
-# SmartAssist Production Plan — Final
+# SmartAssist Production Plan — Historical Reference
 
 Date: 2026-04-02
-Status: Merged architecture (Codex) + implementation details (Claude)
-Scope: Replace the split runtime storage model with one production-ready system
+Status: Historical planning reference
+Scope: Planning snapshot for the SQLite migration and production-shape design work
+
+> This document is reference material, not the current product contract.
+> The current canonical docs are `README.md`, `smartassist-overview.html`, and `MEMORY.md`.
+> Any future/production surfaces listed below should be treated as planning targets unless they also appear in the canonical docs and shipped code.
 
 ---
 
