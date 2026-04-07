@@ -761,9 +761,9 @@ a { color: inherit; text-decoration: none; }
   <div class="section-inner">
     <div class="stats-glass">
       <div class="stats-bar" id="stats-bar">
-        <div class="stat-item"><div class="stat-value">8</div><div class="stat-label">MCP Tools to<br>Manage Memory</div></div>
+        <div class="stat-item"><div class="stat-value">9</div><div class="stat-label">MCP Tools to<br>Manage Memory</div></div>
         <div class="stat-item"><div class="stat-value">5</div><div class="stat-label">Lifecycle<br>Hooks</div></div>
-        <div class="stat-item"><div class="stat-value">418+</div><div class="stat-label">Tests<br>Passing</div></div>
+        <div class="stat-item"><div class="stat-value">467+</div><div class="stat-label">Tests<br>Passing</div></div>
         <div class="stat-item"><div class="stat-value">&lt;100ms</div><div class="stat-label">Instant<br>Injection</div></div>
         <div class="stat-item"><div class="stat-value">BGE-M3</div><div class="stat-label">Production-Grade<br>Embeddings</div></div>
       </div>
@@ -1558,13 +1558,13 @@ document.querySelectorAll('.feature-card').forEach(card => {
 const toolData = [
   { name: 'rag_search', desc: 'Search your project knowledge base for relevant lessons, corrections, and conventions.', example: '> rag_search("database testing patterns")\n\nFound 3 lessons:\n  #47 Use real DB connections in tests\n  #23 Prefer transactions for test isolation\n  #51 Mock only external APIs' },
   { name: 'rag_dashboard', desc: 'View category reliability, corpus health, and feedback metrics at a glance.', example: '> rag_dashboard()\n\n  Categories:  12 active\n  Lessons:     47 total, 38 positive\n  Reliability: 81% average' },
-  { name: 'rag_feedback', desc: 'Record whether a suggestion was helpful to train the ranking system.', example: '> rag_feedback(lesson_id=47, helpful=true)\n\n\u2713 Feedback recorded\n  Lesson #47 score: 0.72 \u2192 0.78' },
+  { name: 'rag_feedback', desc: 'Record whether a suggestion was helpful to train the ranking system.', example: '> rag_feedback(helpful=true, category="testing", notes="The advice matched our test pattern")\n\n\u2713 Feedback recorded\n  Category reliability increased\n  Recent matching lessons strengthened' },
   { name: 'apply_feedback_protocol', desc: 'Turn one feedback event into the right memory action: dedupe, boost, merge suggestion, or create.', example: '> apply_feedback_protocol("always use semantic theme tokens instead of hardcoded hex values")\n\n\u2713 Existing overlap detected\n  Boosted lesson #47\n  No duplicate created' },
-  { name: 'create_lesson', desc: 'Save a new project-specific lesson synthesized from the current conversation context.', example: '> create_lesson("Always use snake_case for Python functions")\n\n\u2713 Lesson #52 created\n  Category: code_style\n  Embedded and indexed' },
-  { name: 'compare_lesson', desc: 'Draft a lesson for A/B comparison without committing it to the knowledge base.', example: '> compare_lesson("Prefer pathlib over os.path")\n\n  Draft created (not saved)\n  Compare against lesson #31\n  Use rag_feedback to pick winner' },
+  { name: 'create_lesson', desc: 'Save a new project-specific lesson synthesized from the current conversation context.', example: '> create_lesson("Always use snake_case for Python functions", "code_edit")\n\n\u2713 Lesson #52 created\n  Category: code_edit\n  Embedded and indexed' },
+  { name: 'compare_lesson', desc: 'Draft a lesson for A/B comparison without committing it to the knowledge base.', example: '> compare_lesson("Prefer pathlib over os.path", "code_edit")\n\n  Draft created (not saved)\n  Compare against lesson #31\n  Use rag_feedback to pick winner' },
   { name: 'boost_lesson', desc: 'Increase a lesson\'s Thompson Sampling priority after confirmed positive impact.', example: '> boost_lesson(lesson_id=47)\n\n\u2713 Lesson #47 boosted\n  Priority: normal \u2192 high\n  Will appear more frequently' },
   { name: 'demote_lesson', desc: 'Reduce a lesson\'s priority or retire it after repeated negative feedback.', example: '> demote_lesson(lesson_id=12)\n\n\u2713 Lesson #12 demoted\n  Priority: normal \u2192 low\n  Will appear less frequently' },
-  { name: 'merge_lessons', desc: 'Combine overlapping or duplicate lessons into one stronger, unified lesson.', example: '> merge_lessons(ids=[23, 31])\n\n\u2713 Merged into lesson #53\n  Combined context from both\n  Originals archived' },
+  { name: 'merge_lessons', desc: 'Combine overlapping or duplicate lessons into one stronger, unified lesson.', example: '> merge_lessons("L023,L031", "Use pathlib instead of os.path for path handling", "code_edit")\n\n\u2713 Merged into lesson #53\n  Combined context from both\n  Originals archived' },
 ];
 
 function switchTool(index) {
