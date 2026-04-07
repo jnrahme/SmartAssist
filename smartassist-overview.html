@@ -312,7 +312,8 @@ details > summary::-webkit-details-marker { display: none; }
     <button data-tab="scoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>Reliability</button>
     <button data-tab="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>Data Model</button>
     <button data-tab="cli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>CLI &amp; Setup</button>
-    <button data-tab="automation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>Automation &amp; Demo</button>
+<button data-tab="automation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>Automation &amp; Demo</button>
+<button data-tab="memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16v12H4z"/><path d="M8 6v12"/><path d="M16 6v12"/></svg>Memory</button>
   </nav>
   <div class="sidebar-version">v1.0.0 &mdash; <a href="https://github.com/jnrahme/SmartAssist">GitHub</a></div>
 </aside>
@@ -351,6 +352,318 @@ details > summary::-webkit-details-marker { display: none; }
   <div class="grid g2" style="margin-top:40px">
     <div class="card"><div class="card-icon ci-a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><h3>Lightweight Hooks, Heavy Tools</h3><p>Hooks: &lt;50ms keyword matching. Embeddings and LanceDB are now a derived cache refresh path, not the runtime source of truth.</p></div>
     <div class="card"><div class="card-icon ci-c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg></div><h3>Multi-Pathway Lessons</h3><p>Hook auto-capture, Claude curation, interactive MCP tools. A/B comparison for quality.</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== MEMORY TAB ===== -->
+<div class="tab-panel" id="tab-memory">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Core System</div>
+    <h1>SmartAssist Memory</h1>
+    <p>How SmartAssist turns developer feedback into durable memory, then turns that memory into better prompt-time decisions.</p>
+  </div>
+
+  <div class="callout c-b" style="margin-top:0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <div>
+      <strong style="color:var(--white)">The goal is selective memory, not infinite memory.</strong>
+      SmartAssist is not trying to dump the whole project history into every prompt. It is trying to keep
+      <strong style="color:var(--cyan)">durable rules</strong>, keep
+      <strong style="color:var(--emerald)">real past corrections</strong>, and assemble a small
+      <strong style="color:var(--amber)">working-memory slice</strong> only for the task happening right now.
+    </div>
+  </div>
+
+  <div class="grid g3" style="margin-top:20px">
+    <div class="card">
+      <h3 style="color:var(--cyan)">Semantic Memory (Rules)</h3>
+      <p>
+        Think of this as the AI's <strong style="color:var(--white)">rulebook</strong>.
+        It keeps the repeatable project rules SmartAssist wants the model to follow again and again.
+      </p>
+      <p style="font-size:.78rem;color:var(--dim);margin-top:10px"><strong style="color:var(--white)">Question it answers:</strong> What should good work look like here?</p>
+      <details style="margin-top:14px;background:rgba(34,211,238,.04);border:1px solid rgba(34,211,238,.12);border-radius:10px;overflow:hidden">
+        <summary style="cursor:pointer;padding:10px 14px;font-size:.76rem;font-weight:700;color:var(--cyan);display:flex;align-items:center;gap:8px;user-select:none;list-style:none">
+          <svg class="demo-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+          Pull open: what SmartAssist uses for this
+        </summary>
+        <div style="padding:12px 14px;border-top:1px solid rgba(34,211,238,.1)">
+          <div style="display:grid;gap:10px">
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">What goes in</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">Active lessons like <em>"always use semantic color tokens"</em> or <em>"run the related tests before claiming a fix"</em>.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Where it lives</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0"><code>smartassist.db</code> as durable lesson records, then exposed through the SQLite <code>search_documents</code> projection.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">How SmartAssist uses it</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">Hooks and <code>rag_search</code> pull the best matching rules, and per-lesson Thompson decides which proven rules should show up first.</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--emerald)">Episodic Memory (Corrections)</h3>
+      <p>
+        Think of this as the AI's <strong style="color:var(--white)">memory of getting corrected</strong>.
+        It keeps concrete examples of what failed before so the model does not walk into the same mistake again.
+      </p>
+      <p style="font-size:.78rem;color:var(--dim);margin-top:10px"><strong style="color:var(--white)">Question it answers:</strong> What already went wrong here, and why?</p>
+      <details style="margin-top:14px;background:rgba(52,211,153,.04);border:1px solid rgba(52,211,153,.12);border-radius:10px;overflow:hidden">
+        <summary style="cursor:pointer;padding:10px 14px;font-size:.76rem;font-weight:700;color:var(--emerald);display:flex;align-items:center;gap:8px;user-select:none;list-style:none">
+          <svg class="demo-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="3" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+          Pull open: what SmartAssist uses for this
+        </summary>
+        <div style="padding:12px 14px;border-top:1px solid rgba(52,211,153,.1)">
+          <div style="display:grid;gap:10px">
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">What goes in</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">Feedback events, corrections, and memorable failures like <em>"last time this broke theme switching"</em> or <em>"this test pattern failed before"</em>.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Where it lives</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">In the same canonical SQLite world as the lessons, but labeled as past-correction/event memory instead of reusable rules.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">How SmartAssist uses it</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">When the current prompt looks similar to an old mistake, SmartAssist brings back a few matching corrections beside the rules so the model gets both the principle and the warning.</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--amber)">Working Memory (Runtime)</h3>
+      <p>
+        At prompt time, SmartAssist builds a temporary context from the most relevant rules and a few matching
+        past corrections. This is the memory the model actually sees.
+      </p>
+      <p style="font-size:.78rem;color:var(--dim);margin-top:10px"><strong style="color:var(--white)">Question it answers:</strong> What matters for this prompt right now?</p>
+    </div>
+  </div>
+
+  <div class="callout c-g" style="margin-top:24px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2"><path d="M12 2L4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4z"/><path d="M9 12l2 2 4-4"/></svg>
+    <div>
+      <strong style="color:var(--white)">Where MemAlign fits:</strong>
+      MemAlign is the <strong style="color:var(--white)">memory pattern</strong> SmartAssist borrows.
+      It explains why SmartAssist keeps <strong style="color:var(--cyan)">semantic memory</strong>,
+      <strong style="color:var(--emerald)">episodic memory</strong>, and a temporary
+      <strong style="color:var(--amber)">working-memory layer</strong> at prompt time.
+      It does <strong style="color:var(--white)">not</strong> explain Thompson ranking, SQLite,
+      LanceDB, hooks, or MCP tools. Those are SmartAssist's own machinery built around that memory pattern.
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card" style="border-left:3px solid var(--emerald)">
+      <h3 style="color:var(--emerald)">MemAlign part</h3>
+      <p style="font-size:.82rem;color:var(--dim);margin-bottom:10px">
+        This is the simple idea the page should teach first.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">1</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Keep rules</strong> that stay true across many tasks.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">2</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Keep corrections</strong> from real past mistakes.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">3</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Build working memory</strong> from a small mix of both for the current prompt.</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--violet)">
+      <h3 style="color:var(--violet)">SmartAssist part</h3>
+      <p style="font-size:.82rem;color:var(--dim);margin-bottom:10px">
+        This is the implementation layer SmartAssist adds on top.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.72rem;min-width:18px">1</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">SQLite</strong> stores the canonical project memory.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.72rem;min-width:18px">2</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Thompson loops</strong> learn what to rank higher and which areas are weak.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.72rem;min-width:18px">3</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Hooks, MCP, and LanceDB</strong> make the memory usable in real workflows.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-wrap" style="margin-top:24px">
+    <div class="sub-h">Slide-by-slide: what happens from prompt to LLM</div>
+    <p class="sub-p" style="margin-bottom:18px">
+      Follow one request through the system. This is the simplest way to understand what SmartAssist is actually doing.
+    </p>
+    <div class="pipe-wrap" style="margin-bottom:10px">
+      <div class="pipe">
+        <div class="pipe-n">1</div>
+        <h4>Prompt arrives</h4>
+        <p>A developer asks something in Claude, Codex, or another supported agent.</p>
+      </div>
+      <div class="pipe">
+        <div class="pipe-n">2</div>
+        <h4>Search memory</h4>
+        <p>SmartAssist looks in project memory for matching rules and matching past corrections.</p>
+      </div>
+      <div class="pipe">
+        <div class="pipe-n">3</div>
+        <h4>Rank the matches</h4>
+        <p>Thompson reranking pushes proven helpful lessons up, but still gives newer lessons a chance.</p>
+      </div>
+      <div class="pipe">
+        <div class="pipe-n">4</div>
+        <h4>Build working memory</h4>
+        <p>SmartAssist makes a small cheat sheet for this prompt: a few rules plus a few warnings from past mistakes.</p>
+      </div>
+      <div class="pipe">
+        <div class="pipe-n">5</div>
+        <h4>Send to the LLM</h4>
+        <p>The model sees that small context instead of the whole project history, so the answer is focused and project-aware.</p>
+      </div>
+      <div class="pipe">
+        <div class="pipe-n">6</div>
+        <h4>Learn from feedback</h4>
+        <p>If the user corrects or praises the result, SmartAssist updates memory and ranking so the next answer gets smarter.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:24px">
+    <div class="card" style="border-left:3px solid var(--cyan)">
+      <h3 style="color:var(--cyan)">What is special about our approach?</h3>
+      <p style="font-size:.82rem;color:var(--dim);margin-bottom:12px">
+        SmartAssist is special because it is not doing just one of these things. It is doing all of them together.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--cyan);font-weight:700;font-size:.72rem;min-width:18px">1</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Not just rules:</strong> it also remembers real corrections and failures.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--cyan);font-weight:700;font-size:.72rem;min-width:18px">2</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Not just retrieval:</strong> it learns which memories actually help over time.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--cyan);font-weight:700;font-size:.72rem;min-width:18px">3</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Not just a cache:</strong> SQLite is the canonical memory, while LanceDB is only a helper cache.</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--amber)">
+      <h3 style="color:var(--amber)">Why this matters in practice</h3>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:18px">A</span><span style="font-size:.8rem;color:var(--dim)">If your team has a rule, SmartAssist can remember it.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:18px">B</span><span style="font-size:.8rem;color:var(--dim)">If your team got burned by something before, SmartAssist can remember that too.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:18px">C</span><span style="font-size:.8rem;color:var(--dim)">If only some memories are useful, SmartAssist can learn to show those first instead of treating every memory equally.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:18px">D</span><span style="font-size:.8rem;color:var(--dim)">And because the prompt only gets a small working-memory slice, the model stays focused instead of overloaded.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-wrap" style="margin-top:24px">
+    <div class="sub-h">What SmartAssist is trying to accomplish</div>
+    <p class="sub-p" style="margin-bottom:18px">
+      Convert raw feedback into durable memory, then assemble just the right slice of that memory for the next prompt.
+    </p>
+    <svg viewBox="0 0 900 420" width="100%" style="max-width:900px">
+      <defs>
+        <marker id="mem-arr-v" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#8b5cf6"/></marker>
+        <marker id="mem-arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#38bdf8"/></marker>
+        <marker id="mem-arr-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#34d399"/></marker>
+        <marker id="mem-arr-a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#fbbf24"/></marker>
+      </defs>
+
+      <rect x="300" y="18" width="300" height="58" rx="18" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.1)" stroke-width="1.5"/>
+      <text x="450" y="43" text-anchor="middle" fill="#f1f5f9" font-size="16" font-weight="700">User prompt arrives</text>
+      <text x="450" y="61" text-anchor="middle" fill="#475569" font-size="11">What does the model need to remember for this task?</text>
+
+      <line x1="450" y1="76" x2="450" y2="108" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#mem-arr-v)"/>
+
+      <rect x="70" y="120" width="300" height="88" rx="16" fill="rgba(34,211,238,.05)" stroke="rgba(34,211,238,.35)" stroke-width="1.5"/>
+      <text x="220" y="149" text-anchor="middle" fill="#22d3ee" font-size="14" font-weight="700">Semantic memory</text>
+      <text x="220" y="171" text-anchor="middle" fill="#94a3b8" font-size="11">Durable rules, standards, conventions</text>
+      <text x="220" y="189" text-anchor="middle" fill="#475569" font-size="10">&ldquo;Always use semantic color tokens&rdquo;</text>
+
+      <rect x="530" y="120" width="300" height="88" rx="16" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.35)" stroke-width="1.5"/>
+      <text x="680" y="149" text-anchor="middle" fill="#34d399" font-size="14" font-weight="700">Episodic memory</text>
+      <text x="680" y="171" text-anchor="middle" fill="#94a3b8" font-size="11">Concrete past corrections and failures</text>
+      <text x="680" y="189" text-anchor="middle" fill="#475569" font-size="10">&ldquo;Last time inline styles broke theme switching&rdquo;</text>
+
+      <line x1="220" y1="208" x2="220" y2="252" stroke="#38bdf8" stroke-width="2" class="flow-line" marker-end="url(#mem-arr-b)"/>
+      <line x1="680" y1="208" x2="680" y2="252" stroke="#34d399" stroke-width="2" class="flow-line" marker-end="url(#mem-arr-g)"/>
+      <line x1="220" y1="252" x2="374" y2="252" stroke="#38bdf8" stroke-width="2" class="flow-line" marker-end="url(#mem-arr-b)"/>
+      <line x1="680" y1="252" x2="526" y2="252" stroke="#34d399" stroke-width="2" class="flow-line-rev" marker-end="url(#mem-arr-g)"/>
+
+      <rect x="374" y="222" width="152" height="62" rx="16" fill="rgba(251,191,36,.06)" stroke="rgba(251,191,36,.4)" stroke-width="1.5"/>
+      <text x="450" y="246" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700">Working memory</text>
+      <text x="450" y="265" text-anchor="middle" fill="#94a3b8" font-size="10">Small prompt-time context</text>
+
+      <line x1="450" y1="284" x2="450" y2="320" stroke="#fbbf24" stroke-width="2" class="flow-line" marker-end="url(#mem-arr-a)"/>
+
+      <rect x="270" y="328" width="360" height="60" rx="18" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.1)" stroke-width="1.5"/>
+      <text x="450" y="353" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="700">Better answer for the current task</text>
+      <text x="450" y="372" text-anchor="middle" fill="#475569" font-size="11">Consistent with project rules and grounded in past corrections</text>
+    </svg>
+  </div>
+
+  <div class="grid g2" style="margin-top:24px">
+    <div class="card" style="border-left:3px solid var(--violet)">
+      <h3 style="color:var(--violet)">Why not one giant memory blob?</h3>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--rose);font-weight:700;font-size:.72rem;min-width:18px">X</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Rules only</strong> gives consistency, but not the concrete reminder of what failed before.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--rose);font-weight:700;font-size:.72rem;min-width:18px">X</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Corrections only</strong> gives examples, but not a stable principle the model can reuse broadly.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--rose);font-weight:700;font-size:.72rem;min-width:18px">X</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Full transcript stuffing</strong> makes prompts noisy, expensive, and inconsistent.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">✓</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">SmartAssist</strong> keeps durable memory in storage and builds a small temporary working set per prompt.</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--pink)">
+      <h3 style="color:var(--pink)">What the learning loops are doing</h3>
+      <p style="font-size:.82rem;color:var(--dim);margin-bottom:12px">
+        Memory types and ranking loops solve different jobs. SmartAssist keeps them separate on purpose.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr;gap:10px">
+        <div style="padding:10px 12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);border-radius:8px">
+          <p style="font-size:.74rem;font-weight:700;color:var(--violet);margin-bottom:4px">Category-level Thompson</p>
+          <p style="font-size:.72rem;color:var(--dim);margin:0">Tracks reliability by domain like <code>testing</code>, <code>git</code>, and <code>code_edit</code>. This powers weak-category detection and boundary packs.</p>
+        </div>
+        <div style="padding:10px 12px;background:rgba(232,121,249,.04);border:1px solid rgba(232,121,249,.12);border-radius:8px">
+          <p style="font-size:.74rem;font-weight:700;color:var(--pink);margin-bottom:4px">Per-lesson Thompson</p>
+          <p style="font-size:.72rem;color:var(--dim);margin:0">Learns which specific lessons should rank higher after real feedback. This improves retrieval without changing what the memory types are.</p>
+        </div>
+        <p style="font-size:.74rem;color:var(--dim);margin:0">The memories answer <strong style="color:var(--white)">what to remember</strong>. The Thompson systems answer <strong style="color:var(--white)">what to surface first</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-wrap" style="margin-top:24px">
+    <div class="sub-h">Memory vs support infrastructure</div>
+    <p class="sub-p" style="margin-bottom:18px">
+      The actual memory lives in durable project records. Ranking, caches, and runtime assembly make that memory usable, but they are not the memory itself.
+    </p>
+    <svg viewBox="0 0 900 280" width="100%" style="max-width:900px">
+      <defs>
+        <marker id="mem-arr-soft" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#475569"/></marker>
+      </defs>
+
+      <rect x="60" y="30" width="360" height="190" rx="18" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
+      <text x="240" y="58" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="800">Memory layer</text>
+
+      <rect x="92" y="82" width="296" height="48" rx="14" fill="rgba(34,211,238,.05)" stroke="rgba(34,211,238,.3)" stroke-width="1.5"/>
+      <text x="240" y="111" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="700">Semantic memory = durable rules</text>
+
+      <rect x="92" y="144" width="296" height="48" rx="14" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.3)" stroke-width="1.5"/>
+      <text x="240" y="173" text-anchor="middle" fill="#34d399" font-size="13" font-weight="700">Episodic memory = durable corrections</text>
+
+      <rect x="480" y="30" width="360" height="190" rx="18" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
+      <text x="660" y="58" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="800">Support systems</text>
+
+      <rect x="512" y="82" width="296" height="40" rx="12" fill="rgba(139,92,246,.05)" stroke="rgba(139,92,246,.25)" stroke-width="1.2"/>
+      <text x="660" y="106" text-anchor="middle" fill="#8b5cf6" font-size="12" font-weight="700">SQLite projection = canonical store</text>
+
+      <rect x="512" y="132" width="296" height="40" rx="12" fill="rgba(232,121,249,.05)" stroke="rgba(232,121,249,.25)" stroke-width="1.2"/>
+      <text x="660" y="156" text-anchor="middle" fill="#e879f9" font-size="12" font-weight="700">Thompson loops = ranking + reliability</text>
+
+      <rect x="512" y="182" width="296" height="40" rx="12" fill="rgba(56,189,248,.05)" stroke="rgba(56,189,248,.25)" stroke-width="1.2"/>
+      <text x="660" y="206" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="700">LanceDB = derived semantic cache</text>
+
+      <line x1="420" y1="106" x2="480" y2="106" stroke="#475569" stroke-width="1.5" stroke-dasharray="6 6" marker-end="url(#mem-arr-soft)"/>
+      <line x1="420" y1="168" x2="480" y2="168" stroke="#475569" stroke-width="1.5" stroke-dasharray="6 6" marker-end="url(#mem-arr-soft)"/>
+
+      <text x="450" y="96" text-anchor="middle" fill="#475569" font-size="10">stored in</text>
+      <text x="450" y="158" text-anchor="middle" fill="#475569" font-size="10">surfaced by</text>
+    </svg>
   </div>
 </div>
 </div>
@@ -885,7 +1198,7 @@ details > summary::-webkit-details-marker { display: none; }
           <td style="padding:8px 12px;font-weight:600;color:var(--blue)">Codex</td>
           <td style="padding:8px 12px;text-align:center;color:var(--emerald)">Yes</td>
           <td style="padding:8px 12px;text-align:center">Via AGENTS.md</td>
-          <td style="padding:8px 12px;text-align:center">Via <code>opencode.json</code> instructions</td>
+          <td style="padding:8px 12px;text-align:center;color:var(--dim)">&mdash;</td>
           <td style="padding:8px 12px"><code>setup-agent codex</code></td>
         </tr>
         <tr style="border-bottom:1px solid var(--border)">
@@ -912,7 +1225,7 @@ details > summary::-webkit-details-marker { display: none; }
         <tr>
           <td style="padding:8px 12px;font-weight:600;color:var(--violet)">OpenCode</td>
           <td style="padding:8px 12px;text-align:center;color:var(--emerald)">Yes</td>
-          <td style="padding:8px 12px;text-align:center;color:var(--dim)">&mdash;</td>
+          <td style="padding:8px 12px;text-align:center">Via <code>opencode.json</code> instructions</td>
           <td style="padding:8px 12px;text-align:center;color:var(--dim)">&mdash;</td>
           <td style="padding:8px 12px"><code>setup-agent opencode</code></td>
         </tr>
@@ -964,6 +1277,49 @@ details > summary::-webkit-details-marker { display: none; }
       </div>
     </div>
   </div>
+
+  <!-- ===== MEMORY SYSTEM (ADDED) ===== -->
+  <section class="card" style="margin-bottom:28px;padding:22px;border-left:3px solid var(--violet)">
+    <h3 style="color:var(--violet);margin-bottom:10px">How SmartAssist Memory Works</h3>
+    <p style="color:var(--dim);margin-bottom:14px">
+      SmartAssist uses a dual-memory system so your AI doesn’t just store rules — it remembers what actually worked.
+    </p>
+
+    <div class="grid g3">
+      <div>
+        <h4 style="color:var(--cyan)">Semantic Memory (Rules)</h4>
+        <p style="font-size:.82rem;color:var(--dim)">
+          Stores durable lessons like coding standards, patterns, and best practices.
+          This is what your AI should consistently follow.
+        </p>
+      </div>
+
+      <div>
+        <h4 style="color:var(--emerald)">Episodic Memory (Corrections)</h4>
+        <p style="font-size:.82rem;color:var(--dim)">
+          Stores real feedback events — what you corrected, what failed, what improved.
+          This ensures the system learns from actual mistakes, not just rules.
+        </p>
+      </div>
+
+      <div>
+        <h4 style="color:var(--amber)">Working Memory (Runtime Injection)</h4>
+        <p style="font-size:.82rem;color:var(--dim)">
+          At prompt time, SmartAssist injects the most relevant rules + past corrections.
+          This is what the model actively uses to respond correctly.
+        </p>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <h4 style="color:var(--white);margin-bottom:6px">Why this matters</h4>
+      <p style="font-size:.82rem;color:var(--dim);margin:0">
+        Most systems only store rules. SmartAssist combines rules (what should happen)
+        with corrections (what actually happened) and injects both at runtime.
+        This is why it improves continuously instead of repeating mistakes.
+      </p>
+    </div>
+  </section>
 
   <div class="grid g3" style="margin-bottom:18px">
     <div class="card">
@@ -1843,7 +2199,7 @@ L004 [git]     "Never force push to main"                              intensity
 
   <!-- ═══ HOW LESSONS GET INJECTED ═══ -->
   <h2 style="font-size:1.3rem;font-weight:800;color:var(--white);margin:40px 0 8px">How Lessons Get Injected &amp; Improve Over Time</h2>
-  <p style="font-size:.84rem;color:var(--dim);margin-bottom:24px">SmartAssist uses <strong style="color:var(--white)">Thompson Sampling</strong> (a multi-armed bandit algorithm) and a <strong style="color:var(--white)">MemAlign-style dual-memory pattern</strong> to continuously improve which lessons get injected. Semantic memory stores durable project rules. Episodic memory stores concrete past corrections. Every feedback signal makes retrieval and ranking sharper over time.</p>
+  <p style="font-size:.84rem;color:var(--dim);margin-bottom:24px">SmartAssist uses <strong style="color:var(--white)">two learning loops</strong> and a <strong style="color:var(--white)">MemAlign-style memory design</strong>. Semantic memory stores durable project rules. Episodic memory stores concrete past corrections. Working memory is assembled at prompt time from the most relevant mix of both, while Thompson state keeps learning which memories help most.</p>
 
   <!-- THE REINFORCEMENT LOOP -->
   <div class="card" style="border-left:3px solid var(--pink);margin-bottom:24px">
@@ -1898,19 +2254,27 @@ L004 [git]     "Never force push to main"                              intensity
   <!-- DUAL MEMORY EXPLANATION -->
   <div style="margin-bottom:24px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r)">
     <p style="font-size:.82rem;font-weight:700;color:var(--white);margin-bottom:6px">MemAlign-Style Memory in SmartAssist</p>
-    <p style="font-size:.78rem;color:var(--dim);margin-bottom:8px">Inspired by Databricks' MemAlign framework, SmartAssist keeps <strong style="color:var(--white)">two memory types</strong> and combines them into working memory at prompt time:</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+    <p style="font-size:.78rem;color:var(--dim);margin-bottom:8px">Inspired by Databricks' MemAlign framework, SmartAssist keeps <strong style="color:var(--white)">two durable memory types</strong> and builds a <strong style="color:var(--white)">temporary working-memory layer</strong> on top of them at prompt time:</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:10px">
       <div style="padding:10px 12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);border-radius:8px">
         <p style="font-size:.74rem;font-weight:700;color:var(--violet);margin-bottom:4px">Semantic Memory (Rules)</p>
         <p style="font-size:.7rem;color:var(--dim);margin:0">Active lessons and conventions &mdash; durable project rules distilled from feedback or seeded from real repo context. <em>"Always use semantic color tokens from the theme"</em></p>
+        <p style="font-size:.7rem;color:var(--dim);margin:6px 0 0"><strong style="color:var(--white)">Why it exists:</strong> this is the reusable guidance that should stay true across many tasks and many sessions.</p>
       </div>
       <div style="padding:10px 12px;background:rgba(251,191,36,.04);border:1px solid rgba(251,191,36,.12);border-radius:8px">
         <p style="font-size:.74rem;font-weight:700;color:var(--amber);margin-bottom:4px">Episodic Memory (Corrections)</p>
         <p style="font-size:.7rem;color:var(--dim);margin:0">Past feedback events &mdash; concrete corrections and edge cases pulled from real sessions. <em>"Last time hardcoded styles broke theme switching"</em></p>
+        <p style="font-size:.7rem;color:var(--dim);margin:6px 0 0"><strong style="color:var(--white)">Why it exists:</strong> this brings back specific failures, edge cases, and real corrections so the agent does not repeat them blindly.</p>
+      </div>
+      <div style="padding:10px 12px;background:rgba(56,189,248,.04);border:1px solid rgba(56,189,248,.12);border-radius:8px">
+        <p style="font-size:.74rem;font-weight:700;color:var(--blue);margin-bottom:4px">Working Memory (Prompt-Time Context)</p>
+        <p style="font-size:.7rem;color:var(--dim);margin:0">The temporary context SmartAssist assembles for the current prompt by mixing the most relevant rules with a few matching past corrections.</p>
+        <p style="font-size:.7rem;color:var(--dim);margin:6px 0 0"><strong style="color:var(--white)">Why it exists:</strong> the model only sees the memory that matters for the current task instead of carrying the whole corpus into every prompt.</p>
       </div>
     </div>
-    <p style="font-size:.74rem;color:var(--dim);margin:0 0 8px">We keep both because they solve different jobs: rules tell the agent <strong style="color:var(--white)">what good looks like</strong>, while episodes remind it <strong style="color:var(--white)">what failed before and why it mattered</strong>.</p>
-    <p style="font-size:.74rem;color:var(--dim);margin:0">At runtime, SmartAssist builds working memory by injecting the most relevant rules alongside a few similar past corrections. That combination makes guidance more reusable than examples alone and more grounded than rules alone.</p>
+    <p style="font-size:.74rem;color:var(--dim);margin:0 0 8px">We keep both durable memory types because they solve different jobs: rules tell the agent <strong style="color:var(--white)">what good looks like</strong>, while episodes remind it <strong style="color:var(--white)">what failed before and why it mattered</strong>.</p>
+    <p style="font-size:.74rem;color:var(--dim);margin:0 0 8px">At runtime, SmartAssist builds working memory by injecting the most relevant rules alongside a few similar past corrections. That combination makes guidance more reusable than examples alone and more grounded than rules alone.</p>
+    <p style="font-size:.74rem;color:var(--dim);margin:0">Supporting systems stay separate on purpose: <strong style="color:var(--white)">category-level Thompson</strong> tracks reliability by domain, <strong style="color:var(--white)">per-lesson Thompson</strong> learns which specific lessons deserve higher rank, and <strong style="color:var(--white)">LanceDB</strong> is only a derived semantic cache. None of those replace the actual semantic + episodic memory stored in the canonical SQLite store.</p>
   </div>
 
   <!-- CODEX NOTE -->
