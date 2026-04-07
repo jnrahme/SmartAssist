@@ -22,6 +22,7 @@ Usage:
 import os
 import sys
 import json
+import hashlib
 import shutil
 import subprocess
 from datetime import datetime
@@ -70,10 +71,153 @@ def _record_setup_note(message: str, log=None):
         log(message)
 
 
+def _add_summary_entry(summary, message: str) -> None:
+    if summary is None:
+        return
+    if callable(summary):
+        summary(message)
+        return
+    summary.append(message)
+
+
 def _write_text_file(path: Path, content: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content.rstrip() + "\n")
     return path
+
+
+def _project_backup_key(project_root: Path) -> str:
+    resolved = project_root.resolve()
+    digest = hashlib.sha1(str(resolved).encode("utf-8")).hexdigest()[:12]
+    return f"{resolved.name}-{digest}"
+
+
+def _resolve_git_dir(project_root: Path) -> Path | None:
+    dot_git = project_root / ".git"
+    if dot_git.is_dir():
+        return dot_git
+    if dot_git.is_file():
+        try:
+            text = dot_git.read_text().strip()
+        except OSError:
+            return None
+        prefix = "gitdir:"
+        if text.lower().startswith(prefix):
+            git_dir = text[len(prefix) :].strip()
+            path = Path(git_dir)
+            if not path.is_absolute():
+                path = (project_root / git_dir).resolve()
+            return path
+    return None
+
+
+def _ensure_local_git_excludes(
+    project_root: Path,
+    patterns: list[str],
+    summary=None,
+) -> Path | None:
+    git_dir = _resolve_git_dir(project_root)
+    if git_dir is None:
+        return None
+
+    exclude_path = git_dir / "info" / "exclude"
+    existing_lines = (
+        exclude_path.read_text().splitlines() if exclude_path.exists() else []
+    )
+    normalized = {line.strip() for line in existing_lines}
+    missing = [pattern for pattern in patterns if pattern not in normalized]
+    if not missing:
+        _add_summary_entry(
+            summary,
+            f"Git exclude: SmartAssist entries already present in {exclude_path}",
+        )
+        return exclude_path
+
+    exclude_path.parent.mkdir(parents=True, exist_ok=True)
+    new_lines = list(existing_lines)
+    if new_lines and new_lines[-1].strip():
+        new_lines.append("")
+    if "# SmartAssist local metadata" not in normalized:
+        new_lines.append("# SmartAssist local metadata")
+    new_lines.extend(missing)
+    exclude_path.write_text("\n".join(new_lines).rstrip() + "\n")
+    _add_summary_entry(
+        summary,
+        f"Git exclude: added {', '.join(missing)} to {exclude_path}",
+    )
+    return exclude_path
+
+
+def _cleanup_smartassist_gitignore(
+    project_root: Path,
+    summary=None,
+) -> bool:
+    gitignore = project_root / ".gitignore"
+    if not gitignore.exists():
+        return False
+
+    try:
+        lines = gitignore.read_text().splitlines()
+    except OSError:
+        return False
+
+    new_lines: list[str] = []
+    removed = False
+    idx = 0
+    while idx < len(lines):
+        stripped = lines[idx].strip()
+        if stripped == "# SmartAssist data":
+            next_line = lines[idx + 1].strip() if idx + 1 < len(lines) else ""
+            if next_line == ".claude/smartassist/":
+                removed = True
+                idx += 2
+                continue
+        if stripped == ".claude/smartassist/":
+            removed = True
+            idx += 1
+            continue
+        new_lines.append(lines[idx])
+        idx += 1
+
+    if not removed:
+        return False
+
+    while new_lines and not new_lines[-1].strip():
+        new_lines.pop()
+    gitignore.write_text("\n".join(new_lines).rstrip() + ("\n" if new_lines else ""))
+    _add_summary_entry(
+        summary, "Git ignore: removed SmartAssist-managed .gitignore entries"
+    )
+    return True
+
+
+def _project_backup_dir(project_root: Path) -> Path:
+    return (
+        Path.home()
+        / ".smartassist"
+        / "backups"
+        / "projects"
+        / _project_backup_key(project_root)
+    )
+
+
+def _relocate_project_backup_noise(
+    project_root: Path,
+    summary=None,
+) -> list[Path]:
+    destination = _project_backup_dir(project_root)
+    moved: list[Path] = []
+    for backup in sorted(project_root.glob(".mcp.json.bak.*")):
+        destination.mkdir(parents=True, exist_ok=True)
+        target = destination / backup.name
+        shutil.move(str(backup), str(target))
+        moved.append(target)
+    if moved:
+        _add_summary_entry(
+            summary,
+            f"Backup cleanup: moved {len(moved)} project MCP backup(s) to {destination}",
+        )
+    return moved
 
 
 def _upsert_global_toml_setting(
@@ -223,18 +367,27 @@ def cmd_init(log=None):
     lancedb.mkdir(parents=True, exist_ok=True)
     initialize_store(storage)
 
-    # Update .gitignore
-    gitignore = cwd / ".gitignore"
-    smartassist_entry = ".claude/smartassist/"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if smartassist_entry not in content:
-            with open(gitignore, "a") as f:
-                f.write(f"\n# SmartAssist data\n{smartassist_entry}\n")
-            print(f"  Updated .gitignore")
+    exclude_path = _ensure_local_git_excludes(
+        cwd,
+        [".claude/smartassist/", ".mcp.json", ".mcp.json.bak*"],
+        summary=log,
+    )
+    if exclude_path is None:
+        gitignore = cwd / ".gitignore"
+        smartassist_entry = ".claude/smartassist/"
+        if gitignore.exists():
+            content = gitignore.read_text()
+            if smartassist_entry not in content:
+                with open(gitignore, "a") as f:
+                    f.write(f"\n# SmartAssist data\n{smartassist_entry}\n")
+                print("  Updated .gitignore")
+        else:
+            gitignore.write_text(f"# SmartAssist data\n{smartassist_entry}\n")
+            print("  Created .gitignore")
     else:
-        gitignore.write_text(f"# SmartAssist data\n{smartassist_entry}\n")
-        print(f"  Created .gitignore")
+        print("  Updated local git excludes")
+        _cleanup_smartassist_gitignore(cwd, summary=log)
+        _relocate_project_backup_noise(cwd, summary=log)
 
     mcp_path = _ensure_project_mcp_registration(log=log)
 
@@ -556,12 +709,16 @@ SMARTASSIST_COMMANDS = [
 ]
 
 
-def _backup_file(path, summary):
+def _backup_file(path, summary, backup_dir: Path | None = None):
     """Create a timestamped backup of a file if it exists."""
     if not path.exists():
         return
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = path.with_name(f"{path.name}.bak.{ts}")
+    if backup_dir is not None:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup = backup_dir / f"{path.name}.bak.{ts}"
+    else:
+        backup = path.with_name(f"{path.name}.bak.{ts}")
     shutil.copy2(path, backup)
     summary.append(f"Backup: {path.name} → {backup.name}")
 
@@ -643,12 +800,15 @@ def cmd_setup():
     print("Phase 2: Backing up config files...")
 
     mcp_path = claude_dir / "mcp.json"
-    project_mcp_path = Path.cwd().resolve() / ".mcp.json"
+    project_root = Path.cwd().resolve()
+    project_mcp_path = project_root / ".mcp.json"
     claude_json_path = Path.home() / ".claude.json"
     settings_path = claude_dir / "settings.json"
 
     _backup_file(mcp_path, summary)
-    _backup_file(project_mcp_path, summary)
+    _backup_file(
+        project_mcp_path, summary, backup_dir=_project_backup_dir(project_root)
+    )
     _backup_file(claude_json_path, summary)
     _backup_file(settings_path, summary)
     # Shell rc backup happens inside _clean_stale_shell_aliases if needed
@@ -1231,6 +1391,8 @@ def _setup_opencode():
     """Register SmartAssist with OpenCode."""
     import json as _json
 
+    default_model = "anthropic/claude-sonnet-4-5"
+    default_small_model = "anthropic/claude-haiku-4-5"
     command, args = _resolve_mcp_server_command()
     config_path = Path.cwd() / "opencode.json"
     instructions_path = _ensure_project_instruction_file(
@@ -1244,6 +1406,13 @@ def _setup_opencode():
             existing = _json.loads(config_path.read_text())
         except Exception:
             pass
+    if not isinstance(existing.get("model"), str) or not existing["model"].strip():
+        existing["model"] = default_model
+    if (
+        not isinstance(existing.get("small_model"), str)
+        or not existing["small_model"].strip()
+    ):
+        existing["small_model"] = default_small_model
     mcp = existing.setdefault("mcp", {})
     mcp["smartassist"] = {
         "type": "local",

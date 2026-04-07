@@ -4,8 +4,12 @@ import json
 from pathlib import Path
 
 from smartassist.cli import (
+    _backup_file,
     _clean_stale_shell_aliases,
+    _cleanup_smartassist_gitignore,
     _configure_hooks,
+    _ensure_local_git_excludes,
+    _relocate_project_backup_noise,
     _setup_amp,
     _setup_codex,
     _setup_opencode,
@@ -39,6 +43,66 @@ class TestShellCleanup:
 
         assert removed == []
         assert rc_path.read_text() == "# SmartAssist notes for myself\nexport FOO=bar\n"
+
+
+class TestProjectMetadataCleanup:
+    def test_ensure_local_git_excludes_uses_git_info_exclude(self, tmp_path):
+        project = tmp_path / "project"
+        (project / ".git" / "info").mkdir(parents=True)
+
+        exclude_path = _ensure_local_git_excludes(
+            project,
+            [".claude/smartassist/", ".mcp.json", ".mcp.json.bak*"],
+        )
+
+        assert exclude_path is not None
+        assert exclude_path == project / ".git" / "info" / "exclude"
+        content = exclude_path.read_text()
+        assert ".claude/smartassist/" in content
+        assert ".mcp.json" in content
+        assert ".mcp.json.bak*" in content
+
+    def test_cleanup_smartassist_gitignore_removes_managed_block(self, tmp_path):
+        project = tmp_path / "project"
+        project.mkdir()
+        gitignore = project / ".gitignore"
+        gitignore.write_text(
+            "node_modules/\n# SmartAssist data\n.claude/smartassist/\n"
+        )
+
+        removed = _cleanup_smartassist_gitignore(project)
+
+        assert removed is True
+        assert gitignore.read_text() == "node_modules/\n"
+
+    def test_relocate_project_backup_noise_moves_mcp_backups_outside_repo(
+        self, monkeypatch, tmp_path
+    ):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        project = tmp_path / "project"
+        project.mkdir()
+        backup = project / ".mcp.json.bak.20260407_000433"
+        backup.write_text("{}")
+
+        moved = _relocate_project_backup_noise(project)
+
+        assert len(moved) == 1
+        assert moved[0].exists()
+        assert not backup.exists()
+
+    def test_backup_file_can_write_to_external_directory(self, tmp_path):
+        source = tmp_path / ".mcp.json"
+        source.write_text("{}")
+        backup_dir = tmp_path / "backups"
+        summary = []
+
+        _backup_file(source, summary, backup_dir=backup_dir)
+
+        backups = list(backup_dir.glob(".mcp.json.bak.*"))
+        assert len(backups) == 1
+        assert backups[0].read_text() == "{}"
 
 
 class TestCliSetupLifecycle:
@@ -84,7 +148,10 @@ class TestCliSetupLifecycle:
         )
 
         project_dir = tmp_path / "project"
-        project_dir.mkdir()
+        (project_dir / ".git" / "info").mkdir(parents=True)
+        (project_dir / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {"smartassist": {"command": "python"}}})
+        )
         monkeypatch.chdir(project_dir)
         monkeypatch.setattr("smartassist.cli.shutil.which", _which_all)
 
@@ -115,6 +182,10 @@ class TestCliSetupLifecycle:
         assert "smartassist" not in user_config.get("mcpServers", {})
         legacy_config = json.loads((claude_dir / "mcp.json").read_text())
         assert "smartassist" not in legacy_config.get("mcpServers", {})
+        assert not list(project_dir.glob(".mcp.json.bak.*"))
+        assert list((tmp_path / ".smartassist" / "backups").rglob(".mcp.json.bak.*"))
+        exclude_text = (project_dir / ".git" / "info" / "exclude").read_text()
+        assert ".mcp.json" in exclude_text
 
     def test_setup_keeps_two_projects_ready_without_reconfiguration(
         self,
@@ -232,6 +303,38 @@ class TestCliSetupLifecycle:
         assert entry["args"] == ["-m", "smartassist.mcp_server"]
         assert "SMARTASSIST_DATA_DIR" not in entry.get("env", {})
 
+    def test_init_prefers_git_info_exclude_and_cleans_old_smartassist_gitignore(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        project_dir = tmp_path / "project"
+        (project_dir / ".git" / "info").mkdir(parents=True)
+        (project_dir / ".gitignore").write_text(
+            "node_modules/\n# SmartAssist data\n.claude/smartassist/\n"
+        )
+        monkeypatch.chdir(project_dir)
+        monkeypatch.setattr(
+            "smartassist.cli._resolve_mcp_server_command",
+            lambda: ("python", ["-m", "smartassist.mcp_server"]),
+        )
+        monkeypatch.setattr(
+            "smartassist.cli.shutil.which",
+            lambda name: (
+                "/usr/local/bin/smartassist" if name == "smartassist" else None
+            ),
+        )
+
+        rc = cmd_init()
+
+        assert rc == 0
+        exclude_text = (project_dir / ".git" / "info" / "exclude").read_text()
+        assert ".claude/smartassist/" in exclude_text
+        assert ".mcp.json" in exclude_text
+        assert ".mcp.json.bak*" in exclude_text
+        assert (project_dir / ".gitignore").read_text() == "node_modules/\n"
+
     def test_uninstall_removes_project_and_legacy_registration(
         self, monkeypatch, tmp_path
     ):
@@ -324,6 +427,10 @@ class TestSetupAgentArtifacts:
         config_path = tmp_path / ".codex" / "config.toml"
         assert agents_path.exists()
         assert "apply_feedback_protocol" in agents_path.read_text()
+        assert (
+            ".agents/skills/smartassist-memory-architect/SKILL.md"
+            in agents_path.read_text()
+        )
         config_text = config_path.read_text()
         assert "project_doc_fallback_filenames" in config_text
         assert config_text.index("project_doc_fallback_filenames") < config_text.index(
@@ -357,6 +464,8 @@ class TestSetupAgentArtifacts:
         _setup_opencode()
 
         config = json.loads((project_dir / "opencode.json").read_text())
+        assert config["model"] == "anthropic/claude-sonnet-4-5"
+        assert config["small_model"] == "anthropic/claude-haiku-4-5"
         assert ".smartassist/opencode-instructions.md" in config["instructions"]
         assert config["mcp"]["smartassist"]["command"] == [
             "/tmp/smartassist-python",
@@ -366,3 +475,27 @@ class TestSetupAgentArtifacts:
         instructions_path = project_dir / ".smartassist" / "opencode-instructions.md"
         assert instructions_path.exists()
         assert "apply_feedback_protocol" in instructions_path.read_text()
+
+    def test_setup_opencode_preserves_existing_models(self, monkeypatch, tmp_path):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+        (project_dir / "opencode.json").write_text(
+            json.dumps(
+                {
+                    "model": "openai/gpt-5",
+                    "small_model": "openai/gpt-5-mini",
+                }
+            )
+        )
+        monkeypatch.setattr(
+            "smartassist.cli._resolve_mcp_server_command",
+            lambda: ("/tmp/smartassist-python", ["-m", "smartassist.mcp_server"]),
+        )
+
+        _setup_opencode()
+
+        config = json.loads((project_dir / "opencode.json").read_text())
+        assert config["model"] == "openai/gpt-5"
+        assert config["small_model"] == "openai/gpt-5-mini"
+        assert config["mcp"]["smartassist"]["enabled"] is True
