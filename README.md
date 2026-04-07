@@ -1,6 +1,5 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/npm-smartassist--memory-red?style=flat-square&logo=npm" alt="npm">
   <img src="https://img.shields.io/badge/license-BUSL--1.1-blue?style=flat-square" alt="BUSL 1.1 License">
   <img src="https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20ChatGPT%20%7C%20Amp%20%7C%20OpenCode-violet?style=flat-square" alt="Multi-Agent">
 </p>
@@ -14,7 +13,7 @@
 
 <p align="center">
   <a href="https://smartassist-memory.com">Website</a> ·
-  <a href="https://smartassist-memory.com/docs">Documentation</a> ·
+  <a href="smartassist-overview.html">Architecture Overview</a> ·
   <a href="https://github.com/jnrahme/SmartAssist/issues">Issues</a>
 </p>
 
@@ -23,43 +22,55 @@
 ## Install
 
 ```bash
-npx smartassist-memory init
-```
-
-One command. Installs SmartAssist and sets up MCP in your current project.
-
-Or install directly:
-
-```bash
 pipx install git+https://github.com/jnrahme/SmartAssist.git
 smartassist setup
 ```
 
-Prerequisites: Python 3.10+, Node.js 18+ (for npx)
+This is the supported install path today.
+
+Local checkout for development:
+
+```bash
+git clone https://github.com/jnrahme/SmartAssist.git
+cd SmartAssist
+pipx install .
+```
+
+Not live yet:
+
+- `pipx install smartassist`
+- `npm install -g smartassist-memory`
+- `brew install smartassist-memory/tap/smartassist`
+- `curl -fsSL https://smartassist-memory.com/install | sh`
+
+Prerequisites: Python 3.10+
 
 ---
 
 ## Works With Every Agent
 
 ```bash
+# First install SmartAssist from this repo
+pipx install git+https://github.com/jnrahme/SmartAssist.git
+
 # Claude Code
-claude mcp add smartassist -- npx -y smartassist-memory serve
+smartassist setup
 
 # Codex
-codex mcp add smartassist -- npx -y smartassist-memory serve
+smartassist setup-agent codex
 
-# Any agent
-npx smartassist-memory init --agent all
+# Register everything SmartAssist currently supports
+smartassist setup-agent all
 ```
 
 | Agent | MCP Tools | Auto-Injection | Hooks | Setup |
 |---|---|---|---|---|
 | **Claude Code** | Yes | Yes (every prompt) | Yes (5 hooks) | `smartassist setup` |
-| **Codex** | Yes | Via AGENTS.md | No | `setup-agent codex` |
+| **Codex** | Yes | Via AGENTS.md | No | `smartassist setup-agent codex` |
 | **Gemini** | Via HTTP | No | No | Function declarations |
 | **ChatGPT** | Via HTTP | No | No | OpenAPI custom action |
 | **Amp** | Via CLI | No | No | Skill template |
-| **OpenCode** | Yes | No | No | `setup-agent opencode` |
+| **OpenCode** | Yes | No | No | `smartassist setup-agent opencode` |
 
 Claude Code gets the richest experience with automatic hook injection on every prompt. All agents share the same MCP tools, RLHF loop, and knowledge base.
 
@@ -134,7 +145,12 @@ Every feedback signal makes the system smarter:
 ## Deep Seed — LLM-Powered Codebase Analysis
 
 ```bash
-smartassist seed --deep
+smartassist seed --deep              # auto-detects Claude/Codex/Ollama
+smartassist seed --deep --llm claude # use Claude Code CLI (zero config)
+smartassist seed --deep --llm codex  # use Codex CLI (zero config)
+smartassist seed --deep --llm ollama # use local Ollama (free)
+smartassist seed --deep --llm anthropic --model claude-opus-4-20250514
+smartassist seed --deep --llm custom --model meta-llama/Llama-3-70b
 ```
 
 Analyzes your codebase (git history, PR reviews, configs, test utilities, CI pipelines, code structure) and dynamically calculates how many lessons to create based on project complexity:
@@ -144,7 +160,7 @@ Analyzes your codebase (git history, PR reviews, configs, test utilities, CI pip
 - Monorepo with CI + custom test utils → more testing and build lessons
 - Simple project → fewer, more focused lessons
 
-The LLM reads the full analysis and calls `create_lesson` for each pattern — architect-level lessons that reference actual file paths, commands, and conventions in YOUR codebase.
+Works with any LLM: Claude, Codex, Anthropic API, OpenAI API, Ollama (local), or any OpenAI-compatible endpoint (Together, Groq, Mistral, Fireworks, LM Studio).
 
 ---
 

@@ -272,19 +272,23 @@ def _parse_lesson_lines(text):
     cleaned = text.replace("```json", "").replace("```", "")
     for line in cleaned.strip().split("\n"):
         line = line.strip()
-        if not line or not line.startswith("{"):
+        if not line:
             continue
+        # Find the first { in the line
+        json_start = line.find("{")
+        if json_start < 0:
+            continue
+        json_str = line[json_start:]
         try:
-            data = json.loads(line)
+            data = json.loads(json_str)
             if "lesson" in data and "category" in data:
                 lessons.append(data)
         except json.JSONDecodeError:
-            # Try extracting JSON from a line that has extra text
-            start = line.find("{")
-            end = line.rfind("}") + 1
-            if start >= 0 and end > start:
+            # Try trimming trailing text after the last }
+            end = json_str.rfind("}") + 1
+            if end > 0:
                 try:
-                    data = json.loads(line[start:end])
+                    data = json.loads(json_str[:end])
                     if "lesson" in data and "category" in data:
                         lessons.append(data)
                 except json.JSONDecodeError:
@@ -304,10 +308,15 @@ def store_lessons(lessons, project_root):
     failed = 0
 
     for lesson_data in lessons:
-        text = lesson_data.get("lesson", "")
+        text = lesson_data.get("lesson", "").strip()
         category = lesson_data.get("category", "code_edit")
         sentiment = lesson_data.get("sentiment", "negative")
         intensity = lesson_data.get("intensity", 3)
+
+        # Quality gate: minimum length
+        if len(text) < 30:
+            failed += 1
+            continue
 
         new_id, error = add_lesson(storage, text, category, origin="deep_seed")
         if error:
