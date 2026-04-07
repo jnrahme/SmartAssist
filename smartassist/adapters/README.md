@@ -46,7 +46,12 @@ Start the server locally: `smartassist serve`
 Run `smartassist setup-agent amp` to install a SmartAssist skill into `.agents/skills/smartassist-memory/SKILL.md`.
 
 ### OpenCode
-Run `smartassist setup-agent opencode`, or copy `opencode/opencode.json` to your project root and merge it manually. The setup command also writes `.smartassist/opencode-instructions.md` and wires it into `opencode.json`.
+Run `smartassist setup-agent opencode`, or copy `opencode/opencode.json` to your project root
+and merge it manually. The setup command also writes
+`.smartassist/opencode-instructions.md`, wires it into `opencode.json`, and sets recommended
+OpenCode model defaults: `anthropic/claude-sonnet-4-5` plus
+`anthropic/claude-haiku-4-5` for `small_model`. Change those top-level strings if your team
+uses a different provider.
 
 ## What Each Agent Gets
 

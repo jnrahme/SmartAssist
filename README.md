@@ -14,7 +14,10 @@
 <p align="center">
   <a href="https://smartassist-memory.com">Website</a> ·
   <a href="smartassist-overview.html">Architecture Overview</a> ·
-  <a href="https://github.com/jnrahme/SmartAssist/issues">Issues</a>
+  <a href="https://github.com/jnrahme/SmartAssist/discussions">Discussions</a> ·
+  <a href="https://github.com/jnrahme/SmartAssist/issues/new/choose">Feedback</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="SECURITY.md">Security</a>
 </p>
 
 ---
@@ -73,6 +76,12 @@ smartassist setup-agent all
 | **OpenCode** | Yes | Via `opencode.json` instructions | No | `smartassist setup-agent opencode` |
 
 Claude Code gets the richest experience with automatic hook injection on every prompt. Codex has setup plus targeted validation in this repo. The other agents rely on their native instruction surfaces and the same SmartAssist feedback workflow through `apply_feedback_protocol`, but they still need broader end-to-end runtime validation before the whole matrix should be treated as equally production-ready.
+
+OpenCode setup writes a project-local `opencode.json` that includes the SmartAssist MCP
+server, the generated `.smartassist/opencode-instructions.md` file, and recommended model
+defaults: `anthropic/claude-sonnet-4-5` for the main model and
+`anthropic/claude-haiku-4-5` for `small_model`. If your team uses another provider, edit the
+top-level `model` and `small_model` strings after setup.
 
 ---
 
@@ -184,6 +193,32 @@ smartassist uninstall          # Remove from Claude config
 smartassist version            # Show version
 claude-sa                      # Launch Claude Code with SmartAssist monitor
 ```
+
+---
+
+## Feedback, Support, and Contributing
+
+| Need | Best path |
+|---|---|
+| Setup friction | [Open the setup issue form](https://github.com/jnrahme/SmartAssist/issues/new/choose) |
+| Product feedback | [Use the feedback chooser](https://github.com/jnrahme/SmartAssist/issues/new/choose) |
+| Bugs | [File a bug report](https://github.com/jnrahme/SmartAssist/issues/new/choose) |
+| Questions and discussion | [Use GitHub Discussions](https://github.com/jnrahme/SmartAssist/discussions) |
+| Contributing | [Read CONTRIBUTING.md](CONTRIBUTING.md) |
+| Community expectations | [Read CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
+| Security issues | [Follow SECURITY.md](SECURITY.md) |
+
+Good places to start contributing:
+
+- issues labeled `good first issue`
+- issues labeled `help wanted`
+- onboarding, docs, and QA workflow improvements
+
+Maintainers planning outreach or contributor follow-up can use the runbook at
+[`docs/runbooks/growth-engine.md`](docs/runbooks/growth-engine.md).
+
+Exact launch copy for X, Reddit, and Show HN lives in
+[`docs/runbooks/launch-pack.md`](docs/runbooks/launch-pack.md).
 
 ---
 
