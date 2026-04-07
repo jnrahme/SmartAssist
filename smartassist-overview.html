@@ -1770,11 +1770,11 @@ L004 [git]     "Never force push to main"                              intensity
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
       <div class="card-icon ci-c" style="margin-bottom:0;width:38px;height:38px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/><path d="M16 21h5v-5"/><path d="M8 21H3v-5"/><path d="M21 21l-7-7"/><path d="M3 21l7-7"/></svg></div>
       <div>
-        <h3 style="margin-bottom:0;font-size:1rem">Path 5: compare_lesson() &mdash; A/B Draft Only</h3>
+        <h3 style="margin-bottom:0;font-size:1rem">Path 5: compare_lesson() &mdash; Manual A/B Draft Tool</h3>
         <p style="font-size:.76rem;color:var(--rose);font-weight:600;margin:0">Does NOT store &bull; Does NOT vectorize &bull; Comparison logging only</p>
       </div>
     </div>
-    <p style="font-size:.86rem;margin-bottom:12px">When a user sends feedback with context, the hook auto-creates a lesson (Path 1) and tells Claude to also draft one via <code>compare_lesson()</code>. Both versions are logged to <code>lesson_comparison.jsonl</code> for later A/B analysis &mdash; but Claude's draft is <strong style="color:var(--white)">never stored or vectorized</strong>.</p>
+    <p style="font-size:.86rem;margin-bottom:12px">When you want an alternate lesson draft without changing the active corpus, you can call <code>compare_lesson()</code>. The hook-created lesson stays live, and the comparison draft is logged to <code>lesson_comparison.jsonl</code> for later A/B review &mdash; but the comparison draft is <strong style="color:var(--white)">never stored or vectorized</strong>.</p>
     <div class="cb"><span class="d">// lesson_comparison.jsonl entry:</span>
 {
   "source": "claude",
@@ -1807,8 +1807,8 @@ L004 [git]     "Never force push to main"                              intensity
       <div style="display:flex;gap:14px;align-items:flex-start">
         <div style="min-width:26px;height:26px;border-radius:50%;background:var(--violet-dim);border:1.5px solid var(--violet);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--violet);flex-shrink:0">2</div>
         <div style="flex:1">
-          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Hook tells Claude to draft its own version</p>
-          <p style="font-size:.74rem;color:var(--dim)">The hook injects: <em>"ACTION REQUIRED: call <code>compare_lesson</code> tool with your own lesson draft."</em> Claude has richer conversation context &mdash; it knows the component, the stylesheet name, and the pattern.</p>
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Optional: draft an alternate version for A/B review</p>
+          <p style="font-size:.74rem;color:var(--dim)">If you want a comparison-only version, call <code>compare_lesson</code> manually with the same feedback context. That draft is kept out of the active corpus and only logged for comparison review.</p>
         </div>
       </div>
 
@@ -1816,7 +1816,7 @@ L004 [git]     "Never force push to main"                              intensity
       <div style="display:flex;gap:14px;align-items:flex-start">
         <div style="min-width:26px;height:26px;border-radius:50%;background:var(--cyan-dim);border:1.5px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--cyan);flex-shrink:0">3</div>
         <div style="flex:1">
-          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Claude calls <code>compare_lesson</code> with its draft</p>
+          <p style="font-size:.82rem;font-weight:600;color:var(--white);margin-bottom:5px">Manual comparison draft uses <code>compare_lesson</code></p>
           <div class="cb" style="margin:6px 0 0;font-size:.76rem"><span class="g">compare_lesson</span>(
   lesson: "Use classes from styles/components.scss instead of inline style attributes on JSX elements",
   category: "code_edit",

@@ -589,7 +589,7 @@ def write_to_live_log_feedback(
 
     if user_context and len(user_context.strip()) >= 15:
         lines.append(
-            f"  \033[36m→ A/B comparison: hook logged, Claude will draft via compare_lesson\033[0m"
+            f"  \033[36m→ Feedback context captured: Claude will be asked to draft via create_lesson\033[0m"
         )
 
     lines.append("")

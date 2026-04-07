@@ -625,7 +625,9 @@ def cmd_setup():
     # smartassist in PATH
     if not shutil.which("smartassist"):
         print("Error: 'smartassist' command not found in PATH")
-        print("  Install with: pipx install .")
+        print(
+            "  Install with: pipx install git+https://github.com/jnrahme/SmartAssist.git"
+        )
         return 1
     log("smartassist: found in PATH")
 
