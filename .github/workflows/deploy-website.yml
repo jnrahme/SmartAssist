@@ -1,0 +1,65 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - website/**
+      - scripts/deploy_website.sh
+      - .github/workflows/deploy-website.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-website
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-website:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate deploy script syntax
+        run: bash -n scripts/deploy_website.sh
+
+      - name: Prepare SSH key
+        env:
+          SMARTASSIST_WEBSITE_HOST: ${{ vars.SMARTASSIST_WEBSITE_HOST }}
+          SMARTASSIST_WEBSITE_PORT: ${{ vars.SMARTASSIST_WEBSITE_PORT }}
+          SMARTASSIST_WEBSITE_SSH_KEY: ${{ secrets.SMARTASSIST_WEBSITE_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          : "${SMARTASSIST_WEBSITE_HOST:?Repo variable SMARTASSIST_WEBSITE_HOST is required}"
+          : "${SMARTASSIST_WEBSITE_SSH_KEY:?Repo secret SMARTASSIST_WEBSITE_SSH_KEY is required}"
+
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$SMARTASSIST_WEBSITE_SSH_KEY" > "$HOME/.ssh/smartassist-website-deploy"
+          chmod 600 "$HOME/.ssh/smartassist-website-deploy"
+
+          ssh-keyscan -p "${SMARTASSIST_WEBSITE_PORT:-22}" "${SMARTASSIST_WEBSITE_HOST}" >> "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Deploy website
+        env:
+          SMARTASSIST_WEBSITE_HOST: ${{ vars.SMARTASSIST_WEBSITE_HOST }}
+          SMARTASSIST_WEBSITE_USER: ${{ vars.SMARTASSIST_WEBSITE_USER }}
+          SMARTASSIST_WEBSITE_PORT: ${{ vars.SMARTASSIST_WEBSITE_PORT }}
+          SMARTASSIST_WEBSITE_PATH: ${{ vars.SMARTASSIST_WEBSITE_PATH }}
+          SMARTASSIST_WEBSITE_SMOKE_URL: ${{ vars.SMARTASSIST_WEBSITE_SMOKE_URL }}
+          SMARTASSIST_WEBSITE_SSH_KEY_PATH: ${{ github.workspace }}/.github/.tmp-smartassist-website-key
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$SMARTASSIST_WEBSITE_SSH_KEY_PATH")"
+          cp "$HOME/.ssh/smartassist-website-deploy" "$SMARTASSIST_WEBSITE_SSH_KEY_PATH"
+          chmod 600 "$SMARTASSIST_WEBSITE_SSH_KEY_PATH"
+          bash scripts/deploy_website.sh
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f "$HOME/.ssh/smartassist-website-deploy" "${{ github.workspace }}/.github/.tmp-smartassist-website-key"
