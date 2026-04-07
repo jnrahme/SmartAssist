@@ -919,7 +919,7 @@ details > summary::-webkit-details-marker { display: none; }
   </div>
 
   <div style="padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:24px">
-    <p style="font-size:.78rem;color:var(--dim);margin:0"><strong style="color:var(--emerald)">Claude Code</strong> gets the richest experience &mdash; automatic lesson injection on every prompt, feedback detection, gate enforcement, and boundary packs via 5 lifecycle hooks. All other agents share the same MCP tools, Thompson Sampling RLHF loop, and dual-memory knowledge base &mdash; they call <code>rag_search</code> and <code>create_lesson</code> proactively rather than having them triggered automatically.</p>
+    <p style="font-size:.78rem;color:var(--dim);margin:0"><strong style="color:var(--emerald)">Claude Code</strong> gets the richest experience &mdash; automatic lesson injection on every prompt, feedback detection, gate enforcement, and boundary packs via 5 lifecycle hooks. All other agents share the same MCP tools, Thompson Sampling RLHF loop, and dual-memory knowledge base &mdash; they call <code>rag_search</code> to pull relevant rules + past corrections and <code>apply_feedback_protocol</code> to store reusable feedback when hooks are unavailable.</p>
   </div>
 
   <div class="callout c-g" style="margin-top:0">
@@ -927,7 +927,8 @@ details > summary::-webkit-details-marker { display: none; }
     <div><strong style="color:var(--emerald)">claude-sa</strong> launches Claude Code with live SmartAssist monitor sidebar.</div>
   </div>
   <div class="two-col" style="margin-top:28px">
-    <div class="card"><h3>Install via npm</h3><div class="cb"><span class="g">npx</span> smartassist-memory init</div><p style="margin-top:12px;font-size:.82rem">One command. Installs + sets up MCP. Requires Python 3.10+ and Node.js 18+.</p></div>
+    <div class="card"><h3>Install from the repo</h3><div class="cb"><span class="g">pipx install</span> git+https://github.com/jnrahme/SmartAssist.git
+<span class="g">smartassist</span> setup</div><p style="margin-top:12px;font-size:.82rem">This is the supported install path today. Requires Python 3.10+.</p></div>
     <div class="card"><h3>Register with any agent</h3><div class="cb"><span class="g">smartassist setup-agent</span> all
 <span class="d"># Or specific: claude, codex, gemini, chatgpt, amp, opencode</span></div><p style="margin-top:12px;font-size:.82rem">Same knowledge base, any agent. One command.</p></div>
   </div>
@@ -1840,7 +1841,7 @@ L004 [git]     "Never force push to main"                              intensity
 
   <!-- ═══ HOW LESSONS GET INJECTED ═══ -->
   <h2 style="font-size:1.3rem;font-weight:800;color:var(--white);margin:40px 0 8px">How Lessons Get Injected &amp; Improve Over Time</h2>
-  <p style="font-size:.84rem;color:var(--dim);margin-bottom:24px">SmartAssist uses <strong style="color:var(--white)">Thompson Sampling</strong> (a multi-armed bandit algorithm) and <strong style="color:var(--white)">MemAlign dual-memory</strong> to continuously improve which lessons get injected. Every feedback signal makes the system smarter.</p>
+  <p style="font-size:.84rem;color:var(--dim);margin-bottom:24px">SmartAssist uses <strong style="color:var(--white)">Thompson Sampling</strong> (a multi-armed bandit algorithm) and a <strong style="color:var(--white)">MemAlign-style dual-memory pattern</strong> to continuously improve which lessons get injected. Semantic memory stores durable project rules. Episodic memory stores concrete past corrections. Every feedback signal makes retrieval and ranking sharper over time.</p>
 
   <!-- THE REINFORCEMENT LOOP -->
   <div class="card" style="border-left:3px solid var(--pink);margin-bottom:24px">
@@ -1894,24 +1895,25 @@ L004 [git]     "Never force push to main"                              intensity
 
   <!-- DUAL MEMORY EXPLANATION -->
   <div style="margin-bottom:24px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r)">
-    <p style="font-size:.82rem;font-weight:700;color:var(--white);margin-bottom:6px">MemAlign Dual-Memory Pattern</p>
-    <p style="font-size:.78rem;color:var(--dim);margin-bottom:8px">Inspired by Databricks' MemAlign framework, SmartAssist injects <strong style="color:var(--white)">two types of memory</strong> into each prompt:</p>
+    <p style="font-size:.82rem;font-weight:700;color:var(--white);margin-bottom:6px">MemAlign-Style Memory in SmartAssist</p>
+    <p style="font-size:.78rem;color:var(--dim);margin-bottom:8px">Inspired by Databricks' MemAlign framework, SmartAssist keeps <strong style="color:var(--white)">two memory types</strong> and combines them into working memory at prompt time:</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
       <div style="padding:10px 12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);border-radius:8px">
         <p style="font-size:.74rem;font-weight:700;color:var(--violet);margin-bottom:4px">Semantic Memory (Rules)</p>
-        <p style="font-size:.7rem;color:var(--dim);margin:0">Curated lessons &mdash; general principles distilled from feedback. <em>"Always use semantic color tokens from theme"</em></p>
+        <p style="font-size:.7rem;color:var(--dim);margin:0">Active lessons and conventions &mdash; durable project rules distilled from feedback or seeded from real repo context. <em>"Always use semantic color tokens from the theme"</em></p>
       </div>
       <div style="padding:10px 12px;background:rgba(251,191,36,.04);border:1px solid rgba(251,191,36,.12);border-radius:8px">
         <p style="font-size:.74rem;font-weight:700;color:var(--amber);margin-bottom:4px">Episodic Memory (Corrections)</p>
-        <p style="font-size:.7rem;color:var(--dim);margin:0">Past feedback events &mdash; concrete examples of what went wrong. <em>"Last time you styled a header, the user corrected you for using inline styles"</em></p>
+        <p style="font-size:.7rem;color:var(--dim);margin:0">Past feedback events &mdash; concrete corrections and edge cases pulled from real sessions. <em>"Last time hardcoded styles broke theme switching"</em></p>
       </div>
     </div>
-    <p style="font-size:.74rem;color:var(--dim);margin:0">Rules tell the LLM <strong style="color:var(--white)">what to do</strong>. Episodes show <strong style="color:var(--white)">what happened when it didn't</strong>. Together they produce better results than either alone.</p>
+    <p style="font-size:.74rem;color:var(--dim);margin:0 0 8px">We keep both because they solve different jobs: rules tell the agent <strong style="color:var(--white)">what good looks like</strong>, while episodes remind it <strong style="color:var(--white)">what failed before and why it mattered</strong>.</p>
+    <p style="font-size:.74rem;color:var(--dim);margin:0">At runtime, SmartAssist builds working memory by injecting the most relevant rules alongside a few similar past corrections. That combination makes guidance more reusable than examples alone and more grounded than rules alone.</p>
   </div>
 
   <!-- CODEX NOTE -->
   <div style="margin-bottom:40px;padding:10px 14px;background:rgba(251,191,36,.04);border:1px solid rgba(251,191,36,.12);border-radius:8px">
-    <p style="font-size:.74rem;color:var(--dim);margin:0"><strong style="color:var(--amber)">Multi-agent support:</strong> SmartAssist works with Claude Code, Codex, Gemini, ChatGPT, Amp, and OpenCode. Claude Code gets the richest experience (automatic hook injection on every prompt). Other agents use the same MCP tools and RLHF loop &mdash; they call <code>rag_search</code> and <code>create_lesson</code> proactively via AGENTS.md guidance or function declarations. One knowledge base, any agent. Run <code>smartassist setup-agent all</code> to register with everything.</p>
+    <p style="font-size:.74rem;color:var(--dim);margin:0"><strong style="color:var(--amber)">Multi-agent support:</strong> SmartAssist works with Claude Code, Codex, Gemini, ChatGPT, Amp, and OpenCode. Claude Code gets the richest experience (automatic hook injection on every prompt). Other agents use the same MCP tools and RLHF loop &mdash; they call <code>rag_search</code> to retrieve memory and <code>apply_feedback_protocol</code> to persist new reusable guidance via AGENTS.md guidance, skills, or generated instruction files. One knowledge base, any agent. Run <code>smartassist setup-agent all</code> to register with everything.</p>
   </div>
 
   <!-- ═══ QUALITY GATES DETAIL ═══ -->
