@@ -90,7 +90,7 @@ def _launch_tmux(log_file: Path) -> int:
             "send-keys",
             "-t",
             SESSION_NAME,
-            f"cd {quoted_cwd} && claude; tmux kill-session -t {quoted_session}",
+            f"cd {quoted_cwd} && claude",
             "Enter",
         ],
         check=True,
@@ -160,6 +160,19 @@ end tell
     return 0
 
 
+def _start_dashboard() -> subprocess.Popen | None:
+    """Start the dashboard server in the background."""
+    try:
+        proc = subprocess.Popen(
+            ["smartassist", "dashboard"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return proc
+    except (FileNotFoundError, OSError):
+        return None
+
+
 def main() -> int:
     data_dir = find_data_dir()
     if data_dir is None:
@@ -175,10 +188,29 @@ def main() -> int:
     log_file = data_dir / "rag_live.log"
     log_file.touch()
 
-    if shutil.which("tmux"):
-        return _launch_tmux(log_file)
-    else:
-        return _launch_fallback(log_file)
+    # Start dashboard server in background
+    dashboard_proc = _start_dashboard()
+    if dashboard_proc:
+        print("Dashboard running at http://localhost:3000")
+        print("  (auto-stops 60s after browser/Claude closes)")
+
+    try:
+        if shutil.which("tmux"):
+            return _launch_tmux(log_file)
+        else:
+            return _launch_fallback(log_file)
+    finally:
+        # Stop dashboard when Claude exits
+        if dashboard_proc and dashboard_proc.poll() is None:
+            dashboard_proc.terminate()
+        # Also try PID file cleanup
+        try:
+            subprocess.run(
+                ["smartassist", "dashboard", "--stop"],
+                capture_output=True, timeout=5,
+            )
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
