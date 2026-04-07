@@ -13,6 +13,259 @@ def _rel_link(destination: Path, target: Path) -> str:
     return html.escape(os.path.relpath(target, destination.parent))
 
 
+def _json_script(payload: object) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+def _render_search_playground(playground: dict[str, object] | None) -> str:
+    if not playground:
+        return ""
+
+    samples = playground.get("samples")
+    if not isinstance(samples, list) or not samples:
+        return ""
+
+    corpus = playground.get("corpus")
+    corpus_cards = ""
+    if isinstance(corpus, list):
+        corpus_cards = "".join(
+            f"""
+            <article class="corpus-card">
+              <div class="result-meta">
+                <span class="pill">{html.escape(str(item.get('category', 'unknown')))}</span>
+                <span class="muted">{html.escape(str(item.get('id', '')))}</span>
+              </div>
+              <p>{html.escape(str(item.get('lesson', '')))}</p>
+            </article>
+            """
+            for item in corpus
+        )
+
+    sample_buttons = "".join(
+        f"""
+        <button type="button" class="sample-button" data-playground-sample="{html.escape(str(sample.get('id', '')))}">
+          <strong>{html.escape(str(sample.get('label', 'Sample')))}</strong>
+          <span>{html.escape(str(sample.get('focus', '')))}</span>
+        </button>
+        """
+        for sample in samples
+    )
+
+    script = """
+<script>
+(() => {
+  const dataEl = document.getElementById("search-playground-data");
+  const input = document.getElementById("search-playground-input");
+  const hookRoot = document.getElementById("search-playground-hook");
+  const mcpRoot = document.getElementById("search-playground-mcp");
+  const hookSummary = document.getElementById("search-playground-hook-summary");
+  const mcpSummary = document.getElementById("search-playground-mcp-summary");
+  const status = document.getElementById("search-playground-status");
+  const activeLabel = document.getElementById("search-playground-active");
+  const buttons = Array.from(document.querySelectorAll("[data-playground-sample]"));
+  if (!dataEl || !input || !hookRoot || !mcpRoot || !hookSummary || !mcpSummary || !status || !activeLabel) {
+    return;
+  }
+
+  const playground = JSON.parse(dataEl.textContent);
+  const samples = Array.isArray(playground.samples) ? playground.samples : [];
+  if (!samples.length) {
+    return;
+  }
+
+  let selectedSampleId = playground.default_sample_id || samples[0].id;
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>\"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char] || char));
+  }
+
+  function sampleById(sampleId) {
+    return samples.find((sample) => sample.id === sampleId) || null;
+  }
+
+  function updateButtonState() {
+    buttons.forEach((button) => {
+      button.classList.toggle("active", button.dataset.playgroundSample === selectedSampleId);
+    });
+  }
+
+  function resolveSample(normalizedInput) {
+    const selected = sampleById(selectedSampleId) || samples[0];
+    if (!normalizedInput) {
+      return selected;
+    }
+    if (selected && String(selected.query_lower || "").startsWith(normalizedInput)) {
+      return selected;
+    }
+    return samples.find((sample) => String(sample.query_lower || "").startsWith(normalizedInput)) || selected;
+  }
+
+  function resolveTrace(sample, normalizedInput) {
+    const traces = Array.isArray(sample.traces) ? sample.traces : [];
+    if (!normalizedInput) {
+      return traces.find((trace) => trace.prefix_lower === "") || traces[0] || null;
+    }
+    if (!String(sample.query_lower || "").startsWith(normalizedInput)) {
+      return null;
+    }
+    return traces.find((trace) => trace.prefix_lower === normalizedInput) || null;
+  }
+
+  function renderCards(items, emptyMessage) {
+    if (!items.length) {
+      return `<p class="muted empty-card">${escapeHtml(emptyMessage)}</p>`;
+    }
+    return items.map((item) => {
+      const lesson = item.lesson || item.text || "";
+      const context = item.context ? `<p class="result-context">Context: ${escapeHtml(item.context)}</p>` : "";
+      const idMeta = item.id ? `<span class="muted">${escapeHtml(item.id)}</span>` : "";
+      const relevance = Number.isFinite(item.relevance_pct) ? `<span class="muted">${item.relevance_pct}%</span>` : "";
+      return `
+        <article class="result-card">
+          <div class="result-meta">
+            <span class="pill">${escapeHtml(item.category || "unknown")}</span>
+            ${idMeta}
+            ${relevance}
+          </div>
+          <p>${escapeHtml(lesson)}</p>
+          ${context}
+        </article>
+      `;
+    }).join("");
+  }
+
+  function renderLane(root, summaryEl, lane, labels) {
+    const semantic = Array.isArray(lane.semantic) ? lane.semantic : [];
+    const episodic = Array.isArray(lane.episodic) ? lane.episodic : [];
+    const total = semantic.length + episodic.length;
+    summaryEl.textContent = total ? `${total} picked up` : "No matches yet";
+    root.innerHTML = `
+      <section class="memory-group">
+        <h4>${escapeHtml(labels.semantic)}</h4>
+        ${renderCards(semantic, `No ${labels.semantic.toLowerCase()} for this prefix.`)}
+      </section>
+      <section class="memory-group">
+        <h4>${escapeHtml(labels.episodic)}</h4>
+        ${renderCards(episodic, `No ${labels.episodic.toLowerCase()} for this prefix.`)}
+      </section>
+    `;
+  }
+
+  function render() {
+    const rawValue = input.value || "";
+    const normalized = rawValue.trim().toLowerCase();
+    const sample = resolveSample(normalized);
+    selectedSampleId = sample.id;
+    updateButtonState();
+
+    activeLabel.textContent = sample.label || "Sample";
+    const trace = resolveTrace(sample, normalized);
+    if (!normalized) {
+      status.textContent = playground.instructions || "Pick a sample query, then type through it.";
+    } else if (trace) {
+      status.textContent = `Replay: ${sample.focus || sample.query}`;
+    } else {
+      status.textContent = "This demo only replays prefixes of the sample queries shown on the left.";
+    }
+
+    if (!trace) {
+      hookSummary.textContent = "No replay";
+      mcpSummary.textContent = "No replay";
+      hookRoot.innerHTML = '<p class="muted empty-card">Type a prefix from one of the sample queries to see the Hook lane update.</p>';
+      mcpRoot.innerHTML = '<p class="muted empty-card">Type a prefix from one of the sample queries to see the MCP lane update.</p>';
+      return;
+    }
+
+    renderLane(hookRoot, hookSummary, trace.hook || {}, {
+      semantic: "Project rules",
+      episodic: "Past corrections",
+    });
+    renderLane(mcpRoot, mcpSummary, trace.mcp || {}, {
+      semantic: "Project rules",
+      episodic: "Past corrections",
+    });
+  }
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const sample = sampleById(button.dataset.playgroundSample);
+      if (!sample) {
+        return;
+      }
+      selectedSampleId = sample.id;
+      input.value = sample.query || "";
+      render();
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  });
+
+  input.addEventListener("input", render);
+  updateButtonState();
+  render();
+})();
+</script>
+"""
+
+    return (
+        f"""
+        <section class="hero playground">
+          <div class="scenario-header">
+            <div>
+              <h2>{html.escape(str(playground.get('title', 'Search Playground')))}</h2>
+              <p class="scenario-description">{html.escape(str(playground.get('description', '')))}</p>
+            </div>
+            <span class="badge pending">Interactive Replay</span>
+          </div>
+          <div class="playground-grid">
+            <aside class="playground-sidebar">
+              <div class="playground-box">
+                <span class="label">Sample Queries</span>
+                <div class="sample-list">{sample_buttons}</div>
+              </div>
+              <div class="playground-box">
+                <span class="label">Demo Corpus</span>
+                <div class="corpus-list">{corpus_cards or '<p class="muted empty-card">No active lessons captured for this run.</p>'}</div>
+              </div>
+            </aside>
+            <div class="playground-main">
+              <div class="playground-box">
+                <label class="label" for="search-playground-input">Type a sample query prefix</label>
+                <input id="search-playground-input" class="playground-input" type="text" placeholder="semantic ocean tokens for dashboard button styles">
+                <p class="meta" id="search-playground-status">{html.escape(str(playground.get('instructions', '')))}</p>
+                <p class="meta">Active sample: <strong id="search-playground-active"></strong></p>
+              </div>
+              <div class="columns playground-columns">
+                <section class="playground-panel">
+                  <div class="scenario-header">
+                    <h3>Hook Retrieval</h3>
+                    <span class="badge pending" id="search-playground-hook-summary">No matches yet</span>
+                  </div>
+                  <div id="search-playground-hook"></div>
+                </section>
+                <section class="playground-panel">
+                  <div class="scenario-header">
+                    <h3>MCP Retrieval</h3>
+                    <span class="badge pending" id="search-playground-mcp-summary">No matches yet</span>
+                  </div>
+                  <div id="search-playground-mcp"></div>
+                </section>
+              </div>
+            </div>
+          </div>
+          <script id="search-playground-data" type="application/json">{_json_script(playground)}</script>
+          {script}
+        </section>
+        """
+    )
+
+
 def render_demo_site(
     run_dir: Path | str,
     *,
@@ -36,11 +289,17 @@ def render_demo_site(
     pending_count = sum(1 for item in summary.get("scenarios", []) if item.get("status") == "pending")
 
     scenario_sections = []
+    playground_payload: dict[str, object] | None = None
     for scenario in manifest.get("scenarios", []):
         scenario_name = str(scenario["name"])
         scenario_dir = run_path / "scenarios" / scenario_name
         scenario_path = scenario_dir / "scenario.json"
         payload = json.loads(scenario_path.read_text(encoding="utf-8")) if scenario_path.exists() else {}
+        extras = payload.get("extras", {})
+        if playground_payload is None and isinstance(extras, dict):
+            candidate = extras.get("search_playground")
+            if isinstance(candidate, dict):
+                playground_payload = candidate
         assertions = payload.get("assertions", [])
         steps = payload.get("steps", [])
         status_value = scenario.get("success")
@@ -125,6 +384,7 @@ def render_demo_site(
         if auto_refresh_seconds and auto_refresh_seconds > 0
         else ""
     )
+    playground_html = _render_search_playground(playground_payload)
 
     html_text = f"""<!doctype html>
 <html lang="en">
@@ -294,6 +554,130 @@ def render_demo_site(
       color: #7dd3fc;
       text-decoration: none;
     }}
+    .playground {{
+      padding: 28px;
+      margin-bottom: 20px;
+    }}
+    .playground-grid {{
+      display: grid;
+      grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }}
+    .playground-sidebar,
+    .playground-main {{
+      display: grid;
+      gap: 16px;
+    }}
+    .playground-box,
+    .playground-panel {{
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px solid rgba(132, 153, 190, 0.2);
+      background: rgba(9, 15, 27, 0.48);
+    }}
+    .playground-input {{
+      width: 100%;
+      margin-top: 10px;
+      padding: 13px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(132, 153, 190, 0.32);
+      background: rgba(7, 12, 21, 0.72);
+      color: var(--text);
+      font: inherit;
+    }}
+    .playground-input:focus {{
+      outline: 2px solid rgba(56, 189, 248, 0.5);
+      border-color: rgba(56, 189, 248, 0.8);
+    }}
+    .sample-list,
+    .corpus-list {{
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }}
+    .sample-button {{
+      display: grid;
+      gap: 4px;
+      width: 100%;
+      padding: 14px;
+      text-align: left;
+      color: var(--text);
+      border-radius: 14px;
+      border: 1px solid rgba(132, 153, 190, 0.2);
+      background: rgba(12, 21, 35, 0.75);
+      cursor: pointer;
+      transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
+    }}
+    .sample-button strong {{
+      font-size: 15px;
+    }}
+    .sample-button span {{
+      color: var(--muted);
+      line-height: 1.35;
+      font-size: 13px;
+    }}
+    .sample-button:hover,
+    .sample-button.active {{
+      border-color: rgba(56, 189, 248, 0.6);
+      background: rgba(15, 35, 58, 0.82);
+      transform: translateY(-1px);
+    }}
+    .corpus-card,
+    .result-card {{
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(132, 153, 190, 0.18);
+      background: rgba(8, 14, 25, 0.72);
+    }}
+    .result-card p,
+    .corpus-card p {{
+      margin: 8px 0 0;
+      line-height: 1.45;
+    }}
+    .result-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #7dd3fc;
+      background: rgba(56, 189, 248, 0.14);
+      border: 1px solid rgba(56, 189, 248, 0.24);
+    }}
+    .memory-group + .memory-group {{
+      margin-top: 16px;
+    }}
+    .memory-group h4 {{
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }}
+    .empty-card {{
+      margin: 0;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px dashed rgba(132, 153, 190, 0.18);
+      background: rgba(8, 14, 25, 0.4);
+    }}
+    .result-context {{
+      color: var(--muted);
+      font-size: 14px;
+    }}
+    .playground-columns {{
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }}
     .columns {{
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -315,6 +699,11 @@ def render_demo_site(
       }}
       .badge {{
         min-width: 0;
+      }}
+    }}
+    @media (max-width: 960px) {{
+      .playground-grid {{
+        grid-template-columns: 1fr;
       }}
     }}
   </style>
@@ -342,6 +731,7 @@ def render_demo_site(
       </div>
       {"<p class='meta' style='margin-top:14px'>Live watch mode is active. This page refreshes automatically while scenarios complete.</p>" if auto_refresh_seconds else ""}
     </section>
+    {playground_html}
     {''.join(scenario_sections)}
   </main>
 </body>

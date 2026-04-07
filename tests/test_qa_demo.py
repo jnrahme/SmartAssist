@@ -10,7 +10,7 @@ from smartassist.qa.runner import run_scenarios
 
 def test_render_demo_site_from_real_run(tmp_path):
     summary = run_scenarios(
-        names=["feedback_creates_active_lesson"],
+        names=["hook_mcp_retrieval_consistency"],
         run_dir=tmp_path / "demo-run",
         render_demo=False,
     )
@@ -20,10 +20,15 @@ def test_render_demo_site_from_real_run(tmp_path):
 
     assert destination.exists()
     assert "SmartAssist QA Demo" in html_text
-    assert "feedback_creates_active_lesson" in html_text
+    assert "hook_mcp_retrieval_consistency" in html_text
     assert "PASS" in html_text
     assert "summary.json" in html_text
     assert 'http-equiv="refresh"' in html_text
+    assert "Search Playground" in html_text
+    assert "Hook Retrieval" in html_text
+    assert "MCP Retrieval" in html_text
+    assert "semantic ocean tokens for dashboard button styles" in html_text
+    assert "search-playground-data" in html_text
 
 
 def test_cli_qa_demo_renders_html(tmp_path, capsys):

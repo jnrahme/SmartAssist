@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -184,6 +185,181 @@ def _hook_context(hook_output: dict[str, Any] | None) -> str:
     return str(hook_output.get("hookSpecificOutput", {}).get("additionalContext", "") or "")
 
 
+def _parse_hook_context(context: str) -> dict[str, Any]:
+    parsed: dict[str, list[dict[str, Any]]] = {"semantic": [], "episodic": []}
+    section: str | None = None
+
+    for line in context.splitlines():
+        stripped = line.strip()
+        if stripped == "Project-specific rules (apply these):":
+            section = "semantic"
+            continue
+        if stripped == "Past corrections on similar work:":
+            section = "episodic"
+            continue
+        if not stripped.startswith("- "):
+            continue
+
+        item_text = stripped[2:].strip()
+        if section == "semantic":
+            match = re.match(r"\[(?P<id>[^\]]+)\] \[(?P<category>[^\]]+)\] (?P<lesson>.+)", item_text)
+            if match:
+                parsed["semantic"].append(
+                    {
+                        "id": match.group("id"),
+                        "category": match.group("category"),
+                        "lesson": match.group("lesson"),
+                    }
+                )
+        elif section == "episodic":
+            match = re.match(r"\[(?P<category>[^\]]+)\] (?P<lesson>.+)", item_text)
+            if match:
+                parsed["episodic"].append(
+                    {
+                        "category": match.group("category"),
+                        "lesson": match.group("lesson"),
+                    }
+                )
+
+    return {"semantic": parsed["semantic"], "episodic": parsed["episodic"], "raw": context}
+
+
+def _parse_mcp_output(output: str) -> dict[str, Any]:
+    parsed: dict[str, list[dict[str, Any]]] = {"semantic": [], "episodic": []}
+    section: str | None = None
+    current: dict[str, Any] | None = None
+
+    def _flush_current() -> None:
+        nonlocal current
+        if current and section in parsed:
+            parsed[section].append(current)
+        current = None
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "Project Rules (semantic memory):":
+            _flush_current()
+            section = "semantic"
+            continue
+        if stripped == "Past Corrections (episodic memory):":
+            _flush_current()
+            section = "episodic"
+            continue
+
+        match = re.match(r"\[(?P<category>[^\]]+)\] \(relevance: (?P<relevance>\d+)%\)", stripped)
+        if match:
+            _flush_current()
+            current = {
+                "category": match.group("category"),
+                "relevance_pct": int(match.group("relevance")),
+            }
+            continue
+
+        if current is None:
+            continue
+
+        if stripped.startswith("Lesson:"):
+            current["lesson"] = stripped.removeprefix("Lesson:").strip()
+        elif stripped.startswith("Context:"):
+            current["context"] = stripped.removeprefix("Context:").strip()
+
+    _flush_current()
+    return {"semantic": parsed["semantic"], "episodic": parsed["episodic"], "raw": output}
+
+
+def _build_search_playground(storage_path: Path, *, active_lessons: list[dict[str, Any]]) -> dict[str, Any]:
+    sample_queries = [
+        {
+            "id": "theme_tokens",
+            "label": "Theme tokens",
+            "query": "semantic ocean tokens for dashboard button styles",
+            "focus": "Shows the theme/style lesson surfacing as soon as the query is specific enough.",
+        },
+        {
+            "id": "validator_tests",
+            "label": "Validator tests",
+            "query": "table driven tests for api validator edge cases",
+            "focus": "Shows the testing lesson taking over once API-validator wording appears.",
+        },
+        {
+            "id": "commit_hygiene",
+            "label": "Commit hygiene",
+            "query": "remove debug statements before commit",
+            "focus": "Shows a git/code-hygiene lesson instead of the style/testing lessons.",
+        },
+        {
+            "id": "no_match",
+            "label": "No match",
+            "query": "quantum physics dark matter theory",
+            "focus": "Shows the empty state when a prompt has no meaningful project overlap.",
+        },
+    ]
+
+    def _trace_for_prefix(sample_id: str, prefix: str, index: int) -> dict[str, Any]:
+        hook_output = _invoke_prompt_hook(
+            {
+                "prompt": prefix,
+                "session_id": f"qa-playground-{sample_id}-{index}",
+            }
+        )
+        hook_context = _hook_context(hook_output)
+        mcp_output = mcp_server.rag_search(prefix, top_k=3)
+        projection_results, search_meta = search_projection_documents(storage_path, prefix, top_k=3)
+        return {
+            "prefix": prefix,
+            "prefix_lower": prefix.strip().lower(),
+            "hook": _parse_hook_context(hook_context),
+            "mcp": _parse_mcp_output(mcp_output),
+            "projection": {
+                "count": len(projection_results),
+                "search_backend": search_meta.get("search_backend"),
+            },
+        }
+
+    samples = []
+    for sample in sample_queries:
+        traces = [
+            {
+                "prefix": "",
+                "prefix_lower": "",
+                "hook": {"semantic": [], "episodic": [], "raw": ""},
+                "mcp": {"semantic": [], "episodic": [], "raw": ""},
+                "projection": {"count": 0, "search_backend": None},
+            }
+        ]
+        for index in range(1, len(sample["query"]) + 1):
+            traces.append(_trace_for_prefix(sample["id"], sample["query"][:index], index))
+
+        samples.append(
+            {
+                **sample,
+                "query_lower": sample["query"].lower(),
+                "traces": traces,
+            }
+        )
+
+    corpus = [
+        {
+            "id": lesson.get("id", ""),
+            "category": lesson.get("category", "unknown"),
+            "lesson": lesson.get("lesson", ""),
+        }
+        for lesson in active_lessons
+    ]
+
+    return {
+        "title": "Search Playground",
+        "description": (
+            "Type through deterministic sample prompts and watch the exact Hook and MCP retrieval lanes "
+            "pick up project rules and past corrections from the same QA artifact bundle."
+        ),
+        "instructions": "Pick a sample query, then type through it to replay the captured Hook and MCP results side by side.",
+        "default_sample_id": sample_queries[0]["id"],
+        "samples": samples,
+        "corpus": corpus,
+    }
+
+
 def _read_comparison_entries(storage_path: Path) -> list[dict[str, Any]]:
     return [row for row in read_jsonl_if_exists(storage_path / "lesson_comparison.jsonl") if isinstance(row, dict)]
 
@@ -210,18 +386,29 @@ def _scenario_hook_mcp_retrieval_consistency(sandbox: ScenarioSandbox) -> Scenar
             "negative",
             [],
         )
+        tertiary_id, tertiary_text = create_lesson_from_feedback(
+            "Always remove debug statements before commit and use [TICKET-XXX] prefixes in commit messages",
+            "negative",
+            [],
+        )
         _record_step(
             steps,
             "seed_lessons",
-            "Created two distinct active lessons through the shared feedback path",
+            "Created three distinct active lessons through the shared feedback path",
             primary_id=primary_id,
             secondary_id=secondary_id,
+            tertiary_id=tertiary_id,
         )
 
         query = "semantic ocean tokens for dashboard button styles"
         hook_output = _invoke_prompt_hook({"prompt": query, "session_id": "qa-consistency"})
         rag_output = mcp_server.rag_search(query, top_k=3)
         search_results, search_meta = search_projection_documents(sandbox.storage_path, query, top_k=3)
+        active_lessons = list_lessons(sandbox.storage_path)
+        search_playground = _build_search_playground(
+            sandbox.storage_path,
+            active_lessons=active_lessons,
+        )
         _record_step(
             steps,
             "query_runtime_paths",
@@ -280,7 +467,12 @@ def _scenario_hook_mcp_retrieval_consistency(sandbox: ScenarioSandbox) -> Scenar
         steps=steps,
         before_state=before_state,
         after_state=after_state,
-        extras={"hook_output": hook_output, "rag_output": rag_output, "search_meta": search_meta},
+        extras={
+            "hook_output": hook_output,
+            "rag_output": rag_output,
+            "search_meta": search_meta,
+            "search_playground": search_playground,
+        },
     )
 
 
