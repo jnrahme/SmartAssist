@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "smartassist": {
+      "command": "npx",
+      "args": ["-y", "smartassist-memory", "serve"]
+    }
+  }
+}

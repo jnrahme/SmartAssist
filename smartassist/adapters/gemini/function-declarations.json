@@ -1,0 +1,138 @@
+{
+  "tools": [
+    {
+      "name": "rag_search",
+      "description": "Search the project knowledge base for relevant lessons and past corrections. Call before writing code, tests, commits, or any action that might have project-specific rules.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Natural language description of what you're looking for. Examples: 'how to style components', 'testing best practices', 'git commit format'"
+          },
+          "top_k": {
+            "type": "integer",
+            "description": "Number of results to return (1-10, default 5)"
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional category filter: testing, code_edit, git, architecture, pr_review, security, debugging"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "create_lesson",
+      "description": "Create a new project-specific lesson from user feedback. Call when the user corrects your approach, rejects code, or reveals a project convention.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "Imperative statement (>30 chars) with an action verb. Example: 'Always use semantic colors from theme instead of hardcoded hex values'"
+          },
+          "category": {
+            "type": "string",
+            "description": "One of: testing, code_edit, git, architecture, pr_review, security, debugging"
+          },
+          "sentiment": {
+            "type": "string",
+            "enum": ["positive", "negative"],
+            "description": "Whether this lesson came from praise or correction"
+          },
+          "intensity": {
+            "type": "integer",
+            "description": "Importance level 1-5"
+          },
+          "context": {
+            "type": "string",
+            "description": "What you were doing when the lesson was learned"
+          }
+        },
+        "required": ["lesson", "category"]
+      }
+    },
+    {
+      "name": "rag_feedback",
+      "description": "Record whether the last suggestion was helpful. Updates Thompson Sampling reliability scores.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "helpful": {
+            "type": "boolean",
+            "description": "True if the suggestion helped, false if not"
+          },
+          "category": {
+            "type": "string",
+            "description": "Category of the feedback"
+          },
+          "notes": {
+            "type": "string",
+            "description": "What was right or wrong"
+          }
+        },
+        "required": ["helpful"]
+      }
+    },
+    {
+      "name": "rag_dashboard",
+      "description": "View current reliability scores, corpus stats, and feedback metrics.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "boost_lesson",
+      "description": "Increase a lesson's priority after confirmed positive impact.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "lesson_id": {
+            "type": "string",
+            "description": "The lesson ID to boost (e.g. L042)"
+          }
+        },
+        "required": ["lesson_id"]
+      }
+    },
+    {
+      "name": "demote_lesson",
+      "description": "Decrease a lesson's priority after confirmed negative impact.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "lesson_id": {
+            "type": "string",
+            "description": "The lesson ID to demote"
+          }
+        },
+        "required": ["lesson_id"]
+      }
+    },
+    {
+      "name": "merge_lessons",
+      "description": "Consolidate overlapping lessons into one stronger principle.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "lesson_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "IDs of lessons to merge"
+          },
+          "new_lesson": {
+            "type": "string",
+            "description": "The merged lesson text"
+          },
+          "category": {
+            "type": "string",
+            "description": "Category for the merged lesson"
+          }
+        },
+        "required": ["lesson_ids", "new_lesson", "category"]
+      }
+    }
+  ]
+}

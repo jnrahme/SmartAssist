@@ -936,7 +936,20 @@ a { color: inherit; text-decoration: none; }
         <p class="install-note">Python-native install. Requires Python 3.10+.</p>
       </div>
 
-      <p class="install-compat-line">Works on macOS, Linux, and CI environments &middot; Python 3.10+</p>
+      <p class="install-compat-line">Works on macOS, Linux, and CI environments &middot; Python 3.10+ &middot; Node.js 18+</p>
+
+      <div style="margin-top:24px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r)">
+        <p style="font-size:.88rem;font-weight:700;color:var(--white);margin-bottom:10px">Register with any AI agent</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-family:var(--mono);font-size:.76rem">
+          <div style="padding:8px 10px;background:var(--bg);border-radius:8px;color:var(--emerald)"><span style="color:var(--dim)">Claude:</span> claude mcp add smartassist -- npx -y smartassist-memory serve</div>
+          <div style="padding:8px 10px;background:var(--bg);border-radius:8px;color:var(--blue)"><span style="color:var(--dim)">Codex:</span> codex mcp add smartassist -- npx -y smartassist-memory serve</div>
+          <div style="padding:8px 10px;background:var(--bg);border-radius:8px;color:var(--amber)"><span style="color:var(--dim)">Gemini:</span> Import function-declarations.json</div>
+          <div style="padding:8px 10px;background:var(--bg);border-radius:8px;color:var(--pink)"><span style="color:var(--dim)">ChatGPT:</span> Import openapi.yaml as Custom Action</div>
+          <div style="padding:8px 10px;background:var(--bg);border-radius:8px;color:var(--cyan)"><span style="color:var(--dim)">Amp:</span> Copy SKILL.md to skills directory</div>
+          <div style="padding:8px 10px;background:var(--bg);border-radius:8px;color:var(--violet)"><span style="color:var(--dim)">OpenCode:</span> npx smartassist-memory init --agent opencode</div>
+        </div>
+        <p style="font-size:.74rem;color:var(--dim);margin-top:10px">All agents get the same MCP tools and learning loop. Claude Code gets the richest experience with automatic hook injection on every prompt.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -949,7 +962,7 @@ a { color: inherit; text-decoration: none; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Install SmartAssist
     </a>
-    <p class="cta-sub">Free and open source &middot; Works with Claude Code and Codex</p>
+    <p class="cta-sub">Free and open source &middot; Works with Claude Code, Codex, Gemini, ChatGPT, Amp, and OpenCode</p>
   </div>
 </section>
 

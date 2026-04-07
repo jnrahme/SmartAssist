@@ -974,9 +974,121 @@ def cmd_qa():
     return 1
 
 
+def cmd_setup_agent():
+    """Register SmartAssist MCP server with a specific AI agent.
+
+    Usage: smartassist setup-agent <agent>
+    Agents: claude, codex, gemini, chatgpt, amp, opencode, all
+    """
+    if len(sys.argv) < 3:
+        print("Usage: smartassist setup-agent <agent>")
+        print("Agents: claude, codex, gemini, chatgpt, amp, opencode, all")
+        return 1
+
+    agent = sys.argv[2].lower()
+    valid = {"claude", "codex", "gemini", "chatgpt", "amp", "opencode", "all"}
+    if agent not in valid:
+        print(f"Unknown agent: {agent}")
+        print(f"Valid agents: {', '.join(sorted(valid))}")
+        return 1
+
+    agents = list(valid - {"all"}) if agent == "all" else [agent]
+
+    for a in agents:
+        if a == "claude":
+            # Use existing setup for Claude
+            print(f"[{a}] Running full Claude Code setup...")
+            cmd_setup()
+        elif a == "codex":
+            _setup_codex()
+        elif a == "gemini":
+            _setup_gemini()
+        elif a == "chatgpt":
+            _setup_chatgpt()
+        elif a == "amp":
+            _setup_amp()
+        elif a == "opencode":
+            _setup_opencode()
+
+    print("\nDone! SmartAssist is registered with: " + ", ".join(agents))
+    return 0
+
+
+def _setup_codex():
+    """Register SmartAssist MCP with Codex."""
+    import subprocess
+    print("[codex] Registering MCP server...")
+    try:
+        subprocess.run(
+            ["codex", "mcp", "add", "smartassist", "--", "npx", "-y", "smartassist-memory", "serve"],
+            check=True, capture_output=True, timeout=30,
+        )
+        print("[codex] MCP server registered via 'codex mcp add'")
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        # Fallback: write config.toml directly
+        config_path = Path.home() / ".codex" / "config.toml"
+        print(f"[codex] 'codex' CLI not found. Writing to {config_path}")
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        existing = config_path.read_text() if config_path.exists() else ""
+        if "smartassist" not in existing:
+            with open(config_path, "a") as f:
+                f.write('\n[mcp_servers.smartassist]\ncommand = "npx"\nargs = ["-y", "smartassist-memory", "serve"]\n')
+            print(f"[codex] Written to {config_path}")
+        else:
+            print("[codex] Already registered")
+
+
+def _setup_gemini():
+    """Print Gemini setup instructions."""
+    adapters = Path(__file__).parent / "adapters" / "gemini"
+    print("[gemini] Gemini uses HTTP function declarations, not local MCP.")
+    print(f"[gemini] Import the function declarations from:")
+    print(f"         {adapters / 'function-declarations.json'}")
+    print("[gemini] Point the HTTP endpoints at your SmartAssist server.")
+    print("[gemini] Start the server: smartassist serve")
+
+
+def _setup_chatgpt():
+    """Print ChatGPT setup instructions."""
+    adapters = Path(__file__).parent / "adapters" / "chatgpt"
+    print("[chatgpt] ChatGPT uses OpenAPI custom actions, not local MCP.")
+    print(f"[chatgpt] Import the OpenAPI spec from:")
+    print(f"          {adapters / 'openapi.yaml'}")
+    print("[chatgpt] Start the server: smartassist serve")
+
+
+def _setup_amp():
+    """Print Amp setup instructions."""
+    adapters = Path(__file__).parent / "adapters" / "amp"
+    print(f"[amp] Copy the skill template to your Amp skills directory:")
+    print(f"      {adapters / 'SKILL.md'}")
+
+
+def _setup_opencode():
+    """Register SmartAssist with OpenCode."""
+    import json as _json
+    config_path = Path.cwd() / "opencode.json"
+    print(f"[opencode] Writing MCP config to {config_path}")
+    existing = {}
+    if config_path.exists():
+        try:
+            existing = _json.loads(config_path.read_text())
+        except Exception:
+            pass
+    mcp = existing.setdefault("mcp", {})
+    mcp["smartassist"] = {
+        "type": "local",
+        "command": ["npx", "-y", "smartassist-memory", "serve"],
+        "enabled": True,
+    }
+    config_path.write_text(_json.dumps(existing, indent=2) + "\n")
+    print("[opencode] Registered")
+
+
 def main():
     commands = {
         "setup": cmd_setup,
+        "setup-agent": cmd_setup_agent,
         "doctor": cmd_doctor,
         "uninstall": cmd_uninstall,
         "init": cmd_init,
@@ -1001,6 +1113,7 @@ def main():
         print("Usage: smartassist <command> [options]\n")
         print("Commands:")
         print(f"  {'setup':<15} Configure Claude Code (MCP server + hooks + init)")
+        print(f"  {'setup-agent':<15} Register with any agent: claude, codex, gemini, chatgpt, amp, opencode, all")
         print(f"  {'doctor':<15} Audit install readiness and runtime wiring")
         print(f"  {'uninstall':<15} Remove SmartAssist from Claude Code config")
         print(f"  {'init':<15} Initialize SmartAssist in current project")

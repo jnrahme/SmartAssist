@@ -94,8 +94,16 @@ if (command === "init") {
   } else {
     console.log("SmartAssist already installed.");
   }
-  console.log("\nRunning setup...\n");
-  forward(["setup"]);
+  // Check for --agent flag
+  const agentIdx = args.indexOf("--agent");
+  if (agentIdx !== -1 && args[agentIdx + 1]) {
+    const agent = args[agentIdx + 1];
+    console.log(`\nRegistering with ${agent}...\n`);
+    forward(["setup-agent", agent]);
+  } else {
+    console.log("\nRunning setup...\n");
+    forward(["setup"]);
+  }
 } else if (command === "serve") {
   // MCP server mode — used by: claude mcp add rlhf -- npx -y smartassist-memory serve
   if (!isInstalled()) {

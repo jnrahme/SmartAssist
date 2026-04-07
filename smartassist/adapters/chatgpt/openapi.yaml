@@ -1,0 +1,155 @@
+openapi: 3.1.0
+info:
+  title: SmartAssist Memory API
+  version: 1.1.0
+  description: |
+    AI memory system that learns from developer feedback.
+    Captures lessons, ranks them with Thompson Sampling, and injects
+    the best ones into every prompt automatically.
+servers:
+  - url: http://localhost:3333
+    description: Local SmartAssist MCP server (start with smartassist serve)
+paths:
+  /rag_search:
+    post:
+      operationId: ragSearch
+      summary: Search project knowledge base
+      description: Search for relevant lessons and past corrections before writing code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: Natural language search query
+                top_k:
+                  type: integer
+                  default: 5
+                category:
+                  type: string
+      responses:
+        '200':
+          description: Search results with relevance scores
+
+  /create_lesson:
+    post:
+      operationId: createLesson
+      summary: Create a new lesson
+      description: Save a project-specific lesson from user feedback or discovered convention.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lesson, category]
+              properties:
+                lesson:
+                  type: string
+                  description: Imperative statement (>30 chars)
+                category:
+                  type: string
+                sentiment:
+                  type: string
+                  enum: [positive, negative]
+                intensity:
+                  type: integer
+                context:
+                  type: string
+      responses:
+        '200':
+          description: Lesson created with ID
+
+  /rag_feedback:
+    post:
+      operationId: ragFeedback
+      summary: Record feedback on suggestions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [helpful]
+              properties:
+                helpful:
+                  type: boolean
+                category:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Feedback recorded
+
+  /rag_dashboard:
+    get:
+      operationId: ragDashboard
+      summary: View reliability scores and stats
+      responses:
+        '200':
+          description: Dashboard data
+
+  /boost_lesson:
+    post:
+      operationId: boostLesson
+      summary: Boost a lesson's priority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lesson_id]
+              properties:
+                lesson_id:
+                  type: string
+      responses:
+        '200':
+          description: Lesson boosted
+
+  /demote_lesson:
+    post:
+      operationId: demoteLesson
+      summary: Demote a lesson's priority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lesson_id]
+              properties:
+                lesson_id:
+                  type: string
+      responses:
+        '200':
+          description: Lesson demoted
+
+  /merge_lessons:
+    post:
+      operationId: mergeLessons
+      summary: Merge overlapping lessons
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lesson_ids, new_lesson, category]
+              properties:
+                lesson_ids:
+                  type: array
+                  items:
+                    type: string
+                new_lesson:
+                  type: string
+                category:
+                  type: string
+      responses:
+        '200':
+          description: Lessons merged

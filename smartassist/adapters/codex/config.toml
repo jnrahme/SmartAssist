@@ -1,0 +1,6 @@
+# SmartAssist MCP profile for Codex
+# Copy into ~/.codex/config.toml or merge with existing config
+
+[mcp_servers.smartassist]
+command = "npx"
+args = ["-y", "smartassist-memory", "serve"]
