@@ -324,9 +324,16 @@ def cmd_dashboard():
 
 
 def cmd_seed():
-    """Seed database from CLAUDE.md conventions."""
-    from smartassist.hooks.seed_from_claudemd import seed_database
+    """Seed database from CLAUDE.md conventions or deep codebase analysis.
 
+    --deep: LLM-powered analysis of git history, PR reviews, code structure.
+            Gathers context and instructs the LLM to create 50-100 lessons.
+    """
+    if "--deep" in sys.argv:
+        from smartassist.tools.deep_seed import run_deep_seed
+        return run_deep_seed()
+
+    from smartassist.hooks.seed_from_claudemd import seed_database
     seed_database()
     return 0
 
@@ -1125,7 +1132,7 @@ def main():
         print(f"  {'analyze':<15} Show usage analytics")
         print(f"  {'dashboard':<15} Generate HTML dashboard")
         print(f"  {'qa':<15} Run QA scenarios and demo generation")
-        print(f"  {'seed':<15} Seed database from CLAUDE.md conventions")
+        print(f"  {'seed':<15} Seed database from CLAUDE.md (or --deep for LLM-powered codebase analysis)")
         print(
             f"  {'compare-lessons':<15} Show A/B comparison of hook vs Claude lessons"
         )
