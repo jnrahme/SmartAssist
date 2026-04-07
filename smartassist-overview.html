@@ -1913,7 +1913,7 @@ L004 [git]     "Never force push to main"                              intensity
 
   <!-- CODEX NOTE -->
   <div style="margin-bottom:40px;padding:10px 14px;background:rgba(251,191,36,.04);border:1px solid rgba(251,191,36,.12);border-radius:8px">
-    <p style="font-size:.74rem;color:var(--dim);margin:0"><strong style="color:var(--amber)">Multi-agent support:</strong> SmartAssist works with Claude Code, Codex, Gemini, ChatGPT, Amp, and OpenCode. Claude Code gets the richest experience (automatic hook injection on every prompt). Other agents use the same MCP tools and RLHF loop &mdash; they call <code>rag_search</code> to retrieve memory and <code>apply_feedback_protocol</code> to persist new reusable guidance via AGENTS.md guidance, skills, or generated instruction files. One knowledge base, any agent. Run <code>smartassist setup-agent all</code> to register with everything.</p>
+    <p style="font-size:.74rem;color:var(--dim);margin:0"><strong style="color:var(--amber)">Multi-agent support:</strong> SmartAssist provides setup surfaces for Claude Code, Codex, Gemini, ChatGPT, Amp, and OpenCode. Claude Code has the strongest runtime validation today because it uses the full hook lifecycle. Other agents use the same MCP tools and RLHF loop &mdash; they call <code>rag_search</code> to retrieve memory and <code>apply_feedback_protocol</code> to persist new reusable guidance via AGENTS.md guidance, skills, or generated instruction files &mdash; but broader end-to-end validation is still lighter outside Claude.</p>
   </div>
 
   <!-- ═══ QUALITY GATES DETAIL ═══ -->
@@ -1942,6 +1942,16 @@ L004 [git]     "Never force push to main"                              intensity
   <!-- ═══ LIMITATIONS & DESIGN DECISIONS ═══ -->
   <h2 style="font-size:1.3rem;font-weight:800;color:var(--white);margin:40px 0 8px">Limitations &amp; Design Decisions</h2>
   <p style="font-size:.84rem;color:var(--dim);margin-bottom:24px">Things to know before relying on SmartAssist in production. Each item explains what the limitation is, why it exists, and the planned path forward.</p>
+
+  <div style="margin-bottom:16px;padding:14px 18px;background:rgba(251,191,36,.04);border:1px solid rgba(251,191,36,.12);border-radius:var(--r)">
+    <p style="font-size:.82rem;font-weight:700;color:var(--white);margin-bottom:8px">Before broad public sharing, these pieces still need to close</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:8px;align-items:flex-start"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:14px">1</span><span style="font-size:.76rem;color:var(--dim)">Public package-registry install paths are <strong style="color:var(--white)">not live yet</strong>. The supported install path today is still the repo install.</span></div>
+      <div style="display:flex;gap:8px;align-items:flex-start"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:14px">2</span><span style="font-size:.76rem;color:var(--dim)">Claude has the strongest runtime proof. The other agent integrations still need broader <strong style="color:var(--white)">end-to-end smoke validation</strong>.</span></div>
+      <div style="display:flex;gap:8px;align-items:flex-start"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:14px">3</span><span style="font-size:.76rem;color:var(--dim)">SmartAssist still needs a clean <strong style="color:var(--white)">external-machine / external-user install proof</strong> before claiming broad public readiness.</span></div>
+      <div style="display:flex;gap:8px;align-items:flex-start"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:14px">4</span><span style="font-size:.76rem;color:var(--dim)">First-run onboarding still needs a tighter <strong style="color:var(--white)">time-to-first-value proof</strong>: install, doctor, one feedback signal, then visible retrieval.</span></div>
+    </div>
+  </div>
 
   <!-- LIMITATION 1: Categories -->
   <details style="margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">

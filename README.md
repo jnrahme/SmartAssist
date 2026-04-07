@@ -7,7 +7,7 @@
 <h1 align="center">SmartAssist Memory</h1>
 
 <p align="center">
-  <strong>AI memory that learns from developer feedback. Works with every coding agent.</strong><br>
+  <strong>AI memory that learns from developer feedback. Best-validated today on Claude Code, with setup surfaces for other coding agents.</strong><br>
   <em>Per-lesson reinforcement learning, dual-memory injection, and hybrid search — one knowledge base, any agent.</em>
 </p>
 
@@ -47,7 +47,7 @@ Prerequisites: Python 3.10+
 
 ---
 
-## Works With Every Agent
+## Agent Setup Surfaces
 
 ```bash
 # First install SmartAssist from this repo
@@ -72,7 +72,7 @@ smartassist setup-agent all
 | **Amp** | Via CLI | Via workspace skill | No | `smartassist setup-agent amp` |
 | **OpenCode** | Yes | Via `opencode.json` instructions | No | `smartassist setup-agent opencode` |
 
-Claude Code gets the richest experience with automatic hook injection on every prompt. The other agents rely on their native instruction surfaces, but all of them can share the same SmartAssist feedback workflow through `apply_feedback_protocol`.
+Claude Code gets the richest experience with automatic hook injection on every prompt. Codex has setup plus targeted validation in this repo. The other agents rely on their native instruction surfaces and the same SmartAssist feedback workflow through `apply_feedback_protocol`, but they still need broader end-to-end runtime validation before the whole matrix should be treated as equally production-ready.
 
 ---
 
