@@ -244,6 +244,95 @@ def gather_recent_patterns(project_root):
     }
 
 
+def analyze_complexity(project_root, structure, git, prs, patterns):
+    """Analyze codebase complexity and recommend lesson counts per category."""
+    root = Path(project_root)
+
+    # Count source files
+    src_count = int(_run(
+        "find . -type f \\( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.py' \\) "
+        "-not -path '*/node_modules/*' -not -path '*/.git/*' | wc -l",
+        cwd=project_root,
+    ) or "0")
+
+    # Count test files
+    test_count = int(_run(
+        "find . -type f \\( -name '*.test.*' -o -name '*.spec.*' -o -name 'test_*' \\) "
+        "-not -path '*/node_modules/*' | wc -l",
+        cwd=project_root,
+    ) or "0")
+
+    # Count config files
+    config_count = len(structure.get("configs", {}))
+
+    # Count unique directories at depth 2 (proxy for architectural complexity)
+    dir_count = len(structure.get("structure", "").strip().split("\n")) if structure.get("structure") else 0
+
+    # PR review comments available
+    pr_comment_count = len(prs.get("comments", [])) if prs.get("available") else 0
+
+    # CI complexity
+    has_ci = bool(patterns.get("ci_config"))
+
+    # Test utilities (custom wrappers = more testing conventions to document)
+    has_test_utils = bool(patterns.get("test_utils"))
+
+    # Calculate recommended lessons per category
+    recommendations = {}
+
+    # Build/test/deploy: scales with config and CI complexity
+    recommendations["build_test_deploy"] = min(10, 3 + config_count + (2 if has_ci else 0))
+
+    # Testing: scales with test count and whether custom utils exist
+    test_complexity = 3
+    if test_count > 50:
+        test_complexity += 3
+    elif test_count > 10:
+        test_complexity += 1
+    if has_test_utils:
+        test_complexity += 3
+    recommendations["testing"] = min(15, test_complexity)
+
+    # Import/module boundaries: scales with source file count
+    if src_count > 200:
+        recommendations["imports"] = 7
+    elif src_count > 50:
+        recommendations["imports"] = 5
+    else:
+        recommendations["imports"] = 3
+
+    # Architecture: scales with directory depth and framework count
+    tech_count = len(structure.get("technologies", []))
+    recommendations["architecture"] = min(10, 3 + tech_count + (2 if dir_count > 20 else 0))
+
+    # PR patterns: directly from available review comments
+    recommendations["pr_review"] = min(10, max(2, pr_comment_count // 5))
+
+    # Git/workflow: fairly constant
+    recommendations["git"] = 4
+
+    # Tribal knowledge: scales with age and complexity
+    commit_count = git.get("log", "").count("|") if git.get("log") else 0
+    recommendations["tribal"] = min(8, 2 + (3 if commit_count > 200 else 1))
+
+    # Security: scales with config complexity
+    recommendations["security"] = 2 + (1 if config_count > 5 else 0)
+
+    total = sum(recommendations.values())
+
+    return {
+        "src_files": src_count,
+        "test_files": test_count,
+        "config_files": config_count,
+        "directories": dir_count,
+        "pr_comments": pr_comment_count,
+        "has_ci": has_ci,
+        "has_test_utils": has_test_utils,
+        "recommendations": recommendations,
+        "total_recommended": total,
+    }
+
+
 def build_deep_seed_prompt(project_root):
     """Gather all context and build the instruction prompt for the LLM."""
     print("Gathering codebase context...\n")
@@ -328,14 +417,56 @@ def build_deep_seed_prompt(project_root):
     if patterns.get("readme"):
         sections.append(f"## README (setup instructions)\n```\n{patterns['readme'][:1500]}\n```\n")
 
+    # Complexity analysis
+    print("  [5/5] Analyzing codebase complexity...")
+    complexity = analyze_complexity(project_root, structure, git, prs, patterns)
+    recs = complexity["recommendations"]
+    total = complexity["total_recommended"]
+
+    sections.append(f"""## Codebase Complexity Analysis
+- Source files: {complexity['src_files']}
+- Test files: {complexity['test_files']}
+- Config files: {complexity['config_files']}
+- Directory depth: {complexity['directories']} dirs
+- PR review comments: {complexity['pr_comments']}
+- CI/CD: {'Yes' if complexity['has_ci'] else 'No'}
+- Custom test utilities: {'Yes' if complexity['has_test_utils'] else 'No'}
+""")
+
+    print(f"\n  Complexity analysis:")
+    print(f"    Source files: {complexity['src_files']}")
+    print(f"    Test files: {complexity['test_files']}")
+    print(f"    Recommended lessons: {total}")
+    for cat, count in sorted(recs.items(), key=lambda x: -x[1]):
+        print(f"      {cat}: {count}")
+
     # THE ARCHITECT-LEVEL INSTRUCTION
-    sections.append("""
+    sections.append(f"""
 ## YOUR TASK — THINK LIKE A SENIOR ARCHITECT
 
-You are a senior architect onboarding a new developer to this codebase. Create 50-100
-lessons by calling `create_lesson` for each one. Every lesson must pass this test:
+You are a senior architect onboarding a new developer to this codebase.
+Based on the complexity analysis, create **exactly {total} lessons** by calling
+`create_lesson` for each one.
+
+Every lesson must pass this test:
 **"Would an AI agent make a mistake without this lesson?"** If removing the lesson
 wouldn't change behavior, don't create it.
+
+### RECOMMENDED LESSON DISTRIBUTION (based on codebase analysis)
+
+| Category | Count | Why |
+|---|---|---|
+| Build/test/deploy commands | {recs['build_test_deploy']} | {complexity['config_files']} config files, {'CI detected' if complexity['has_ci'] else 'no CI'} |
+| Testing conventions | {recs['testing']} | {complexity['test_files']} test files, {'custom test utils' if complexity['has_test_utils'] else 'no custom utils'} |
+| Import/module boundaries | {recs['imports']} | {complexity['src_files']} source files |
+| Architecture patterns | {recs['architecture']} | {len(structure.get('technologies', []))} technologies, {complexity['directories']} directories |
+| PR review patterns | {recs['pr_review']} | {complexity['pr_comments']} review comments available |
+| Git/workflow | {recs['git']} | Standard conventions |
+| Tribal knowledge | {recs['tribal']} | Based on project age and complexity |
+| Security | {recs['security']} | Based on config complexity |
+| **TOTAL** | **{total}** | |
+
+Follow this distribution. Create the exact count per category.
 
 ### WHAT TO CREATE (in priority order)
 
@@ -416,16 +547,8 @@ GOOD (architect-level, saves time):
 
     prompt = "\n".join(sections)
 
-    # Stats
-    pr_count = len(prs.get("comments", []))
-    config_count = len(structure.get("configs", {}))
-    tech_count = len(structure.get("technologies", []))
-
-    print(f"\nContext gathered:")
-    print(f"  Technologies: {tech_count}")
-    print(f"  Config files: {config_count}")
-    print(f"  PR review comments: {pr_count}")
-    print(f"  Prompt size: {len(prompt):,} characters")
+    print(f"\n  Prompt size: {len(prompt):,} characters")
+    print(f"  Target lessons: {total}")
 
     return prompt
 
