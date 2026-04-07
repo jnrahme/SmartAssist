@@ -8,6 +8,7 @@ Provides tools:
   - rag_feedback: Record feedback on suggestions
   - apply_feedback_protocol: High-level feedback-to-memory workflow
   - create_lesson: Create new project-specific lesson (dual-path: feedback_log + curated)
+  - compare_lesson: Draft a lesson for A/B comparison without storing it
   - boost_lesson: Increase a lesson's score (V2 per-lesson feedback)
   - demote_lesson: Decrease a lesson's score, auto-retire if warranted
   - merge_lessons: Consolidate overlapping lessons into one
