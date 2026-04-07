@@ -4,17 +4,20 @@
 
 AI memory that learns from developer feedback. Planned package support targets Claude Code first, then the broader agent matrix through setup surfaces.
 
-## Install
+## Planned npm install (not live today)
 
 ```bash
+# Future command after the npm package is published
 npx smartassist-memory init
 ```
 
-Planned one-command flow for the npm package once that release channel is live.
+This section describes the intended npm flow after publish. Today, use the supported repo install from the main README: `pipx install git+https://github.com/jnrahme/SmartAssist.git`.
 
-## Planned Agent Setup Surfaces
+## Planned Agent Setup Surfaces (after npm publish)
 
 ```bash
+# Future examples after npm publish
+
 # Claude Code
 claude mcp add smartassist -- npx -y smartassist-memory serve
 
