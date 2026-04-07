@@ -28,3 +28,5 @@ node_modules/
 
 # SmartAssist data
 .claude/smartassist/
+.playwright-cli/
+.mcp.json.bak*

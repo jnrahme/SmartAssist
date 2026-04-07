@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from smartassist.dashboard_runtime import ensure_dashboard_running
+
 SESSION_NAME = "claude-sa"
 MONITOR_COLS = 30
 
@@ -59,6 +61,16 @@ def _kill_existing_session():
     )
 
 
+def _tmux_session_exists() -> bool:
+    return (
+        subprocess.run(
+            ["tmux", "has-session", "-t", SESSION_NAME],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+
+
 def _escape_applescript(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -66,8 +78,10 @@ def _escape_applescript(text: str) -> str:
 def _launch_tmux(log_file: Path) -> int:
     cwd = os.getcwd()
     quoted_cwd = shlex.quote(cwd)
-    quoted_session = shlex.quote(SESSION_NAME)
-    _kill_existing_session()
+
+    if _tmux_session_exists():
+        os.execvp("tmux", ["tmux", "attach-session", "-t", SESSION_NAME])
+        return 0
 
     subprocess.run(
         [
@@ -134,9 +148,7 @@ def _launch_tmux(log_file: Path) -> int:
 def _launch_fallback(log_file: Path) -> int:
     if sys.platform == "darwin":
         cwd = os.getcwd()
-        claude_cmd = _escape_applescript(
-            f"cd {shlex.quote(cwd)} && clear && claude"
-        )
+        claude_cmd = _escape_applescript(f"cd {shlex.quote(cwd)} && clear && claude")
         monitor_cmd = _escape_applescript(
             "clear && echo 'SmartAssist RAG Monitor' && "
             "echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '' && "
@@ -160,17 +172,15 @@ end tell
     return 0
 
 
-def _start_dashboard() -> None:
-    """Start the dashboard server as a fully detached process."""
+def _start_dashboard() -> str | None:
     try:
-        subprocess.Popen(
-            ["smartassist", "dashboard"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,  # fully detach — won't die with parent
-        )
-    except (FileNotFoundError, OSError):
-        pass
+        dashboard = ensure_dashboard_running(open_browser=True)
+    except Exception:
+        return None
+
+    if dashboard is None:
+        return None
+    return str(dashboard.get("url") or "") or None
 
 
 def main() -> int:
@@ -188,10 +198,8 @@ def main() -> int:
     log_file = data_dir / "rag_live.log"
     log_file.touch()
 
-    # Start dashboard as detached process — survives tmux/claude exit
-    # Auto-shuts down 60s after browser closes (heartbeat timeout)
-    _start_dashboard()
-    print("Dashboard: http://localhost:3000")
+    dashboard_url = _start_dashboard() or "http://localhost:3000"
+    print(f"Dashboard: {dashboard_url}")
 
     if shutil.which("tmux"):
         return _launch_tmux(log_file)

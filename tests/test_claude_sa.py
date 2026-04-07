@@ -12,6 +12,7 @@ from smartassist.claude_sa import (
     _auto_setup,
     _launch_tmux,
     _launch_fallback,
+    _start_dashboard,
     main,
     SESSION_NAME,
     MONITOR_COLS,
@@ -74,9 +75,13 @@ class TestLaunchTmux:
             text=True,
         )
         if probe.returncode != 0:
-            detail = (probe.stderr or probe.stdout or "tmux session creation unavailable").strip()
+            detail = (
+                probe.stderr or probe.stdout or "tmux session creation unavailable"
+            ).strip()
             pytest.skip(detail)
-        subprocess.run(["tmux", "kill-session", "-t", probe_session], capture_output=True)
+        subprocess.run(
+            ["tmux", "kill-session", "-t", probe_session], capture_output=True
+        )
 
     def test_creates_session(self, tmp_path, skip_without_tmux):
         log = tmp_path / "test.log"
@@ -233,8 +238,11 @@ class TestLaunchTmux:
             return Result()
 
         with (
+            patch("smartassist.claude_sa._tmux_session_exists", return_value=False),
             patch("smartassist.claude_sa._kill_existing_session"),
-            patch("smartassist.claude_sa.os.getcwd", return_value="/tmp/space dir/project"),
+            patch(
+                "smartassist.claude_sa.os.getcwd", return_value="/tmp/space dir/project"
+            ),
             patch("smartassist.claude_sa.subprocess.run", side_effect=fake_run),
             patch("smartassist.claude_sa.os.execvp", side_effect=SystemExit(0)),
         ):
@@ -243,6 +251,25 @@ class TestLaunchTmux:
 
         send_keys_call = calls[1]
         assert "cd '/tmp/space dir/project' && claude" in send_keys_call[4]
+
+    def test_reuses_existing_session(self, tmp_path):
+        log = tmp_path / "test.log"
+        log.touch()
+
+        with (
+            patch("smartassist.claude_sa._tmux_session_exists", return_value=True),
+            patch("smartassist.claude_sa.subprocess.run") as mock_run,
+            patch(
+                "smartassist.claude_sa.os.execvp", side_effect=SystemExit(0)
+            ) as mock_exec,
+        ):
+            with pytest.raises(SystemExit):
+                _launch_tmux(log)
+
+        mock_run.assert_not_called()
+        mock_exec.assert_called_once_with(
+            "tmux", ["tmux", "attach-session", "-t", SESSION_NAME]
+        )
 
 
 class TestLaunchFallback:
@@ -288,7 +315,9 @@ class TestLaunchFallback:
 
         with (
             patch("sys.platform", "darwin"),
-            patch("smartassist.claude_sa.os.getcwd", return_value="/tmp/space dir/project"),
+            patch(
+                "smartassist.claude_sa.os.getcwd", return_value="/tmp/space dir/project"
+            ),
             patch("smartassist.claude_sa.subprocess.run", side_effect=fake_run),
         ):
             result = _launch_fallback(log)
@@ -300,6 +329,13 @@ class TestLaunchFallback:
 
 
 class TestMain:
+    def test_start_dashboard_returns_url(self):
+        with patch(
+            "smartassist.claude_sa.ensure_dashboard_running",
+            return_value={"url": "http://localhost:3004"},
+        ):
+            assert _start_dashboard() == "http://localhost:3004"
+
     def test_returns_1_when_setup_fails(self, tmp_path, capsys):
         with (
             patch("smartassist.claude_sa.find_data_dir", return_value=None),
@@ -313,6 +349,10 @@ class TestMain:
         data.mkdir(parents=True, exist_ok=True)
         with (
             patch("smartassist.claude_sa.find_data_dir", return_value=data),
+            patch(
+                "smartassist.claude_sa._start_dashboard",
+                return_value="http://localhost:3000",
+            ),
             patch("shutil.which", return_value="/usr/bin/tmux"),
             patch("smartassist.claude_sa._launch_tmux", return_value=0) as mock_tmux,
         ):
@@ -325,6 +365,10 @@ class TestMain:
         data.mkdir(parents=True, exist_ok=True)
         with (
             patch("smartassist.claude_sa.find_data_dir", return_value=data),
+            patch(
+                "smartassist.claude_sa._start_dashboard",
+                return_value="http://localhost:3000",
+            ),
             patch("shutil.which", return_value=None),
             patch("smartassist.claude_sa._launch_fallback", return_value=0) as mock_fb,
         ):
@@ -348,6 +392,10 @@ class TestMain:
                 side_effect=find_data_dir_side_effect,
             ),
             patch("smartassist.claude_sa._auto_setup", return_value=True) as mock_setup,
+            patch(
+                "smartassist.claude_sa._start_dashboard",
+                return_value="http://localhost:3000",
+            ),
             patch("shutil.which", return_value="/usr/bin/tmux"),
             patch("smartassist.claude_sa._launch_tmux", return_value=0),
         ):
