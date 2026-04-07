@@ -8,9 +8,7 @@
     "smartassist": {
       "type": "local",
       "command": [
-        "npx",
-        "-y",
-        "smartassist-memory",
+        "smartassist",
         "serve"
       ],
       "enabled": true
