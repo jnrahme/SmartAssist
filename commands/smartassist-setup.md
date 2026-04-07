@@ -11,25 +11,39 @@ Run `smartassist version` to check. If it fails, proceed to Step 2. If it succee
 
 ## Step 2: Install the package
 
-Ask the user which method they prefer, then run the appropriate command:
-- `pipx install git+https://github.com/jnrahme/SmartAssist.git` (recommended — isolated environment)
-- `pip install git+https://github.com/jnrahme/SmartAssist.git`
-- `uv pip install git+https://github.com/jnrahme/SmartAssist.git`
+Use a supported install path:
 
-## Step 3: Initialize SmartAssist
+- `pipx install git+https://github.com/jnrahme/SmartAssist.git` (recommended)
+- local checkout: `pipx install .`
 
-Run `smartassist init` in the current project directory. This creates `.claude/smartassist/` with data and vector storage.
+Do not suggest `pipx install smartassist`, npm, Homebrew, or the `/install` script unless the user explicitly says those channels are already published and verified.
 
-## Step 4: Seed the database
+## Step 3: Set up the current project
 
-Run `smartassist seed` to populate the lesson database from the project's CLAUDE.md conventions.
+For the first SmartAssist repo on this machine, run:
 
-## Step 5: Vectorize lessons
+- `smartassist setup`
 
-Run `smartassist vectorize` to build the vector index for RAG search.
+For additional repos after SmartAssist is already installed/configured, run:
 
-## Step 6: Health check
+- `smartassist init`
 
-Run `smartassist health` to verify everything is working. Report the results to the user.
+## Step 4: Verify wiring
 
-If all steps pass, tell the user SmartAssist is ready. Their coding sessions will now automatically receive relevant lessons via RAG injection.
+Run:
+
+- `smartassist doctor`
+- `smartassist health`
+
+## Step 5: Seed lessons when useful
+
+Run `smartassist seed` if the project has conventions in `CLAUDE.md` or if the user wants a first-pass memory corpus.
+
+## Step 6: Rebuild cache only when needed
+
+Run `smartassist vectorize` only if:
+
+- the user explicitly wants a cache rebuild
+- `smartassist health` reports stale or missing vector/cache data
+
+If `doctor` is ready and `health` is acceptable for the current environment, tell the user SmartAssist is ready for this project.

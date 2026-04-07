@@ -66,13 +66,13 @@ smartassist setup-agent all
 | Agent | MCP Tools | Auto-Injection | Hooks | Setup |
 |---|---|---|---|---|
 | **Claude Code** | Yes | Yes (every prompt) | Yes (5 hooks) | `smartassist setup` |
-| **Codex** | Yes | Via AGENTS.md | No | `smartassist setup-agent codex` |
-| **Gemini** | Via HTTP | No | No | Function declarations |
-| **ChatGPT** | Via HTTP | No | No | OpenAPI custom action |
-| **Amp** | Via CLI | No | No | Skill template |
-| **OpenCode** | Yes | No | No | `smartassist setup-agent opencode` |
+| **Codex** | Yes | Via global Codex AGENTS | No | `smartassist setup-agent codex` |
+| **Gemini** | Via HTTP | Via generated system instructions | No | Function declarations + system instructions |
+| **ChatGPT** | Via HTTP | Via GPT instructions | No | OpenAPI custom action + GPT instructions |
+| **Amp** | Via CLI | Via workspace skill | No | `smartassist setup-agent amp` |
+| **OpenCode** | Yes | Via `opencode.json` instructions | No | `smartassist setup-agent opencode` |
 
-Claude Code gets the richest experience with automatic hook injection on every prompt. All agents share the same MCP tools, RLHF loop, and knowledge base.
+Claude Code gets the richest experience with automatic hook injection on every prompt. The other agents rely on their native instruction surfaces, but all of them can share the same SmartAssist feedback workflow through `apply_feedback_protocol`.
 
 ---
 
@@ -103,6 +103,7 @@ Every feedback signal makes the system smarter:
 | `rag_search` | Search for lessons with hybrid keyword + semantic + cross-encoder reranking |
 | `rag_dashboard` | View Thompson reliability scores, corpus stats, feedback metrics |
 | `rag_feedback` | Record whether a suggestion was helpful or not |
+| `apply_feedback_protocol` | Normalize feedback, dedupe against existing lessons, boost overlaps, and create only when needed |
 | `create_lesson` | Store a new lesson with quality gates and Thompson update |
 | `compare_lesson` | Draft a lesson for A/B comparison without storing |
 | `boost_lesson` | Increase a lesson's Thompson priority |
