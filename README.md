@@ -79,7 +79,7 @@ Claude Code gets the richest experience with automatic hook injection on every p
 ## How It Works
 
 1. **You give feedback** — `:)` or `:(` with context
-2. **Your AI creates a lesson** — the LLM analyzes full conversation context and calls `create_lesson`
+2. **Your AI applies the feedback workflow** — the LLM uses `apply_feedback_protocol` to dedupe, boost, merge, or create the right lesson from that feedback
 3. **Thompson Sampling learns** — per-lesson Beta-Bernoulli bandits rank lessons by proven impact
 4. **Best lessons injected** — dual-memory: project rules (semantic) + past corrections (episodic)
 5. **Your AI gets it right** — the system improves with every interaction

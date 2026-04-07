@@ -52,7 +52,7 @@ Run `smartassist setup-agent opencode`, or copy `opencode/opencode.json` to your
 
 | Feature | Claude | Codex | Gemini | ChatGPT | Amp | OpenCode |
 |---|---|---|---|---|---|---|
-| MCP tools (search, create, boost, demote, merge) | Yes | Yes | Via HTTP | Via HTTP | Via CLI | Yes |
+| MCP tools (search, dashboard, feedback, lesson workflow, compare, boost, demote, merge) | Yes | Yes | Via HTTP | Via HTTP | Via CLI | Yes |
 | Auto-injection every prompt (hooks) | Yes | Via global Codex AGENTS | No | No | Via workspace skill | Via `opencode.json` instructions |
 | Feedback signals (:) :() | Yes (hook) | Via `apply_feedback_protocol` | Via `apply_feedback_protocol` | Via `apply_feedback_protocol` | Via `apply_feedback_protocol` | Via `apply_feedback_protocol` |
 | Session boundary packs | Yes (hook) | No | No | No | No | No |
