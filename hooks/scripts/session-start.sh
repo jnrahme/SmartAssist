@@ -10,5 +10,5 @@ resolve_command "smartassist-session-start"
 if [ "$SMARTASSIST_AVAILABLE" -eq 1 ]; then
     $SMARTASSIST_CMD "$@"
 else
-    echo "[SmartAssist] Package not installed. Run: pipx install smartassist" >&2
+    echo "[SmartAssist] Package not installed. Run: pipx install git+https://github.com/jnrahme/SmartAssist.git" >&2
 fi
