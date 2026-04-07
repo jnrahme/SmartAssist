@@ -23,8 +23,39 @@
       }
     },
     {
+      "name": "apply_feedback_protocol",
+      "description": "Default SmartAssist feedback workflow. Call when the user corrects your approach, confirms a reusable pattern, rejects generated code, or reveals a project convention. This tool checks for duplicates, boosts existing lessons when the rule already exists, suggests merges for overlapping lessons, and only creates a new lesson when needed.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "feedback": {
+            "type": "string",
+            "description": "The user's correction, praise, or rule statement"
+          },
+          "sentiment": {
+            "type": "string",
+            "enum": ["positive", "negative"],
+            "description": "Optional sentiment hint. Omit it when the tool can infer the direction from the feedback text."
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional category hint: testing, code_edit, git, architecture, pr_review, security, debugging"
+          },
+          "intensity": {
+            "type": "integer",
+            "description": "Optional importance level 1-5. Leave unset to let SmartAssist infer it."
+          },
+          "context": {
+            "type": "string",
+            "description": "Optional extra context about what you were doing when the feedback happened"
+          }
+        },
+        "required": ["feedback"]
+      }
+    },
+    {
       "name": "create_lesson",
-      "description": "Create a new project-specific lesson from user feedback. Call when the user corrects your approach, rejects code, or reveals a project convention.",
+      "description": "Low-level lesson creation tool. Prefer apply_feedback_protocol for live feedback because it handles duplicate checks and overlap first.",
       "parameters": {
         "type": "object",
         "properties": {

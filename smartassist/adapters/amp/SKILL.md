@@ -5,36 +5,38 @@ description: Project memory that learns from feedback — search lessons, captur
 
 # SmartAssist Memory Skill
 
-## On user feedback
-
-When the user gives explicit feedback (thumbs up/down, corrections, praise):
-
-```bash
-npx -y smartassist-memory serve <<< '{"method":"tools/call","params":{"name":"create_lesson","arguments":{"lesson":"...","category":"...","sentiment":"negative"}}}'
-```
-
-Or use the CLI directly:
-
-```bash
-smartassist create-lesson --lesson "Always use theme tokens for colors" --category code_edit --sentiment negative
-```
-
-Do not store bare signals without context. Ask for one sentence explaining what worked or failed.
-
 ## Before major implementation
 
-Check for project-specific rules:
+Check for project-specific rules with `rag_search` before code edits, tests, commits, or architecture work.
 
-```bash
-npx -y smartassist-memory serve <<< '{"method":"tools/call","params":{"name":"rag_search","arguments":{"query":"how to handle testing in this project"}}}'
-```
+## On user feedback
 
-## At session start
+LESSON CREATION PROTOCOL
+============================================================
+When the user gives feedback during this session, use SmartAssist to
+persist it for future sessions.
 
-Review current reliability scores and weak categories:
+TRIGGERS — Use SmartAssist when:
+- The user corrects your approach
+- The user states a project rule or preference
+- The user rejects generated code and explains the preferred pattern
+- A PR review or code discussion reveals a team convention
+- You discover a project-specific pattern by reading code, configs, or docs
 
-```bash
-npx -y smartassist-memory serve <<< '{"method":"tools/call","params":{"name":"rag_dashboard","arguments":{}}}'
-```
+PRIMARY WORKFLOW:
+1. Call `apply_feedback_protocol` with the user's feedback or rule.
+2. Let SmartAssist decide whether to create a lesson, boost an existing one, or suggest a merge.
+3. Only call `merge_lessons` manually when SmartAssist returns `merge_suggested` and the overlap is real.
 
-Apply lessons from weak categories as guardrails for this session.
+HOW TO WRITE LESSONS WHEN MANUAL INPUT IS NEEDED:
+- Use imperative actions: 'Use semantic colors instead of hardcoded hex values'
+- Keep lessons project-specific, not generic programming advice
+- Categories: testing | code_edit | git | architecture | pr_review | security | debugging
+- Use intensity 4-5 for hard rules ('never', 'always'), 2-3 for softer preferences
+- Add brief context about what triggered the lesson
+
+DO NOT CREATE LESSONS FOR:
+- Generic programming knowledge
+- One-time task instructions
+- Duplicates of existing lessons
+============================================================

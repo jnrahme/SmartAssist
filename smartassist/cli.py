@@ -27,6 +27,13 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from smartassist.agent_protocol import (
+    render_amp_skill,
+    render_codex_agents_md,
+    render_manual_system_instructions,
+    render_opencode_instructions,
+    upsert_managed_block,
+)
 from smartassist.claude_config import (
     ensure_project_mcp_server,
     remove_legacy_mcp_servers,
@@ -34,6 +41,7 @@ from smartassist.claude_config import (
     remove_project_state_mcp_servers,
     remove_user_mcp_servers,
 )
+
 
 def _mcp_env() -> dict[str, str]:
     return {
@@ -60,6 +68,66 @@ def _record_setup_note(message: str, log=None):
         print(f"  {message}")
     else:
         log(message)
+
+
+def _write_text_file(path: Path, content: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content.rstrip() + "\n")
+    return path
+
+
+def _upsert_global_toml_setting(
+    existing_text: str, key: str, value_literal: str
+) -> str:
+    lines = [
+        line
+        for line in existing_text.splitlines()
+        if not line.strip().startswith(f"{key} =")
+    ]
+    insert_at = 0
+    while insert_at < len(lines) and (
+        not lines[insert_at].strip() or lines[insert_at].lstrip().startswith("#")
+    ):
+        insert_at += 1
+    lines.insert(insert_at, f"{key} = {value_literal}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _ensure_codex_instruction_setup() -> tuple[Path, Path]:
+    codex_dir = Path.home() / ".codex"
+    codex_dir.mkdir(parents=True, exist_ok=True)
+
+    agents_path = codex_dir / "AGENTS.md"
+    existing_agents = agents_path.read_text() if agents_path.exists() else ""
+    agents_path.write_text(
+        upsert_managed_block(existing_agents, render_codex_agents_md())
+    )
+
+    config_path = codex_dir / "config.toml"
+    existing_config = config_path.read_text() if config_path.exists() else ""
+    config_path.write_text(
+        _upsert_global_toml_setting(
+            existing_config,
+            "project_doc_fallback_filenames",
+            '["AGENTS.md", "CLAUDE.md"]',
+        )
+    )
+
+    return agents_path, config_path
+
+
+def _render_codex_mcp_block(command: str, args: list[str]) -> str:
+    rendered_args = ", ".join(json.dumps(arg) for arg in args)
+    return (
+        "\n[mcp_servers.smartassist]\n"
+        f"command = {json.dumps(command)}\n"
+        f"args = [{rendered_args}]\n"
+    )
+
+
+def _ensure_project_instruction_file(filename: str, content: str) -> Path:
+    project_root = Path.cwd().resolve()
+    return _write_text_file(project_root / ".smartassist" / filename, content)
 
 
 def _ensure_project_mcp_registration(log=None) -> Path:
@@ -347,12 +415,14 @@ def cmd_seed():
     """
     if "--deep" not in sys.argv:
         from smartassist.hooks.seed_from_claudemd import seed_database
+
         seed_database()
         return 0
 
     # --print: just output the prompt (original behavior)
     if "--print" in sys.argv:
         from smartassist.tools.deep_seed import run_deep_seed
+
         return run_deep_seed()
 
     # --llm: specify which LLM to use
@@ -379,6 +449,7 @@ def cmd_seed():
             api_key = sys.argv[idx + 1]
 
     from smartassist.tools.llm_seed import run_llm_seed
+
     return run_llm_seed(llm=llm, model=model, base_url=base_url, api_key=api_key)
 
 
@@ -422,9 +493,8 @@ def _clean_stale_shell_aliases():
             # Only remove legacy comment banners when they directly precede a
             # stale alias line. Otherwise preserve user-authored comments.
             next_stripped = lines[i + 1].strip() if i + 1 < len(lines) else ""
-            if (
-                stripped in comment_patterns
-                and any(next_stripped.startswith(p) for p in stale_patterns)
+            if stripped in comment_patterns and any(
+                next_stripped.startswith(p) for p in stale_patterns
             ):
                 removed.append((rc_name, stripped))
                 i += 1
@@ -601,6 +671,7 @@ def cmd_setup():
 
     _configure_hooks(settings, summary)
     from smartassist.config import atomic_write_json
+
     atomic_write_json(settings_path, settings)
 
     # 3c. Ensure ~/.local/bin in PATH
@@ -695,7 +766,9 @@ def cmd_uninstall():
     if remove_project_state_mcp_servers(project_root):
         removed.append("MCP server: removed from ~/.claude.json project config")
     else:
-        removed.append("MCP server: no ~/.claude.json project-scoped registration found")
+        removed.append(
+            "MCP server: no ~/.claude.json project-scoped registration found"
+        )
 
     if remove_user_mcp_servers():
         removed.append("MCP server: removed from ~/.claude.json user config")
@@ -732,6 +805,7 @@ def cmd_uninstall():
 
         settings["hooks"] = hooks
         from smartassist.config import atomic_write_json
+
         atomic_write_json(settings_path, settings)
         if hooks_removed:
             removed.append(f"Hooks: removed {hooks_removed} SmartAssist hooks")
@@ -801,7 +875,8 @@ def cmd_compare_lessons():
             continue
 
         pair_num += 1
-        sentiment = (hook_entry or claude_entry).get("sentiment", "?")
+        pair_entry = hook_entry if hook_entry is not None else claude_entry
+        sentiment = pair_entry.get("sentiment", "?") if pair_entry else "?"
 
         hook_passed = hook_entry.get("passed_gates", False) if hook_entry else False
         claude_passed = (
@@ -1068,14 +1143,30 @@ def cmd_setup_agent():
 def _setup_codex():
     """Register SmartAssist MCP with Codex."""
     import subprocess
+
+    command, args = _resolve_mcp_server_command()
     print("[codex] Registering MCP server...")
     try:
         subprocess.run(
-            ["codex", "mcp", "add", "smartassist", "--", "npx", "-y", "smartassist-memory", "serve"],
-            check=True, capture_output=True, timeout=30,
+            [
+                "codex",
+                "mcp",
+                "add",
+                "smartassist",
+                "--",
+                command,
+                *args,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=30,
         )
         print("[codex] MCP server registered via 'codex mcp add'")
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         # Fallback: write config.toml directly
         config_path = Path.home() / ".codex" / "config.toml"
         print(f"[codex] 'codex' CLI not found. Writing to {config_path}")
@@ -1083,18 +1174,28 @@ def _setup_codex():
         existing = config_path.read_text() if config_path.exists() else ""
         if "smartassist" not in existing:
             with open(config_path, "a") as f:
-                f.write('\n[mcp_servers.smartassist]\ncommand = "npx"\nargs = ["-y", "smartassist-memory", "serve"]\n')
+                f.write(_render_codex_mcp_block(command, args))
             print(f"[codex] Written to {config_path}")
         else:
             print("[codex] Already registered")
+
+    agents_path, config_path = _ensure_codex_instruction_setup()
+    print(f"[codex] SmartAssist startup guidance written to: {agents_path}")
+    print(f"[codex] Codex fallback filenames ensured in: {config_path}")
 
 
 def _setup_gemini():
     """Print Gemini setup instructions."""
     adapters = Path(__file__).parent / "adapters" / "gemini"
+    instructions_path = _ensure_project_instruction_file(
+        "gemini-system-instructions.md",
+        render_manual_system_instructions("Gemini"),
+    )
     print("[gemini] Gemini uses HTTP function declarations, not local MCP.")
     print(f"[gemini] Import the function declarations from:")
     print(f"         {adapters / 'function-declarations.json'}")
+    print(f"[gemini] Paste the SmartAssist system instructions from:")
+    print(f"         {instructions_path}")
     print("[gemini] Point the HTTP endpoints at your SmartAssist server.")
     print("[gemini] Start the server: smartassist serve")
 
@@ -1102,23 +1203,37 @@ def _setup_gemini():
 def _setup_chatgpt():
     """Print ChatGPT setup instructions."""
     adapters = Path(__file__).parent / "adapters" / "chatgpt"
+    instructions_path = _ensure_project_instruction_file(
+        "chatgpt-instructions.md",
+        render_manual_system_instructions("ChatGPT"),
+    )
     print("[chatgpt] ChatGPT uses OpenAPI custom actions, not local MCP.")
     print(f"[chatgpt] Import the OpenAPI spec from:")
     print(f"          {adapters / 'openapi.yaml'}")
+    print(f"[chatgpt] Paste the SmartAssist instructions from:")
+    print(f"          {instructions_path}")
     print("[chatgpt] Start the server: smartassist serve")
 
 
 def _setup_amp():
     """Print Amp setup instructions."""
-    adapters = Path(__file__).parent / "adapters" / "amp"
-    print(f"[amp] Copy the skill template to your Amp skills directory:")
-    print(f"      {adapters / 'SKILL.md'}")
+    skill_path = _write_text_file(
+        Path.cwd().resolve() / ".agents" / "skills" / "smartassist-memory" / "SKILL.md",
+        render_amp_skill(),
+    )
+    print(f"[amp] SmartAssist skill written to:")
+    print(f"      {skill_path}")
 
 
 def _setup_opencode():
     """Register SmartAssist with OpenCode."""
     import json as _json
+
     config_path = Path.cwd() / "opencode.json"
+    instructions_path = _ensure_project_instruction_file(
+        "opencode-instructions.md",
+        render_opencode_instructions(),
+    )
     print(f"[opencode] Writing MCP config to {config_path}")
     existing = {}
     if config_path.exists():
@@ -1132,8 +1247,16 @@ def _setup_opencode():
         "command": ["npx", "-y", "smartassist-memory", "serve"],
         "enabled": True,
     }
+    instructions = existing.get("instructions", [])
+    if not isinstance(instructions, list):
+        instructions = []
+    instruction_ref = ".smartassist/opencode-instructions.md"
+    if instruction_ref not in instructions:
+        instructions.append(instruction_ref)
+    existing["instructions"] = instructions
     config_path.write_text(_json.dumps(existing, indent=2) + "\n")
     print("[opencode] Registered")
+    print(f"[opencode] SmartAssist instructions written to {instructions_path}")
 
 
 def main():
@@ -1164,7 +1287,9 @@ def main():
         print("Usage: smartassist <command> [options]\n")
         print("Commands:")
         print(f"  {'setup':<15} Configure Claude Code (MCP server + hooks + init)")
-        print(f"  {'setup-agent':<15} Register with any agent: claude, codex, gemini, chatgpt, amp, opencode, all")
+        print(
+            f"  {'setup-agent':<15} Register with any agent: claude, codex, gemini, chatgpt, amp, opencode, all"
+        )
         print(f"  {'doctor':<15} Audit install readiness and runtime wiring")
         print(f"  {'uninstall':<15} Remove SmartAssist from Claude Code config")
         print(f"  {'init':<15} Initialize SmartAssist in current project")
@@ -1176,7 +1301,9 @@ def main():
         print(f"  {'analyze':<15} Show usage analytics")
         print(f"  {'dashboard':<15} Generate HTML dashboard")
         print(f"  {'qa':<15} Run QA scenarios and demo generation")
-        print(f"  {'seed':<15} Seed from CLAUDE.md, or --deep for LLM-powered analysis (--llm claude|codex|anthropic|openai)")
+        print(
+            f"  {'seed':<15} Seed from CLAUDE.md, or --deep for LLM-powered analysis (--llm claude|codex|anthropic|openai)"
+        )
         print(
             f"  {'compare-lessons':<15} Show A/B comparison of hook vs Claude lessons"
         )

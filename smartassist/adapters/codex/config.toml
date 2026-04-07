@@ -1,6 +1,8 @@
 # SmartAssist MCP profile for Codex
 # Copy into ~/.codex/config.toml or merge with existing config
 
+project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md"]
+
 [mcp_servers.smartassist]
-command = "npx"
-args = ["-y", "smartassist-memory", "serve"]
+command = "smartassist"
+args = ["serve"]

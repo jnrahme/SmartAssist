@@ -39,7 +39,7 @@ paths:
     post:
       operationId: createLesson
       summary: Create a new lesson
-      description: Save a project-specific lesson from user feedback or discovered convention.
+      description: Save a project-specific lesson directly. Prefer `apply_feedback_protocol` for live feedback because it handles duplicate checks and overlap first.
       requestBody:
         required: true
         content:
@@ -63,6 +63,35 @@ paths:
       responses:
         '200':
           description: Lesson created with ID
+
+  /apply_feedback_protocol:
+    post:
+      operationId: applyFeedbackProtocol
+      summary: Apply the SmartAssist feedback workflow
+      description: Normalize a user feedback event, check for duplicates or overlap, boost existing lessons when they already exist, suggest merges when multiple lessons overlap, and create a new lesson only when needed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [feedback]
+              properties:
+                feedback:
+                  type: string
+                  description: The user's correction, praise, or project rule
+                sentiment:
+                  type: string
+                  enum: [positive, negative]
+                category:
+                  type: string
+                intensity:
+                  type: integer
+                context:
+                  type: string
+      responses:
+        '200':
+          description: Protocol result describing whether SmartAssist created, boosted, ignored, or suggested a merge
 
   /rag_feedback:
     post:
