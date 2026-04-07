@@ -1,8 +1,8 @@
 # SmartAssist Memory
 
-> Draft package README for the upcoming npm release. `smartassist-memory` is not published to npm yet.
+> Draft package README for the upcoming npm release. `smartassist-memory` is not published to npm yet, so this is not the current supported public install path.
 
-AI memory that learns from developer feedback. Works with every AI coding agent.
+AI memory that learns from developer feedback. Planned package support targets Claude Code first, then the broader agent matrix through setup surfaces.
 
 ## Install
 
@@ -10,9 +10,9 @@ AI memory that learns from developer feedback. Works with every AI coding agent.
 npx smartassist-memory init
 ```
 
-One command. Installs SmartAssist and registers the MCP server with your current project.
+Planned one-command flow for the npm package once that release channel is live.
 
-## Works With Every Agent
+## Planned Agent Setup Surfaces
 
 ```bash
 # Claude Code
@@ -52,8 +52,8 @@ npx smartassist-memory init --agent all
 - **Per-lesson reinforcement learning** — Thompson Sampling with Beta-Bernoulli bandits
 - **Dual-memory injection** — project rules + past corrections (MemAlign pattern)
 - **Hybrid search** — keyword + semantic vectors + cross-encoder reranking
-- **Works with Claude Code, Codex, Gemini, ChatGPT, Amp, OpenCode**
-- **Zero config** — one command setup
+- **Targets Claude Code, Codex, Gemini, ChatGPT, Amp, and OpenCode**
+- **Planned zero-config npm flow** once the package is published
 - **Project-scoped** — each project has its own knowledge base
 
 ## Links

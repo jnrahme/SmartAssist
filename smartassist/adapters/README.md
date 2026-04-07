@@ -1,8 +1,8 @@
 # SmartAssist Adapters
 
-One MCP server, every AI coding agent.
+One SmartAssist server plus agent-specific setup surfaces.
 
-Current status: these adapter files are real, but the package-registry install channels are not published yet. Use the source install from the repo README first, then run the adapter-specific setup commands below.
+Current status: these adapter files are real, but the package-registry install channels are not published yet. Use the source install from the repo README first, then run the adapter-specific setup commands below. Claude has the strongest runtime validation today; the other agent paths are setup-supported but still need broader end-to-end proof.
 
 ## Quick Setup
 
