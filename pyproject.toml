@@ -39,12 +39,14 @@ dev = ["pytest>=7.0"]
 [project.scripts]
 smartassist = "smartassist.cli:main"
 claude-sa = "smartassist.claude_sa:main"
+codex-sa = "smartassist.codex_sa:main"
 smartassist-prompt-inject = "smartassist.hooks.prompt_inject:main"
 smartassist-session-start = "smartassist.hooks.session_start:main"
 smartassist-session-end = "smartassist.hooks.session_end:main"
 smartassist-commit-hook = "smartassist.hooks.commit_hook:main"
 smartassist-show-lessons = "smartassist.hooks.show_lessons:main"
 smartassist-monitor = "smartassist.monitor:main"
+smartassist-codex-sync = "smartassist.codex_activity:main"
 
 [tool.setuptools.packages.find]
 include = ["smartassist*"]

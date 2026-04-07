@@ -8,6 +8,7 @@ Usage:
 """
 
 import html
+import importlib
 import json
 import os
 import webbrowser
@@ -15,16 +16,43 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 from collections import Counter
+from urllib.parse import parse_qs, urlsplit
 
 from smartassist.claude_config import get_mcp_status as get_shared_mcp_status
-from smartassist.config import get_storage_path, get_db_path, EMBEDDING_DIM, EMBEDDING_MODEL
+from smartassist.codex_activity import sync_codex_activity
+from smartassist.config import (
+    get_storage_path,
+    get_db_path,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
+)
+
+
+def _sync_external_activity():
+    try:
+        sync_codex_activity()
+    except Exception:
+        pass
+
+
+from smartassist.dashboard_runtime import (
+    DASHBOARD_PORT_ATTEMPTS,
+    DEFAULT_DASHBOARD_PORT,
+    clear_dashboard_state,
+    dashboard_lock,
+    dashboard_url,
+    ensure_dashboard_running,
+    get_running_dashboard,
+    stop_dashboard,
+    write_dashboard_state,
+)
 
 
 def get_db_stats():
     """Get vector database stats and all lessons for search."""
     db_path = get_db_path()
     try:
-        import lancedb
+        lancedb = importlib.import_module("lancedb")
         db = lancedb.connect(str(db_path))
         table = db.open_table("documents")
         count = table.count_rows()
@@ -33,7 +61,13 @@ def get_db_stats():
         results = table.search([0.0] * EMBEDDING_DIM).limit(sample_size).to_list()
         cats = Counter(r.get("category", "unknown") for r in results)
         sample = results[:20]
-        correction_pct = sum(1 for r in sample if r.get("text", "").startswith("[")) / len(sample) * 100 if sample else 0
+        correction_pct = (
+            sum(1 for r in sample if r.get("text", "").startswith("["))
+            / len(sample)
+            * 100
+            if sample
+            else 0
+        )
 
         lessons = []
         for r in results:
@@ -45,7 +79,7 @@ def get_db_stats():
             if raw.startswith("["):
                 bracket_end = raw.find("] ")
                 if bracket_end > 0:
-                    lesson_text = raw[bracket_end + 2:]
+                    lesson_text = raw[bracket_end + 2 :]
                     if " Context: " in lesson_text:
                         parts = lesson_text.split(" Context: ", 1)
                         lesson_text = parts[0]
@@ -61,13 +95,15 @@ def get_db_stats():
                         context = s.replace("Context:", "").strip()
 
             if lesson_text:
-                lessons.append({
-                    "lesson": lesson_text[:500],
-                    "category": cat,
-                    "query": "",
-                    "response": "",
-                    "context": context[:200],
-                })
+                lessons.append(
+                    {
+                        "lesson": lesson_text[:500],
+                        "category": cat,
+                        "query": "",
+                        "response": "",
+                        "context": context[:200],
+                    }
+                )
 
         return {
             "count": count,
@@ -77,7 +113,14 @@ def get_db_stats():
             "lessons": lessons,
         }
     except Exception as e:
-        return {"count": 0, "categories": {}, "correction_pct": 0, "healthy": False, "error": str(e), "lessons": []}
+        return {
+            "count": 0,
+            "categories": {},
+            "correction_pct": 0,
+            "healthy": False,
+            "error": str(e),
+            "lessons": [],
+        }
 
 
 def get_feedback_stats():
@@ -141,13 +184,23 @@ def get_reliability_scores():
 
 def get_usage_stats():
     """Get usage evidence stats."""
+    _sync_external_activity()
     storage_path = get_storage_path()
     usage_log = storage_path / "usage_log.jsonl"
 
     if not usage_log.exists():
-        return {"total": 0, "searches": 0, "dashboards": 0, "hit_rate": 0,
-                "avg_latency": 0, "recent": [], "last_7d": 0, "last_24h": 0,
-                "avg_lessons": 0, "enriched_count": 0}
+        return {
+            "total": 0,
+            "searches": 0,
+            "dashboards": 0,
+            "hit_rate": 0,
+            "avg_latency": 0,
+            "recent": [],
+            "last_7d": 0,
+            "last_24h": 0,
+            "avg_lessons": 0,
+            "enriched_count": 0,
+        }
 
     events = []
     with open(usage_log, "r") as f:
@@ -166,8 +219,16 @@ def get_usage_stats():
     avg_lat = sum(latencies) / len(latencies) if latencies else 0
 
     now = datetime.now()
-    last_7d = sum(1 for e in events if datetime.fromisoformat(e["timestamp"]) > now - timedelta(days=7))
-    last_24h = sum(1 for e in events if datetime.fromisoformat(e["timestamp"]) > now - timedelta(hours=24))
+    last_7d = sum(
+        1
+        for e in events
+        if datetime.fromisoformat(e["timestamp"]) > now - timedelta(days=7)
+    )
+    last_24h = sum(
+        1
+        for e in events
+        if datetime.fromisoformat(e["timestamp"]) > now - timedelta(hours=24)
+    )
 
     recent = []
     for s in searches[-10:]:
@@ -209,7 +270,13 @@ def get_sync_status():
     feedback_log = storage_path / "feedback_log.jsonl"
 
     if not vectorization_log.exists():
-        return {"synced": False, "last_time": "never", "vectorized": 0, "in_db": 0, "pending": 0}
+        return {
+            "synced": False,
+            "last_time": "never",
+            "vectorized": 0,
+            "in_db": 0,
+            "pending": 0,
+        }
 
     with open(vectorization_log) as f:
         vlog = json.load(f)
@@ -259,11 +326,11 @@ def generate_html(db_stats, feedback, scores, usage, sync, mcp):
         color = "#34d399" if score >= 0.7 else "#fbbf24" if score >= 0.5 else "#f87171"
         status = "WEAK" if score < 0.7 else "OK"
         score_rows += (
-            f'<tr>'
-            f'<td><strong>{safe_cat}</strong></td>'
+            f"<tr>"
+            f"<td><strong>{safe_cat}</strong></td>"
             f'<td><div class="progress-track"><div class="progress-fill" style="width:{pct:.1f}%;background:{color};"></div></div></td>'
             f'<td style="color:{color};font-weight:600;white-space:nowrap;">{pct:.1f}%&nbsp;&nbsp;<span style="font-size:11px;opacity:0.7;">({status})</span></td>'
-            f'</tr>'
+            f"</tr>"
         )
 
     # Health checks
@@ -288,7 +355,7 @@ def generate_html(db_stats, feedback, scores, usage, sync, mcp):
 
     summary_class = "summary-pass" if checks_passed == checks_total else "summary-warn"
 
-    page = f'''<!DOCTYPE html>
+    page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -623,6 +690,10 @@ def generate_html(db_stats, feedback, scores, usage, sync, mcp):
     background: rgba(34, 211, 238, 0.12);
     color: #22d3ee;
   }}
+  .event-tool {{
+    background: rgba(167, 139, 250, 0.12);
+    color: #c4b5fd;
+  }}
   .event-prompt {{
     background: rgba(251, 191, 36, 0.12);
     color: #fbbf24;
@@ -848,6 +919,7 @@ const BADGE_MAP = {{
   create:   {{ cls: "event-create",   label: "CREATE" }},
   feedback: {{ cls: "event-feedback", label: "FEEDBACK" }},
   search:   {{ cls: "event-search",   label: "SEARCH" }},
+  tool:     {{ cls: "event-tool",     label: "TOOL" }},
   prompt:   {{ cls: "event-prompt",   label: "PROMPT" }},
 }};
 
@@ -878,7 +950,7 @@ function renderEvents(events) {{
 
 async function fetchLive() {{
   try {{
-    const res = await fetch('/api/live');
+    const res = await fetch(withClient('/api/live'));
     if (!res.ok) throw new Error(res.statusText);
     const events = await res.json();
     renderEvents(events);
@@ -892,8 +964,61 @@ async function fetchLive() {{
 setInterval(fetchLive, 3000);
 fetchLive();
 
-/* Heartbeat — keeps server alive while browser is open */
-setInterval(() => fetch("/api/heartbeat").catch(() => {{}}), 5000);
+const CLIENT_ID_KEY = "smartassist.dashboard.clientId";
+
+function makeClientId() {{
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {{
+    return window.crypto.randomUUID();
+  }}
+  return "dash-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+}}
+
+const CLIENT_ID = (() => {{
+  try {{
+    const existing = window.sessionStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const created = makeClientId();
+    window.sessionStorage.setItem(CLIENT_ID_KEY, created);
+    return created;
+  }} catch (e) {{
+    return makeClientId();
+  }}
+}})();
+
+function withClient(path) {{
+  const sep = path.includes("?") ? "&" : "?";
+  return path + sep + "client_id=" + encodeURIComponent(CLIENT_ID);
+}}
+
+async function sendHeartbeat() {{
+  try {{
+    await fetch(withClient("/api/heartbeat"), {{ cache: "no-store" }});
+  }} catch (e) {{}}
+}}
+
+window.addEventListener("focus", () => {{
+  fetchLive();
+  sendHeartbeat();
+}});
+
+document.addEventListener("visibilitychange", () => {{
+  if (!document.hidden) {{
+    fetchLive();
+    sendHeartbeat();
+  }}
+}});
+
+window.addEventListener("beforeunload", () => {{
+  const path = withClient("/api/disconnect");
+  if (navigator.sendBeacon) {{
+    navigator.sendBeacon(path, "bye");
+    return;
+  }}
+  fetch(path, {{ method: "POST", keepalive: true }}).catch(() => {{}});
+}});
+
+setInterval(sendHeartbeat, 15000);
+sendHeartbeat();
 
 /* ---------- Lesson Search ---------- */
 const LESSONS = {json.dumps(db_stats.get("lessons", []))};
@@ -955,12 +1080,13 @@ function doSearch() {{
 document.getElementById("searchInput").addEventListener("input", doSearch);
 </script>
 </body>
-</html>'''
+</html>"""
     return page
 
 
 def _collect_and_generate():
     """Collect all data and generate HTML."""
+    _sync_external_activity()
     db_stats = get_db_stats()
     feedback = get_feedback_stats()
     scores = get_reliability_scores()
@@ -977,6 +1103,8 @@ def _parse_live_log():
     with keys: time, type, description.  Events are returned newest-first.
     """
     import re
+
+    _sync_external_activity()
 
     log_path = get_storage_path() / "rag_live.log"
     if not log_path.exists():
@@ -1006,6 +1134,7 @@ def _parse_live_log():
         # Filter out Stats summary lines before classification — they
         # contain words like "injected" that would cause false positives.
         content_lines = [ln for ln in block if not ln.strip().startswith("Stats:")]
+        content_lines = [ln for ln in content_lines if set(ln.strip()) != {"="}]
         if not content_lines:
             return
 
@@ -1014,42 +1143,89 @@ def _parse_live_log():
 
         # Determine event type from content (order matters — most specific first)
         if re.search(r"injected?\s+\d+\s+lesson", text_lower):
-            events.append({
-                "time": ts,
-                "type": "inject",
-                "description": _clean_description(text),
-            })
+            events.append(
+                {
+                    "time": ts,
+                    "type": "inject",
+                    "description": _clean_description(text),
+                }
+            )
         elif "no relevant lessons" in text_lower:
-            events.append({
-                "time": ts,
-                "type": "search",
-                "description": _clean_description(text),
-            })
+            events.append(
+                {
+                    "time": ts,
+                    "type": "search",
+                    "description": _clean_description(text),
+                }
+            )
         elif "lesson" in text_lower and "creat" in text_lower:
-            events.append({
-                "time": ts,
-                "type": "create",
-                "description": _clean_description(text),
-            })
-        elif "feedback" in text_lower:
-            events.append({
-                "time": ts,
-                "type": "feedback",
-                "description": _clean_description(text),
-            })
+            events.append(
+                {
+                    "time": ts,
+                    "type": "create",
+                    "description": _clean_description(text),
+                }
+            )
+        elif any(
+            token in text_lower
+            for token in ["mcp dashboard", "dashboard:", "rag_dashboard"]
+        ):
+            events.append(
+                {
+                    "time": ts,
+                    "type": "tool",
+                    "description": _clean_description(text),
+                }
+            )
+        elif any(
+            token in text_lower for token in ["mcp search", "search:", "rag_search"]
+        ):
+            events.append(
+                {
+                    "time": ts,
+                    "type": "search",
+                    "description": _clean_description(text),
+                }
+            )
+        elif (
+            any(
+                token in text_lower
+                for token in [
+                    "boost:",
+                    "demote:",
+                    "retire:",
+                    "merge:",
+                    "feedback protocol",
+                    "rag_feedback",
+                    "mcp feedback",
+                ]
+            )
+            or "feedback" in text_lower
+        ):
+            events.append(
+                {
+                    "time": ts,
+                    "type": "feedback",
+                    "description": _clean_description(text),
+                }
+            )
         elif "PROMPT" in text or re.search(r"Prompt\s+#\d+", text):
-            events.append({
-                "time": ts,
-                "type": "prompt",
-                "description": _clean_description(text),
-            })
+            events.append(
+                {
+                    "time": ts,
+                    "type": "prompt",
+                    "description": _clean_description(text),
+                }
+            )
         elif text.strip():
             # Default: treat as prompt activity
-            events.append({
-                "time": ts,
-                "type": "prompt",
-                "description": _clean_description(text),
-            })
+            events.append(
+                {
+                    "time": ts,
+                    "type": "prompt",
+                    "description": _clean_description(text),
+                }
+            )
 
     def _clean_description(text):
         """Produce a single-line readable description from a log block."""
@@ -1063,6 +1239,8 @@ def _parse_live_log():
         for p in parts:
             # Skip stats summary lines
             if p.startswith("Stats:"):
+                continue
+            if p and set(p) == {"="}:
                 continue
             # Clean up leading pipe separators
             p = re.sub(r"^\|\s*", "", p)
@@ -1112,9 +1290,10 @@ def main():
     import http.server
     import threading
 
-    port = 3000
-    serve = True
+    preferred_port = DEFAULT_DASHBOARD_PORT
+    serve = False
     output_path = None
+    no_browser = False
 
     args = sys.argv[1:]
     for i, arg in enumerate(args):
@@ -1122,73 +1301,119 @@ def main():
             output_path = Path(args[i + 1])
             serve = False
         elif arg == "--port" and i + 1 < len(args):
-            port = int(args[i + 1])
+            preferred_port = int(args[i + 1])
+        elif arg == "--serve":
+            serve = True
+        elif arg == "--no-browser":
+            no_browser = True
         elif arg == "--no-serve":
             serve = False
         elif arg == "--stop":
-            # Kill any running dashboard server
-            import signal
-            pid_file = get_storage_path() / "dashboard.pid"
-            if pid_file.exists():
-                try:
-                    pid = int(pid_file.read_text().strip())
-                    os.kill(pid, signal.SIGTERM)
-                    pid_file.unlink()
-                    print("Dashboard stopped.")
-                except (ProcessLookupError, ValueError):
-                    pid_file.unlink(missing_ok=True)
-                    print("Dashboard was not running.")
-            else:
-                print("No dashboard running.")
+            _, message = stop_dashboard()
+            print(message)
             return 0
 
-    print("Collecting data...")
-
-    db_stats = get_db_stats()
-    print(f"  Database: {db_stats['count']:,} documents")
-
-    feedback = get_feedback_stats()
-    print(f"  Feedback: {feedback['total']:,} events")
-
-    scores = get_reliability_scores()
-    print(f"  Scores: {len(scores)} categories")
-
-    usage = get_usage_stats()
-    print(f"  Usage: {usage['total']} tool calls logged")
-
-    sync = get_sync_status()
-    print(f"  Sync: {'in sync' if sync['synced'] else 'pending'}")
-
-    mcp = get_mcp_status()
-    print(f"  MCP: {'registered' if mcp['registered'] else 'NOT registered'}")
-
-    print("Generating HTML dashboard...")
-    page = generate_html(db_stats, feedback, scores, usage, sync, mcp)
+    if not serve and output_path is None:
+        dashboard = ensure_dashboard_running(
+            preferred_port=preferred_port,
+            open_browser=not no_browser,
+        )
+        if dashboard is None:
+            print("Error: Dashboard failed to start.")
+            return 1
+        print(f"Dashboard ready at: {dashboard['url']}")
+        return 0
 
     if not serve:
+        print("Collecting data...")
+
+        db_stats = get_db_stats()
+        print(f"  Database: {db_stats['count']:,} documents")
+
+        feedback = get_feedback_stats()
+        print(f"  Feedback: {feedback['total']:,} events")
+
+        scores = get_reliability_scores()
+        print(f"  Scores: {len(scores)} categories")
+
+        usage = get_usage_stats()
+        print(f"  Usage: {usage['total']} tool calls logged")
+
+        sync = get_sync_status()
+        print(f"  Sync: {'in sync' if sync['synced'] else 'pending'}")
+
+        mcp = get_mcp_status()
+        print(f"  MCP: {'registered' if mcp['registered'] else 'NOT registered'}")
+
+        print("Generating HTML dashboard...")
+        page = generate_html(db_stats, feedback, scores, usage, sync, mcp)
+
         if output_path is None:
             output_path = Path.home() / "Desktop" / "SmartAssist Dashboard.html"
         output_path.write_text(page, encoding="utf-8")
         print(f"  Written to: {output_path}")
-        webbrowser.open(f"file://{output_path}")
+        if not no_browser:
+            webbrowser.open(f"file://{output_path}")
         return 0
 
-    # Serve dashboard with heartbeat-based auto-shutdown
     import time as _time
-    last_heartbeat = [_time.time()]
-    HEARTBEAT_TIMEOUT = 60  # shutdown after 60s of no browser connection
+
+    port = preferred_port
+    url = dashboard_url(port)
+    state_started_at = datetime.now().isoformat(timespec="seconds")
+    heartbeat_timeout = max(
+        60,
+        int(os.environ.get("SMARTASSIST_DASHBOARD_HEARTBEAT_TIMEOUT", "180")),
+    )
+    last_activity = [_time.time()]
+    client_heartbeats = {}
+    client_lock = threading.Lock()
+
+    def _prune_clients(now: float) -> None:
+        stale = [
+            client_id
+            for client_id, seen_at in client_heartbeats.items()
+            if now - seen_at > heartbeat_timeout
+        ]
+        for client_id in stale:
+            client_heartbeats.pop(client_id, None)
+
+    def _touch_client(client_id: str | None) -> None:
+        now = _time.time()
+        last_activity[0] = now
+        if not client_id:
+            return
+        with client_lock:
+            client_heartbeats[client_id] = now
+            _prune_clients(now)
+
+    def _remove_client(client_id: str | None) -> None:
+        if not client_id:
+            return
+        last_activity[0] = _time.time()
+        with client_lock:
+            client_heartbeats.pop(client_id, None)
+
+    def _active_client_count() -> int:
+        now = _time.time()
+        with client_lock:
+            _prune_clients(now)
+            return len(client_heartbeats)
 
     class DashboardHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            last_heartbeat[0] = _time.time()
-            if self.path == "/" or self.path == "/index.html":
+            parsed = urlsplit(self.path)
+            client_id = (parse_qs(parsed.query).get("client_id") or [None])[0]
+            _touch_client(client_id)
+
+            if parsed.path == "/" or parsed.path == "/index.html":
                 fresh_page = _collect_and_generate()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
                 self.end_headers()
                 self.wfile.write(fresh_page.encode("utf-8"))
-            elif self.path == "/api/live":
+            elif parsed.path == "/api/live":
                 events = _parse_live_log()
                 payload = json.dumps(events)
                 self.send_response(200)
@@ -1196,53 +1421,99 @@ def main():
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
                 self.end_headers()
                 self.wfile.write(payload.encode("utf-8"))
-            elif self.path == "/api/heartbeat":
+            elif parsed.path == "/api/heartbeat":
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain")
                 self.end_headers()
                 self.wfile.write(b"ok")
+            elif parsed.path == "/api/status":
+                payload = json.dumps(
+                    {
+                        "pid": os.getpid(),
+                        "port": port,
+                        "url": url,
+                        "status": "running",
+                        "started_at": state_started_at,
+                        "active_clients": _active_client_count(),
+                        "heartbeat_timeout": heartbeat_timeout,
+                    }
+                )
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.end_headers()
+                self.wfile.write(payload.encode("utf-8"))
             else:
                 self.send_response(404)
                 self.end_headers()
 
+        def do_POST(self):
+            parsed = urlsplit(self.path)
+            if parsed.path != "/api/disconnect":
+                self.send_response(404)
+                self.end_headers()
+                return
+
+            client_id = (parse_qs(parsed.query).get("client_id") or [None])[0]
+            _remove_client(client_id)
+            self.send_response(204)
+            self.end_headers()
+
         def log_message(self, format, *args):
             pass
 
+    class DashboardServer(http.server.ThreadingHTTPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
     def _watchdog(srv):
-        """Shutdown server if no heartbeat received for HEARTBEAT_TIMEOUT seconds."""
         while True:
             _time.sleep(10)
-            if _time.time() - last_heartbeat[0] > HEARTBEAT_TIMEOUT:
+            if _active_client_count() > 0:
+                continue
+            if _time.time() - last_activity[0] > heartbeat_timeout:
                 srv.shutdown()
                 return
 
-    # Try the requested port, fall back if busy
     server = None
-    for try_port in range(port, port + 10):
-        try:
-            server = http.server.HTTPServer(("127.0.0.1", try_port), DashboardHandler)
-            port = try_port
-            break
-        except OSError:
-            continue
+    with dashboard_lock():
+        existing = get_running_dashboard()
+        if existing is not None:
+            if not no_browser:
+                webbrowser.open(existing["url"])
+            print(f"Dashboard already running at: {existing['url']}")
+            return 0
 
-    if server is None:
-        print("Error: Could not find an available port.")
-        return 1
+        for try_port in range(preferred_port, preferred_port + DASHBOARD_PORT_ATTEMPTS):
+            try:
+                server = DashboardServer(("127.0.0.1", try_port), DashboardHandler)
+                port = try_port
+                url = dashboard_url(port)
+                break
+            except OSError:
+                continue
 
-    url = f"http://localhost:{port}"
+        if server is None:
+            print("Error: Could not find an available port.")
+            return 1
+
+        write_dashboard_state(
+            {
+                "pid": os.getpid(),
+                "port": port,
+                "url": url,
+                "status": "running",
+                "started_at": state_started_at,
+            }
+        )
+
     print(f"\n  Dashboard running at: {url}")
     print(f"  Data refreshes on each page load")
     print(f"  Stop with: smartassist dashboard --stop\n")
 
-    # Save PID for --stop
-    pid_file = get_storage_path() / "dashboard.pid"
-    pid_file.write_text(str(os.getpid()))
+    if not no_browser:
+        webbrowser.open(url)
 
-    webbrowser.open(url)
-
-    # Start watchdog — auto-shutdown if browser closes (no heartbeat for 60s)
-    import threading
     watchdog = threading.Thread(target=_watchdog, args=(server,), daemon=True)
     watchdog.start()
 
@@ -1252,7 +1523,7 @@ def main():
         pass
     finally:
         server.server_close()
-        pid_file.unlink(missing_ok=True)
+        clear_dashboard_state()
         print("\nDashboard stopped.")
 
     return 0
