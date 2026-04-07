@@ -17,7 +17,7 @@ from pathlib import Path
 from smartassist.tools.deep_seed import build_deep_seed_prompt
 
 
-SUPPORTED_LLMS = ["claude", "codex", "anthropic", "openai"]
+SUPPORTED_LLMS = ["claude", "codex", "anthropic", "openai", "ollama", "custom"]
 
 DEFAULT_LLM = "claude"  # Most SmartAssist users have Claude Code
 
@@ -32,6 +32,16 @@ def detect_available_llm():
         return "anthropic"
     if os.environ.get("OPENAI_API_KEY"):
         return "openai"
+    # Check for local Ollama
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2)
+        return "ollama"
+    except Exception:
+        pass
+    # Check for custom endpoint
+    if os.environ.get("LLM_API_BASE") and os.environ.get("LLM_API_KEY"):
+        return "custom"
     return None
 
 
@@ -170,6 +180,91 @@ def create_lessons_via_openai(prompt, model="gpt-4o"):
         return []
 
 
+def create_lessons_via_ollama(prompt, model="llama3.1"):
+    """Use local Ollama instance. Zero config if Ollama is running."""
+    print(f"Using Ollama ({model})...\n")
+
+    import urllib.request
+
+    payload = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": _build_system_prompt()},
+            {"role": "user", "content": prompt},
+        ],
+        "stream": False,
+    }).encode()
+
+    try:
+        req = urllib.request.Request(
+            "http://localhost:11434/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read())
+            text = data.get("message", {}).get("content", "")
+            return _parse_lesson_lines(text)
+    except Exception as e:
+        print(f"Ollama error: {e}")
+        print("Make sure Ollama is running: ollama serve")
+        return []
+
+
+def create_lessons_via_custom(prompt, model=None, base_url=None, api_key=None):
+    """Use any OpenAI-compatible API endpoint.
+
+    Works with: Together, Groq, Mistral, Fireworks, LM Studio, vLLM, etc.
+
+    Config via env vars or flags:
+        LLM_API_BASE=https://api.together.xyz/v1
+        LLM_API_KEY=your-key
+        LLM_MODEL=meta-llama/Llama-3-70b-chat-hf
+    """
+    base_url = base_url or os.environ.get("LLM_API_BASE", "")
+    api_key = api_key or os.environ.get("LLM_API_KEY", "")
+    model = model or os.environ.get("LLM_MODEL", "")
+
+    if not base_url:
+        print("Custom LLM requires LLM_API_BASE environment variable.")
+        print("Example: export LLM_API_BASE=https://api.together.xyz/v1")
+        return []
+    if not model:
+        print("Custom LLM requires --model flag or LLM_MODEL env var.")
+        return []
+
+    print(f"Using custom endpoint: {base_url} ({model})...\n")
+
+    import urllib.request
+
+    payload = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": _build_system_prompt()},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": 8192,
+    }).encode()
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        req = urllib.request.Request(
+            f"{base_url.rstrip('/')}/chat/completions",
+            data=payload,
+            headers=headers,
+        )
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read())
+            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return _parse_lesson_lines(text)
+    except Exception as e:
+        print(f"Custom API error: {e}")
+        return []
+
+
 def _parse_lesson_lines(text):
     """Parse JSON lesson lines from LLM output. Handles markdown code blocks."""
     lessons = []
@@ -246,7 +341,7 @@ def store_lessons(lessons, project_root):
     return stored, failed
 
 
-def run_llm_seed(llm=None, model=None):
+def run_llm_seed(llm=None, model=None, base_url=None, api_key=None):
     """Full pipeline: gather context → call LLM → store lessons."""
     project_root = os.getcwd()
 
@@ -258,17 +353,26 @@ def run_llm_seed(llm=None, model=None):
     if llm is None:
         llm = detect_available_llm()
         if llm is None:
-            print("No LLM backend found. Options:")
-            print("  1. Install Claude Code: npm install -g @anthropic-ai/claude-code")
-            print("  2. Install Codex: npm install -g @openai/codex")
-            print("  3. Set ANTHROPIC_API_KEY or OPENAI_API_KEY")
-            print("\nOr specify: smartassist seed --deep --llm claude")
+            print("No LLM backend found. Options:\n")
+            print("  Zero config (if you have an agent installed):")
+            print("    Claude Code:  npm install -g @anthropic-ai/claude-code")
+            print("    Codex:        npm install -g @openai/codex")
+            print("    Ollama:       ollama serve (local, free)\n")
+            print("  API key (set env var):")
+            print("    export ANTHROPIC_API_KEY=sk-ant-...")
+            print("    export OPENAI_API_KEY=sk-...\n")
+            print("  Any OpenAI-compatible endpoint:")
+            print("    export LLM_API_BASE=https://api.together.xyz/v1")
+            print("    export LLM_API_KEY=your-key")
+            print("    smartassist seed --deep --llm custom --model meta-llama/Llama-3-70b\n")
             return 1
         print(f"Auto-detected LLM: {llm}\n")
     else:
         if llm not in SUPPORTED_LLMS:
             print(f"Unknown LLM: {llm}")
             print(f"Supported: {', '.join(SUPPORTED_LLMS)}")
+            print("\nFor any OpenAI-compatible API, use: --llm custom --model <name>")
+            print("  Set LLM_API_BASE and LLM_API_KEY env vars")
             return 1
 
     # Phase 1: Gather context
@@ -285,6 +389,10 @@ def run_llm_seed(llm=None, model=None):
         lessons = create_lessons_via_anthropic(prompt, model=model or "claude-sonnet-4-20250514")
     elif llm == "openai":
         lessons = create_lessons_via_openai(prompt, model=model or "gpt-4o")
+    elif llm == "ollama":
+        lessons = create_lessons_via_ollama(prompt, model=model or "llama3.1")
+    elif llm == "custom":
+        lessons = create_lessons_via_custom(prompt, model=model, base_url=base_url, api_key=api_key)
     else:
         print(f"Unsupported LLM: {llm}")
         return 1

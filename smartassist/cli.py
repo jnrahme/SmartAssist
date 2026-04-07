@@ -336,7 +336,14 @@ def cmd_seed():
         smartassist seed --deep --llm anthropic  # Use Anthropic API (needs ANTHROPIC_API_KEY)
         smartassist seed --deep --llm openai     # Use OpenAI API (needs OPENAI_API_KEY)
         smartassist seed --deep --llm anthropic --model claude-opus-4-20250514
+        smartassist seed --deep --llm ollama --model llama3.1   # Local Ollama (free)
+        smartassist seed --deep --llm custom --model <name>    # Any OpenAI-compatible API
         smartassist seed --deep --print     # Print prompt only (paste into any LLM session)
+
+    Custom endpoint env vars:
+        LLM_API_BASE=https://api.together.xyz/v1
+        LLM_API_KEY=your-key
+        LLM_MODEL=meta-llama/Llama-3-70b-chat-hf
     """
     if "--deep" not in sys.argv:
         from smartassist.hooks.seed_from_claudemd import seed_database
@@ -360,8 +367,19 @@ def cmd_seed():
         if idx + 1 < len(sys.argv):
             model = sys.argv[idx + 1]
 
+    base_url = None
+    api_key = None
+    if "--base-url" in sys.argv:
+        idx = sys.argv.index("--base-url")
+        if idx + 1 < len(sys.argv):
+            base_url = sys.argv[idx + 1]
+    if "--api-key" in sys.argv:
+        idx = sys.argv.index("--api-key")
+        if idx + 1 < len(sys.argv):
+            api_key = sys.argv[idx + 1]
+
     from smartassist.tools.llm_seed import run_llm_seed
-    return run_llm_seed(llm=llm, model=model)
+    return run_llm_seed(llm=llm, model=model, base_url=base_url, api_key=api_key)
 
 
 def _clean_stale_shell_aliases():
