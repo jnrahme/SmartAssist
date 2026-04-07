@@ -324,18 +324,44 @@ def cmd_dashboard():
 
 
 def cmd_seed():
-    """Seed database from CLAUDE.md conventions or deep codebase analysis.
+    """Seed database from CLAUDE.md or deep LLM-powered codebase analysis.
 
-    --deep: LLM-powered analysis of git history, PR reviews, code structure.
-            Gathers context and instructs the LLM to create 50-100 lessons.
+    Basic:
+        smartassist seed                    # Parse CLAUDE.md for conventions
+
+    Deep (LLM-powered):
+        smartassist seed --deep             # Auto-detect LLM, create architect-level lessons
+        smartassist seed --deep --llm claude # Use Claude Code CLI (zero API key)
+        smartassist seed --deep --llm codex # Use Codex CLI (zero API key)
+        smartassist seed --deep --llm anthropic  # Use Anthropic API (needs ANTHROPIC_API_KEY)
+        smartassist seed --deep --llm openai     # Use OpenAI API (needs OPENAI_API_KEY)
+        smartassist seed --deep --llm anthropic --model claude-opus-4-20250514
+        smartassist seed --deep --print     # Print prompt only (paste into any LLM session)
     """
-    if "--deep" in sys.argv:
+    if "--deep" not in sys.argv:
+        from smartassist.hooks.seed_from_claudemd import seed_database
+        seed_database()
+        return 0
+
+    # --print: just output the prompt (original behavior)
+    if "--print" in sys.argv:
         from smartassist.tools.deep_seed import run_deep_seed
         return run_deep_seed()
 
-    from smartassist.hooks.seed_from_claudemd import seed_database
-    seed_database()
-    return 0
+    # --llm: specify which LLM to use
+    llm = None
+    model = None
+    if "--llm" in sys.argv:
+        idx = sys.argv.index("--llm")
+        if idx + 1 < len(sys.argv):
+            llm = sys.argv[idx + 1]
+    if "--model" in sys.argv:
+        idx = sys.argv.index("--model")
+        if idx + 1 < len(sys.argv):
+            model = sys.argv[idx + 1]
+
+    from smartassist.tools.llm_seed import run_llm_seed
+    return run_llm_seed(llm=llm, model=model)
 
 
 def _clean_stale_shell_aliases():
@@ -1132,7 +1158,7 @@ def main():
         print(f"  {'analyze':<15} Show usage analytics")
         print(f"  {'dashboard':<15} Generate HTML dashboard")
         print(f"  {'qa':<15} Run QA scenarios and demo generation")
-        print(f"  {'seed':<15} Seed database from CLAUDE.md (or --deep for LLM-powered codebase analysis)")
+        print(f"  {'seed':<15} Seed from CLAUDE.md, or --deep for LLM-powered analysis (--llm claude|codex|anthropic|openai)")
         print(
             f"  {'compare-lessons':<15} Show A/B comparison of hook vs Claude lessons"
         )
