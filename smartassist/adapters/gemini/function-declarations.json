@@ -85,6 +85,33 @@
       }
     },
     {
+      "name": "compare_lesson",
+      "description": "Draft a lesson for A/B comparison without storing it. Use when SmartAssist wants a comparison draft for feedback quality review.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "Imperative statement (>30 chars) with an action verb"
+          },
+          "category": {
+            "type": "string",
+            "description": "One of: testing, code_edit, git, architecture, pr_review, security, debugging"
+          },
+          "sentiment": {
+            "type": "string",
+            "enum": ["positive", "negative"],
+            "description": "Whether this draft came from praise or correction"
+          },
+          "context": {
+            "type": "string",
+            "description": "What you were doing when the draft was generated"
+          }
+        },
+        "required": ["lesson", "category"]
+      }
+    },
+    {
       "name": "rag_feedback",
       "description": "Record whether the last suggestion was helpful. Updates Thompson Sampling reliability scores.",
       "parameters": {
@@ -149,9 +176,8 @@
         "type": "object",
         "properties": {
           "lesson_ids": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "IDs of lessons to merge"
+            "type": "string",
+            "description": "Comma-separated lesson IDs to merge (for example: L001,L002,L003)"
           },
           "new_lesson": {
             "type": "string",

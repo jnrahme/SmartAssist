@@ -64,6 +64,33 @@ paths:
         '200':
           description: Lesson created with ID
 
+  /compare_lesson:
+    post:
+      operationId: compareLesson
+      summary: Draft a lesson for A/B comparison
+      description: Create a comparison-only lesson draft without storing it in the active knowledge base.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lesson, category]
+              properties:
+                lesson:
+                  type: string
+                  description: Imperative statement (>30 chars)
+                category:
+                  type: string
+                sentiment:
+                  type: string
+                  enum: [positive, negative]
+                context:
+                  type: string
+      responses:
+        '200':
+          description: Comparison draft logged without mutating active retrieval state
+
   /apply_feedback_protocol:
     post:
       operationId: applyFeedbackProtocol
@@ -172,9 +199,8 @@ paths:
               required: [lesson_ids, new_lesson, category]
               properties:
                 lesson_ids:
-                  type: array
-                  items:
-                    type: string
+                  type: string
+                  description: "Comma-separated lesson IDs to merge (for example: L001,L002,L003)"
                 new_lesson:
                   type: string
                 category:
