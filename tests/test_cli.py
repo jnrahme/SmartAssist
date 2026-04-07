@@ -349,11 +349,20 @@ class TestSetupAgentArtifacts:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
         monkeypatch.chdir(project_dir)
+        monkeypatch.setattr(
+            "smartassist.cli._resolve_mcp_server_command",
+            lambda: ("/tmp/smartassist-python", ["-m", "smartassist.mcp_server"]),
+        )
 
         _setup_opencode()
 
         config = json.loads((project_dir / "opencode.json").read_text())
         assert ".smartassist/opencode-instructions.md" in config["instructions"]
+        assert config["mcp"]["smartassist"]["command"] == [
+            "/tmp/smartassist-python",
+            "-m",
+            "smartassist.mcp_server",
+        ]
         instructions_path = project_dir / ".smartassist" / "opencode-instructions.md"
         assert instructions_path.exists()
         assert "apply_feedback_protocol" in instructions_path.read_text()

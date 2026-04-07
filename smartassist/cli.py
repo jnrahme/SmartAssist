@@ -1229,6 +1229,7 @@ def _setup_opencode():
     """Register SmartAssist with OpenCode."""
     import json as _json
 
+    command, args = _resolve_mcp_server_command()
     config_path = Path.cwd() / "opencode.json"
     instructions_path = _ensure_project_instruction_file(
         "opencode-instructions.md",
@@ -1244,7 +1245,7 @@ def _setup_opencode():
     mcp = existing.setdefault("mcp", {})
     mcp["smartassist"] = {
         "type": "local",
-        "command": ["npx", "-y", "smartassist-memory", "serve"],
+        "command": [command, *args],
         "enabled": True,
     }
     instructions = existing.get("instructions", [])
