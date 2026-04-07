@@ -1,5 +1,8 @@
 # PyPI Release
 
+> Archived draft: this is a future release runbook, not the current public install surface.
+> SmartAssist is not currently published on PyPI, so commands like `pipx install smartassist` remain release targets rather than live instructions.
+
 SmartAssist is set up to publish from GitHub Actions via trusted publishing.
 
 ## One-time setup

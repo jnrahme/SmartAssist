@@ -3,6 +3,8 @@
 > **Date**: 2026-03-05
 > **Repo**: https://github.com/jnrahme/SmartAssist > **Status**: Phase 1 COMPLETE ✅ — MCP connected, E2E feedback loop verified. Phase 2 in progress.
 
+> **Current Note (2026-04-07)**: This file is a historical handoff log plus an append-only progress journal. The current canonical docs are [README.md](README.md), [smartassist-overview.html](smartassist-overview.html), and [MEMORY.md](MEMORY.md). Package-registry install paths (`pipx install smartassist`, npm, Homebrew, `/install`) are not live yet and should not be treated as the current public install surface.
+
 ---
 
 ## Phase 1 Goal — ✅ COMPLETE
@@ -138,6 +140,7 @@ Design: Hook still creates lessons (production unchanged). Claude also drafts a 
 
 ## Files to Read First
 
+0. `MEMORY.md` — protected retrieval / dual-memory / Thompson invariants before changing search or learning behavior
 1. `smartassist/mcp_server.py` — MCP server (8 tools, FastMCP stdio transport)
 2. `smartassist/hooks/prompt_inject.py` — Main hook (feedback detection, lesson injection, reinforcement)
 3. `smartassist/cli.py` — `cmd_setup()` uses `claude mcp add`, `cmd_uninstall()` for cleanup
