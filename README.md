@@ -260,6 +260,33 @@ GitHub Actions also runs the deterministic QA suite and uploads the artifact bun
 
 ---
 
+## Website Deploy
+
+The marketing site in [`website/`](website/) auto-deploys to `https://smartassist-memory.com`.
+
+How it works:
+
+- pushing a commit to `main` that changes `website/**` triggers the `Deploy Website` GitHub Actions workflow
+- the workflow runs [`scripts/deploy_website.sh`](scripts/deploy_website.sh)
+- that script syncs the contents of `website/` to the VPS path `/opt/smartassist-memory/site`
+- after sync, the workflow smoke-checks `https://smartassist-memory.com`
+
+Normal workflow:
+
+```bash
+git add website/
+git commit -m "website: update landing page"
+git push origin main
+```
+
+Important:
+
+- only committed changes are deployed
+- local uncommitted edits in `website/` do not go live
+- the site is served separately from the GitHub Pages QA demo
+
+---
+
 ## Troubleshooting
 
 ### `smartassist` or hook commands are not found
