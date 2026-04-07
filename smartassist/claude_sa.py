@@ -160,17 +160,17 @@ end tell
     return 0
 
 
-def _start_dashboard() -> subprocess.Popen | None:
-    """Start the dashboard server in the background."""
+def _start_dashboard() -> None:
+    """Start the dashboard server as a fully detached process."""
     try:
-        proc = subprocess.Popen(
+        subprocess.Popen(
             ["smartassist", "dashboard"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            start_new_session=True,  # fully detach — won't die with parent
         )
-        return proc
     except (FileNotFoundError, OSError):
-        return None
+        pass
 
 
 def main() -> int:
@@ -188,29 +188,15 @@ def main() -> int:
     log_file = data_dir / "rag_live.log"
     log_file.touch()
 
-    # Start dashboard server in background
-    dashboard_proc = _start_dashboard()
-    if dashboard_proc:
-        print("Dashboard running at http://localhost:3000")
-        print("  (auto-stops 60s after browser/Claude closes)")
+    # Start dashboard as detached process — survives tmux/claude exit
+    # Auto-shuts down 60s after browser closes (heartbeat timeout)
+    _start_dashboard()
+    print("Dashboard: http://localhost:3000")
 
-    try:
-        if shutil.which("tmux"):
-            return _launch_tmux(log_file)
-        else:
-            return _launch_fallback(log_file)
-    finally:
-        # Stop dashboard when Claude exits
-        if dashboard_proc and dashboard_proc.poll() is None:
-            dashboard_proc.terminate()
-        # Also try PID file cleanup
-        try:
-            subprocess.run(
-                ["smartassist", "dashboard", "--stop"],
-                capture_output=True, timeout=5,
-            )
-        except Exception:
-            pass
+    if shutil.which("tmux"):
+        return _launch_tmux(log_file)
+    else:
+        return _launch_fallback(log_file)
 
 
 if __name__ == "__main__":
