@@ -83,7 +83,7 @@ SmartAssist is a portable RAG (Retrieval-Augmented Generation) learning system f
 ### Architecture
 
 - **Hooks** (5 shell commands): Fire on Claude Code events (`UserPromptSubmit`, `SessionStart`, `PreToolUse`, `PostToolUse`, `SessionEnd`). They detect feedback signals, create lessons, inject context via `additionalContext`, and track session metrics.
-- **MCP Server** (stdio transport): Exposes 8 tools (`rag_search`, `rag_dashboard`, `rag_feedback`, `create_lesson`, `compare_lesson`, `boost_lesson`, `demote_lesson`, `merge_lessons`). Claude calls these directly for lesson management.
+- **MCP Server** (stdio transport): Exposes 9 tools (`rag_search`, `rag_dashboard`, `rag_feedback`, `apply_feedback_protocol`, `create_lesson`, `compare_lesson`, `boost_lesson`, `demote_lesson`, `merge_lessons`). Claude calls these directly for lesson management.
 - **CLI** (`smartassist` command): Setup, health checks, analytics, dashboard, seeding, and A/B comparison review.
 
 Install: `pipx install .` → creates entry points in `~/.local/bin/`.
@@ -141,7 +141,7 @@ Design: Hook still creates lessons (production unchanged). Claude also drafts a 
 ## Files to Read First
 
 0. `MEMORY.md` — protected retrieval / dual-memory / Thompson invariants before changing search or learning behavior
-1. `smartassist/mcp_server.py` — MCP server (8 tools, FastMCP stdio transport)
+1. `smartassist/mcp_server.py` — MCP server (9 tools, FastMCP stdio transport)
 2. `smartassist/hooks/prompt_inject.py` — Main hook (feedback detection, lesson injection, reinforcement)
 3. `smartassist/cli.py` — `cmd_setup()` uses `claude mcp add`, `cmd_uninstall()` for cleanup
 4. `smartassist/config.py` — `SMARTASSIST_DATA_DIR` resolution (key challenge for multi-project support)

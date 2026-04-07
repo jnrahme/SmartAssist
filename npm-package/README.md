@@ -19,10 +19,10 @@ This section describes the intended npm flow after publish. Today, use the suppo
 # Future examples after npm publish
 
 # Claude Code
-claude mcp add smartassist -- npx -y smartassist-memory serve
+smartassist-memory init --agent claude
 
 # Codex
-codex mcp add smartassist -- npx -y smartassist-memory serve
+smartassist-memory init --agent codex
 
 # Any agent — auto-detect
 npx smartassist-memory init
