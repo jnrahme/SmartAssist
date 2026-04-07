@@ -52,7 +52,9 @@ from smartassist.lesson_feedback import (
     create_lesson_from_feedback,
     log_comparison_entry,
     _context_to_lesson,
+    load_session_state,
     save_last_injection,
+    save_session_state,
     DEFAULT_BOOST,
     BOOST_INCREMENT,
     DEMOTE_DECREMENT,
@@ -62,8 +64,16 @@ from smartassist.lesson_feedback import (
     ACTION_VERBS,
     GENERIC_STARTS,
 )
-from smartassist.thompson_rerank import load_thompson_batch
+from smartassist.thompson_rerank import (
+    load_thompson_batch,
+    record_injection,
+    update_thompson_batch,
+)
 from smartassist.store import add_lesson, append_feedback_event, load_last_rag_results
+from smartassist.store import (
+    auto_merge_duplicate_lessons_in_store,
+    save_last_rag_results,
+)
 
 
 # ── TestFeedbackSignalDetectionV2 ──────────────────────────────────────────
@@ -252,6 +262,41 @@ class TestMcpRetrievalLearningLoop:
         assert "Past Corrections (episodic memory):" in result
         assert "theme switching" in result
 
+    def test_rag_feedback_resolves_superseded_recent_results(self, set_data_dir):
+        storage = set_data_dir / "data"
+        survivor_id, error1 = add_lesson(
+            storage,
+            "Always use semantic theme tokens instead of hardcoded hex values",
+            "code_edit",
+        )
+        duplicate_id, error2 = add_lesson(
+            storage,
+            "Always use semantic theme tokens instead of hardcoded hex values.",
+            "code_edit",
+        )
+        assert error1 is None and error2 is None
+        assert survivor_id and duplicate_id
+
+        save_last_rag_results(storage, [{"id": duplicate_id, "score": 0.9}])
+        merged_ids, merge_error = auto_merge_duplicate_lessons_in_store(
+            storage, survivor_id, [duplicate_id]
+        )
+        assert merge_error is None
+        assert merged_ids == [duplicate_id]
+
+        feedback_result = rag_feedback(
+            helpful=False,
+            category="code_edit",
+            notes="The duplicate style guidance was still not precise enough",
+        )
+
+        recent = load_last_rag_results(storage, max_age=900)
+        thompson = load_thompson_batch(storage, [survivor_id])
+
+        assert [item["id"] for item in recent] == [survivor_id]
+        assert "Attributed to 1 recent lesson(s)" in feedback_result
+        assert thompson[survivor_id]["beta"] > 1.0
+
     # V2: Prefix matching — signal + context
     def test_smiley_with_context(self):
         sentiment, ctx = detect_feedback_signal(":) good use of theme colors")
@@ -423,6 +468,32 @@ class TestReconstructInjectedLessons:
 
         result = _reconstruct_injected_lessons(storage)
         assert len(result) == 1
+
+
+class TestSessionStateResolution:
+    def test_load_session_state_resolves_superseded_ids(self, set_data_dir):
+        storage = set_data_dir / "data"
+        survivor_id, error1 = add_lesson(
+            storage,
+            "Always use semantic colors from theme instead of hardcoded hex values",
+            "code_edit",
+        )
+        duplicate_id, error2 = add_lesson(
+            storage,
+            "Always use semantic colors from theme instead of hardcoded hex values.",
+            "code_edit",
+        )
+        assert error1 is None and error2 is None
+        assert survivor_id and duplicate_id
+
+        save_session_state("merge-session", {duplicate_id})
+        merged_ids, merge_error = auto_merge_duplicate_lessons_in_store(
+            storage, survivor_id, [duplicate_id]
+        )
+
+        assert merge_error is None
+        assert merged_ids == [duplicate_id]
+        assert load_session_state("merge-session") == {survivor_id}
 
 
 # ── TestReinforceRecentLessons ─────────────────────────────────────────────
@@ -599,6 +670,37 @@ class TestReinforceRecentLessons:
 
         results = reinforce_recent_lessons("negative")
         assert results[0][2] >= BOOST_FLOOR
+
+    def test_reinforce_recent_lessons_resolves_superseded_ids(self, set_data_dir):
+        storage = set_data_dir / "data"
+        survivor_id, error1 = add_lesson(
+            storage,
+            "Always use semantic colors from theme instead of hardcoded hex values",
+            "code_edit",
+        )
+        duplicate_id, error2 = add_lesson(
+            storage,
+            "Always use semantic colors from theme instead of hardcoded hex values.",
+            "code_edit",
+        )
+        assert error1 is None and error2 is None
+        assert survivor_id and duplicate_id
+
+        save_last_injection([{"id": duplicate_id}])
+        merged_ids, merge_error = auto_merge_duplicate_lessons_in_store(
+            storage, survivor_id, [duplicate_id]
+        )
+
+        assert merge_error is None
+        assert merged_ids == [duplicate_id]
+
+        results = reinforce_recent_lessons("positive")
+        scores = load_lesson_scores()
+
+        assert len(results) == 1
+        assert results[0][0] == survivor_id
+        assert scores[survivor_id]["ups"] == 1
+        assert scores[duplicate_id]["retired"] is True
 
 
 # ── TestContextToLesson ────────────────────────────────────────────────────
@@ -1584,6 +1686,34 @@ class TestMergeLessonsTool:
         assert "superseded_by" in scores["L001"]["retired_reason"]
         assert scores["L002"]["blocked"] is True
 
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_merge_preserves_thompson_rerank_evidence(self, mock_spawn, set_data_dir):
+        storage = set_data_dir / "data"
+        id1, error1 = add_lesson(storage, "Use semantic colors in styles", "code_edit")
+        id2, error2 = add_lesson(
+            storage,
+            "Avoid hardcoded hex values in styles",
+            "code_edit",
+        )
+        assert error1 is None and error2 is None
+        assert id1 and id2
+
+        record_injection(storage, [id1, id2])
+        record_injection(storage, [id1])
+        update_thompson_batch(storage, [(id1, 2.0, 0.5), (id2, 0.5, 1.0)])
+
+        merge_lessons(f"{id1},{id2}", self.VALID_MERGED, "code_edit")
+
+        scores = load_lesson_scores()
+        new_ids = [lesson_id for lesson_id in scores if lesson_id not in {id1, id2}]
+        assert len(new_ids) == 1
+
+        state = load_thompson_batch(storage, new_ids)[new_ids[0]]
+        assert state["injection_count"] == 3
+        assert state["alpha"] > 3.4
+        assert state["beta"] > 2.4
+        assert state["last_injected"] is not None
+
     def test_merge_requires_two_ids(self, set_data_dir):
         result = merge_lessons("L001", self.VALID_MERGED, "code_edit")
         assert "at least 2" in result
@@ -1949,6 +2079,35 @@ class TestApplyFeedbackProtocol:
         assert scores["L001"]["ups"] == 1
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 1
+
+    @patch("smartassist.mcp_server.spawn_managed")
+    def test_auto_merges_high_confidence_duplicate_cluster(
+        self, mock_spawn, set_data_dir
+    ):
+        storage = set_data_dir / "data"
+        survivor_id, error1 = add_lesson(storage, self.VALID_LESSON, "code_edit")
+        duplicate_id, error2 = add_lesson(
+            storage,
+            "Always use semantic colors from theme instead of hardcoded hex values.",
+            "code_edit",
+        )
+        assert error1 is None and error2 is None
+        assert survivor_id and duplicate_id
+
+        result = apply_feedback_protocol(
+            feedback="always use semantic colors from theme instead of hardcoded hex values",
+            sentiment="negative",
+        )
+
+        scores = load_lesson_scores()
+        curated = json.loads((storage / "curated_lessons.json").read_text())
+
+        assert "auto_merged" in result
+        assert len(curated) == 1
+        assert curated[0]["id"] == survivor_id
+        assert scores[survivor_id]["ups"] == 1
+        assert scores[duplicate_id]["retired"] is True
+        mock_spawn.assert_called_once()
 
     @patch("smartassist.mcp_server.spawn_managed")
     def test_suggests_merge_for_overlapping_lessons(self, mock_spawn, set_data_dir):

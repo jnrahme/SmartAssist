@@ -53,6 +53,7 @@ from smartassist.lesson_feedback import (
     GENERIC_STARTS,
 )
 from smartassist.store import (
+    auto_merge_duplicate_lessons_in_store,
     append_feedback_event,
     ensure_lesson,
     get_feedback_stats as get_feedback_stats_from_store,
@@ -110,6 +111,97 @@ def _looks_like_merge_candidate(candidate: dict) -> bool:
             and float(candidate.get("similarity", 0.0)) >= 0.45
         )
     )
+
+
+def _lesson_similarity_profile(left: str, right: str) -> dict[str, float | bool]:
+    from smartassist.tools.cleanup_and_vectorize import normalize_text
+
+    normalized_left = normalize_text(left)
+    normalized_right = normalize_text(right)
+    left_tokens = {token for token in normalized_left.split() if token}
+    right_tokens = {token for token in normalized_right.split() if token}
+    union = left_tokens | right_tokens
+    overlap = left_tokens & right_tokens
+    similarity = len(overlap) / len(union) if union else 0.0
+    return {
+        "exact": normalized_left == normalized_right,
+        "containment": normalized_left in normalized_right
+        or normalized_right in normalized_left,
+        "similarity": similarity,
+    }
+
+
+def _looks_like_auto_merge_pair(profile: dict[str, float | bool]) -> bool:
+    return bool(
+        profile.get("exact")
+        or float(profile.get("similarity", 0.0)) >= 0.9
+        or (
+            profile.get("containment") and float(profile.get("similarity", 0.0)) >= 0.78
+        )
+    )
+
+
+def _select_auto_merge_plan(
+    storage, candidates: list[dict]
+) -> tuple[str, list[str]] | None:
+    duplicate_candidates = [
+        candidate for candidate in candidates if _looks_like_duplicate(candidate)
+    ]
+    if len(duplicate_candidates) < 2:
+        return None
+
+    scores = load_lesson_scores()
+    thompson_data = {}
+    try:
+        from smartassist.thompson_rerank import load_thompson_batch
+
+        thompson_data = load_thompson_batch(
+            storage,
+            [
+                candidate["id"]
+                for candidate in duplicate_candidates
+                if candidate.get("id")
+            ],
+        )
+    except Exception:
+        thompson_data = {}
+
+    def survivor_key(candidate: dict) -> tuple:
+        lesson_id = str(candidate.get("id") or "")
+        score_entry = scores.get(lesson_id, {})
+        thompson_entry = thompson_data.get(lesson_id, {})
+        alpha = float(thompson_entry.get("alpha", 1.0) or 1.0)
+        beta = float(thompson_entry.get("beta", 1.0) or 1.0)
+        mean = alpha / (alpha + beta) if (alpha + beta) > 0 else 0.5
+        lesson_num = (
+            int(lesson_id[1:])
+            if lesson_id.startswith("L") and lesson_id[1:].isdigit()
+            else 999999
+        )
+        return (
+            int(score_entry.get("ups", 0) or 0),
+            int(thompson_entry.get("injection_count", 0) or 0),
+            float(score_entry.get("boost", DEFAULT_BOOST) or DEFAULT_BOOST),
+            mean,
+            bool(candidate.get("exact")),
+            bool(candidate.get("containment")),
+            -lesson_num,
+        )
+
+    ordered = sorted(duplicate_candidates, key=survivor_key, reverse=True)
+    survivor = ordered[0]
+    merge_ids: list[str] = []
+    for candidate in ordered[1:]:
+        profile = _lesson_similarity_profile(
+            str(survivor.get("lesson") or ""),
+            str(candidate.get("lesson") or ""),
+        )
+        if _looks_like_auto_merge_pair(profile):
+            merge_ids.append(str(candidate.get("id") or ""))
+
+    if not merge_ids:
+        return None
+    return str(survivor.get("id") or ""), merge_ids
 
 
 def _get_storage():
@@ -806,8 +898,9 @@ def apply_feedback_protocol(
     The tool will:
     - normalize the feedback into a project-specific lesson
     - check for existing duplicate or overlapping lessons
+    - auto-merge only high-confidence near-duplicate semantic lessons
     - boost an existing lesson when the rule already exists
-    - suggest a merge when multiple lessons overlap
+    - suggest a merge when broader overlap still needs human consolidation
     - create a new lesson only when no existing lesson covers it
 
     Args:
@@ -845,7 +938,35 @@ def apply_feedback_protocol(
     if inferred_category not in VALID_CATEGORIES:
         inferred_category = "code_edit"
 
-    candidates = find_similar_lessons(storage, lesson_text, inferred_category, limit=3)
+    candidates = find_similar_lessons(storage, lesson_text, inferred_category, limit=5)
+    auto_merge_plan = _select_auto_merge_plan(storage, candidates)
+    if auto_merge_plan is not None:
+        survivor_id, merge_ids = auto_merge_plan
+        merged_ids, merge_error = auto_merge_duplicate_lessons_in_store(
+            storage, survivor_id, merge_ids
+        )
+        if merge_error is None:
+            _trigger_vectorization(full_rebuild=True)
+            _update_feedback_metrics(storage, "merges")
+            boost_result = boost_lesson(survivor_id)
+            latency = (time.time() - t0) * 1000
+            merged_text = ", ".join(merged_ids or merge_ids)
+            _log_usage(
+                "apply_feedback_protocol",
+                f"auto_merge:{survivor_id}<={merged_text}",
+                1,
+                latency,
+            )
+            _write_to_live_log(
+                storage,
+                "feedback",
+                f"Auto-merged [{merged_text}] into {survivor_id} for {lesson_text[:100]}",
+            )
+            return (
+                f"Feedback protocol -> auto_merged [{survivor_id} <= {merged_text}]. "
+                f"{boost_result}"
+            )
+
     duplicate = next(
         (candidate for candidate in candidates if _looks_like_duplicate(candidate)),
         None,

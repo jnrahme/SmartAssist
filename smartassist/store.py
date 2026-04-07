@@ -1031,7 +1031,7 @@ def load_last_rag_results(
     *,
     max_age: float | None = None,
 ) -> list[dict[str, Any]]:
-    with open_store(storage_path) as conn:
+    with open_store(storage_path, sync=(_SYNC_LESSONS,)) as conn:
         raw = _get_meta(conn, "last_rag_results_json", "")
         if not raw:
             return []
@@ -1052,19 +1052,22 @@ def load_last_rag_results(
         return []
 
     normalized: list[dict[str, Any]] = []
-    for item in results:
-        if not isinstance(item, dict):
-            continue
-        lesson_id = str(item.get("id") or "").strip()
-        if not lesson_id:
-            continue
-        normalized.append(
-            {
-                "id": lesson_id,
-                "score": float(item.get("score", 0.5) or 0.5),
-                "injection_timestamp": timestamp,
-            }
-        )
+    with open_store(storage_path, sync=(_SYNC_LESSONS,)) as conn:
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            lesson_id = _resolve_active_lesson_id(
+                conn, str(item.get("id") or "").strip()
+            )
+            if not lesson_id:
+                continue
+            normalized.append(
+                {
+                    "id": lesson_id,
+                    "score": float(item.get("score", 0.5) or 0.5),
+                    "injection_timestamp": timestamp,
+                }
+            )
     return normalized
 
 
@@ -1163,6 +1166,24 @@ def list_lessons(
 def get_lesson_ids(storage_path: Path | str | None = None) -> set[str]:
     lessons = list_lessons(storage_path)
     return {lesson["id"] for lesson in lessons}
+
+
+def _resolve_active_lesson_id(conn: sqlite3.Connection, lesson_id: str) -> str:
+    current = str(lesson_id or "").strip()
+    seen: set[str] = set()
+    while current and current not in seen:
+        seen.add(current)
+        row = conn.execute(
+            "SELECT state, superseded_by FROM lessons WHERE lesson_id = ?",
+            (current,),
+        ).fetchone()
+        if row is None:
+            return current
+        superseded_by = str(row["superseded_by"] or "").strip()
+        if str(row["state"] or "") != "superseded" or not superseded_by:
+            return current
+        current = superseded_by
+    return str(lesson_id or "").strip()
 
 
 def add_lesson(
@@ -1348,10 +1369,273 @@ def merge_lessons_in_store(
                 """,
                 (new_id, now, lesson_id),
             )
+        _merge_superseded_thompson_state(conn, lesson_ids, new_id, now)
         _rebuild_search_projection(conn)
         export_lessons(conn, storage)
         conn.commit()
         return new_id, None
+
+
+def auto_merge_duplicate_lessons_in_store(
+    storage_path: Path | str | None,
+    survivor_id: str,
+    duplicate_ids: list[str],
+) -> tuple[list[str] | None, str | None]:
+    storage = _resolve_storage_path(storage_path)
+    survivor_id = str(survivor_id or "").strip().upper()
+    merge_ids = [
+        str(lesson_id or "").strip().upper()
+        for lesson_id in duplicate_ids
+        if str(lesson_id or "").strip()
+        and str(lesson_id or "").strip().upper() != survivor_id
+    ]
+    if not survivor_id:
+        return None, "Cannot auto-merge: survivor lesson ID is required."
+    if not merge_ids:
+        return [], None
+
+    placeholders = ",".join("?" for _ in merge_ids)
+    with open_store(storage, sync=(_SYNC_LESSONS, _SYNC_SCORES)) as conn:
+        lesson_rows = conn.execute(
+            f"""
+            SELECT lesson_id, category_key, state
+              FROM lessons
+             WHERE lesson_id = ?
+                OR lesson_id IN ({placeholders})
+            """,
+            (survivor_id, *merge_ids),
+        ).fetchall()
+        row_map = {str(row["lesson_id"]): row for row in lesson_rows}
+
+        if survivor_id not in row_map:
+            return None, f"Cannot auto-merge: survivor lesson {survivor_id} not found."
+        if str(row_map[survivor_id]["state"] or "") != "active":
+            return (
+                None,
+                f"Cannot auto-merge: survivor lesson {survivor_id} is not active.",
+            )
+
+        missing = [lesson_id for lesson_id in merge_ids if lesson_id not in row_map]
+        if missing:
+            return None, f"Cannot auto-merge: lesson(s) {', '.join(missing)} not found."
+
+        inactive = [
+            lesson_id
+            for lesson_id in merge_ids
+            if str(row_map[lesson_id]["state"] or "") != "active"
+        ]
+        if inactive:
+            return None, (
+                f"Cannot auto-merge: lesson(s) {', '.join(inactive)} are not active."
+            )
+
+        survivor_category = str(row_map[survivor_id]["category_key"] or "")
+        mismatched = [
+            lesson_id
+            for lesson_id in merge_ids
+            if str(row_map[lesson_id]["category_key"] or "") != survivor_category
+        ]
+        if mismatched:
+            return None, (
+                "Cannot auto-merge across categories: " + ", ".join(mismatched)
+            )
+
+        score_rows = conn.execute(
+            f"""
+            SELECT lesson_id, boost, ups, downs
+              FROM lesson_scores
+             WHERE lesson_id = ?
+                OR lesson_id IN ({placeholders})
+            """,
+            (survivor_id, *merge_ids),
+        ).fetchall()
+        score_map = {
+            str(row["lesson_id"]): {
+                "boost": float(row["boost"] or DEFAULT_BOOST),
+                "ups": int(row["ups"] or 0),
+                "downs": int(row["downs"] or 0),
+            }
+            for row in score_rows
+        }
+
+        survivor_score = score_map.get(
+            survivor_id,
+            {"boost": DEFAULT_BOOST, "ups": 0, "downs": 0},
+        )
+        combined_ups = survivor_score["ups"]
+        combined_downs = survivor_score["downs"]
+        max_boost = survivor_score["boost"]
+        for lesson_id in merge_ids:
+            source_score = score_map.get(
+                lesson_id,
+                {"boost": DEFAULT_BOOST, "ups": 0, "downs": 0},
+            )
+            combined_ups += source_score["ups"]
+            combined_downs += source_score["downs"]
+            max_boost = max(max_boost, source_score["boost"])
+
+        now = time.time()
+        retired_at = datetime.now().isoformat()
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO lesson_scores(lesson_id, boost, ups, downs, blocked, retired)
+            VALUES (?, ?, 0, 0, 0, 0)
+            """,
+            (survivor_id, DEFAULT_BOOST),
+        )
+        conn.execute(
+            """
+            UPDATE lesson_scores
+               SET boost = ?,
+                   ups = ?,
+                   downs = ?,
+                   blocked = 0,
+                   retired = 0,
+                   retired_reason = '',
+                   retired_at = NULL
+             WHERE lesson_id = ?
+            """,
+            (max_boost, combined_ups, combined_downs, survivor_id),
+        )
+        conn.execute(
+            "UPDATE lessons SET updated_at = ? WHERE lesson_id = ?",
+            (now, survivor_id),
+        )
+
+        for lesson_id in merge_ids:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO lesson_scores(lesson_id, boost, ups, downs, blocked, retired)
+                VALUES (?, ?, 0, 0, 0, 0)
+                """,
+                (lesson_id, DEFAULT_BOOST),
+            )
+            conn.execute(
+                """
+                UPDATE lesson_scores
+                   SET blocked = 1,
+                       retired = 1,
+                       retired_reason = ?,
+                       retired_at = ?
+                 WHERE lesson_id = ?
+                """,
+                (f"superseded_by={survivor_id}", retired_at, lesson_id),
+            )
+            conn.execute(
+                """
+                UPDATE lessons
+                   SET state = 'superseded',
+                       superseded_by = ?,
+                       updated_at = ?
+                 WHERE lesson_id = ?
+                """,
+                (survivor_id, now, lesson_id),
+            )
+
+        _merge_superseded_thompson_state(conn, merge_ids, survivor_id, now)
+        _rebuild_search_projection(conn)
+        export_lessons(conn, storage)
+        export_scores(conn, storage)
+        conn.commit()
+        return merge_ids, None
+
+
+def _merge_superseded_thompson_state(
+    conn: sqlite3.Connection,
+    source_ids: list[str],
+    target_id: str,
+    now: float,
+) -> None:
+    if not source_ids or not target_id:
+        return
+
+    from smartassist.thompson_rerank import (
+        DECAY_FLOOR,
+        DECAY_LAMBDA,
+        DEFAULT_ALPHA,
+        DEFAULT_BETA,
+        ensure_thompson_table,
+    )
+    import math
+
+    ensure_thompson_table(conn)
+    placeholders = ",".join("?" for _ in source_ids)
+    source_rows = conn.execute(
+        f"""
+        SELECT lesson_id, alpha, beta, last_updated, injection_count, last_injected
+          FROM lesson_thompson
+         WHERE lesson_id IN ({placeholders})
+           AND context_key = '_global'
+        """,
+        source_ids,
+    ).fetchall()
+
+    if not source_rows:
+        return
+
+    def _decayed_state(row: sqlite3.Row) -> tuple[float, float, int, float | None]:
+        elapsed = max(0.0, now - float(row["last_updated"] or now))
+        decay = max(DECAY_FLOOR, math.exp(-DECAY_LAMBDA * elapsed))
+        alpha = max(DECAY_FLOOR, float(row["alpha"] or DEFAULT_ALPHA) * decay)
+        beta_val = max(DECAY_FLOOR, float(row["beta"] or DEFAULT_BETA) * decay)
+        injection_count = int(row["injection_count"] or 0)
+        last_injected = (
+            float(row["last_injected"]) if row["last_injected"] is not None else None
+        )
+        return alpha, beta_val, injection_count, last_injected
+
+    aggregate_alpha = DEFAULT_ALPHA
+    aggregate_beta = DEFAULT_BETA
+    aggregate_injection_count = 0
+    aggregate_last_injected: float | None = None
+
+    target_row = conn.execute(
+        """
+        SELECT lesson_id, alpha, beta, last_updated, injection_count, last_injected
+          FROM lesson_thompson
+         WHERE lesson_id = ?
+           AND context_key = '_global'
+        """,
+        (target_id,),
+    ).fetchone()
+
+    contributing_rows = list(source_rows)
+    if target_row is not None:
+        contributing_rows.append(target_row)
+
+    for row in contributing_rows:
+        alpha, beta_val, injection_count, last_injected = _decayed_state(row)
+        aggregate_alpha += max(0.0, alpha - DEFAULT_ALPHA)
+        aggregate_beta += max(0.0, beta_val - DEFAULT_BETA)
+        aggregate_injection_count += injection_count
+        if last_injected is not None:
+            aggregate_last_injected = max(
+                aggregate_last_injected or last_injected,
+                last_injected,
+            )
+
+    conn.execute(
+        """
+        INSERT INTO lesson_thompson(
+            lesson_id, context_key, alpha, beta, last_updated, injection_count, last_injected
+        ) VALUES (?, '_global', ?, ?, ?, ?, ?)
+        ON CONFLICT(lesson_id, context_key) DO UPDATE SET
+            alpha = excluded.alpha,
+            beta = excluded.beta,
+            last_updated = excluded.last_updated,
+            injection_count = excluded.injection_count,
+            last_injected = excluded.last_injected
+        """,
+        (
+            target_id,
+            aggregate_alpha,
+            aggregate_beta,
+            now,
+            aggregate_injection_count,
+            aggregate_last_injected,
+        ),
+    )
 
 
 def load_lesson_scores_dict(
@@ -1410,12 +1694,13 @@ def save_lesson_scores_dict(
 
 
 def load_last_injection_map(storage_path: Path | str | None = None) -> dict[str, Any]:
-    with open_store(storage_path, sync=(_SYNC_INJECTION,)) as conn:
+    with open_store(storage_path, sync=(_SYNC_INJECTION, _SYNC_LESSONS)) as conn:
         rows = conn.execute(
             "SELECT slot_key, lesson_id FROM last_injection_slots ORDER BY CAST(slot_key AS INTEGER)"
         ).fetchall()
         payload: dict[str, Any] = {
-            str(row["slot_key"]): str(row["lesson_id"]) for row in rows
+            str(row["slot_key"]): _resolve_active_lesson_id(conn, str(row["lesson_id"]))
+            for row in rows
         }
         payload["_timestamp"] = float(
             _get_meta(conn, "last_injection_timestamp", "0") or "0"
@@ -1450,14 +1735,19 @@ def load_session_state_map(
     storage_path: Path | str | None,
     session_id: str,
 ) -> set[str]:
-    with open_store(storage_path, sync=(_SYNC_SESSION,)) as conn:
+    with open_store(storage_path, sync=(_SYNC_SESSION, _SYNC_LESSONS)) as conn:
         row = conn.execute(
             "SELECT injected_ids_json FROM session_state WHERE session_id = ?",
             (session_id,),
         ).fetchone()
         if row is None:
             return set()
-        return set(json.loads(str(row["injected_ids_json"])))
+        return {
+            resolved_id
+            for lesson_id in json.loads(str(row["injected_ids_json"]))
+            for resolved_id in [_resolve_active_lesson_id(conn, str(lesson_id))]
+            if resolved_id
+        }
 
 
 def save_session_state_map(
