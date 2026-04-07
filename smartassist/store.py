@@ -40,18 +40,108 @@ DEFAULT_METRICS = {
 }
 
 SEARCH_STOP_WORDS = {
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "can", "shall", "this", "that", "these",
-    "those", "me", "my", "your", "his", "its", "our", "their", "what",
-    "which", "who", "how", "when", "where", "why", "in", "on", "at",
-    "to", "for", "with", "by", "from", "of", "and", "or", "but", "not",
-    "so", "if", "as", "up", "out", "about", "into", "through", "all",
-    "some", "any", "other", "more", "most", "very", "just", "also",
-    "now", "here", "there", "please", "make", "let", "get", "see",
-    "look", "need", "want", "going", "using", "like", "new", "file",
-    "thing", "way", "lot", "really", "stuff", "right", "something",
-    "everything", "much", "still", "even", "than", "too", "been",
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "shall",
+    "this",
+    "that",
+    "these",
+    "those",
+    "me",
+    "my",
+    "your",
+    "his",
+    "its",
+    "our",
+    "their",
+    "what",
+    "which",
+    "who",
+    "how",
+    "when",
+    "where",
+    "why",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "with",
+    "by",
+    "from",
+    "of",
+    "and",
+    "or",
+    "but",
+    "not",
+    "so",
+    "if",
+    "as",
+    "up",
+    "out",
+    "about",
+    "into",
+    "through",
+    "all",
+    "some",
+    "any",
+    "other",
+    "more",
+    "most",
+    "very",
+    "just",
+    "also",
+    "now",
+    "here",
+    "there",
+    "please",
+    "make",
+    "let",
+    "get",
+    "see",
+    "look",
+    "need",
+    "want",
+    "going",
+    "using",
+    "like",
+    "new",
+    "file",
+    "thing",
+    "way",
+    "lot",
+    "really",
+    "stuff",
+    "right",
+    "something",
+    "everything",
+    "much",
+    "still",
+    "even",
+    "than",
+    "too",
+    "been",
 }
 
 SEARCH_SYNONYMS = {
@@ -347,7 +437,10 @@ def _project_event_lesson(event: dict[str, Any]) -> str | None:
 
 
 def _rebuild_search_projection(conn: sqlite3.Connection) -> None:
-    from smartassist.tools.cleanup_and_vectorize import format_text_for_vector, get_dedup_key
+    from smartassist.tools.cleanup_and_vectorize import (
+        format_text_for_vector,
+        get_dedup_key,
+    )
 
     timestamp = time.time()
     version = int(_get_meta(conn, "projection_version", "0") or "0") + 1
@@ -434,7 +527,9 @@ def _rebuild_search_projection(conn: sqlite3.Connection) -> None:
         text = format_text_for_vector(category, lesson_text)
         if context:
             text += f" Context: {context}"
-        search_text = " ".join(part for part in (category, lesson_text, context) if part)
+        search_text = " ".join(
+            part for part in (category, lesson_text, context) if part
+        )
         docs.append(
             (
                 doc_id,
@@ -689,7 +784,9 @@ def _sync_last_injection_from_legacy(conn: sqlite3.Connection, storage: Path) ->
             "INSERT INTO last_injection_slots(slot_key, lesson_id) VALUES(?, ?)",
             (str(key), str(lesson_id)),
         )
-    _set_meta(conn, "last_injection_timestamp", str(float(payload.get("_timestamp", 0) or 0)))
+    _set_meta(
+        conn, "last_injection_timestamp", str(float(payload.get("_timestamp", 0) or 0))
+    )
     _set_meta(conn, meta_key, signature)
 
 
@@ -829,7 +926,9 @@ def export_scores(conn: sqlite3.Connection, storage: Path | None = None) -> None
     _update_signature_meta(conn, "legacy_sig:lesson_scores", path)
 
 
-def export_feedback_events(conn: sqlite3.Connection, storage: Path | None = None) -> None:
+def export_feedback_events(
+    conn: sqlite3.Connection, storage: Path | None = None
+) -> None:
     storage = _resolve_storage_path(storage)
     path = storage / "feedback_log.jsonl"
     rows = conn.execute(
@@ -882,7 +981,9 @@ def export_reliability(conn: sqlite3.Connection, storage: Path | None = None) ->
     _update_signature_meta(conn, "legacy_sig:reliability_scores", path)
 
 
-def export_last_injection(conn: sqlite3.Connection, storage: Path | None = None) -> None:
+def export_last_injection(
+    conn: sqlite3.Connection, storage: Path | None = None
+) -> None:
     storage = _resolve_storage_path(storage)
     path = storage / "last_injection.json"
     rows = conn.execute(
@@ -892,8 +993,12 @@ def export_last_injection(conn: sqlite3.Connection, storage: Path | None = None)
          ORDER BY CAST(slot_key AS INTEGER)
         """
     ).fetchall()
-    payload = {str(row["slot_key"]): str(row["lesson_id"]) for row in rows}
-    payload["_timestamp"] = float(_get_meta(conn, "last_injection_timestamp", "0") or "0")
+    payload: dict[str, Any] = {
+        str(row["slot_key"]): str(row["lesson_id"]) for row in rows
+    }
+    payload["_timestamp"] = float(
+        _get_meta(conn, "last_injection_timestamp", "0") or "0"
+    )
     atomic_write_json(path, payload)
     _update_signature_meta(conn, "legacy_sig:last_injection", path)
 
@@ -922,7 +1027,9 @@ def export_session_state(conn: sqlite3.Connection, storage: Path | None = None) 
     _update_signature_meta(conn, "legacy_sig:session_state", path)
 
 
-def export_feedback_metrics(conn: sqlite3.Connection, storage: Path | None = None) -> None:
+def export_feedback_metrics(
+    conn: sqlite3.Connection, storage: Path | None = None
+) -> None:
     storage = _resolve_storage_path(storage)
     path = storage / "feedback_metrics.json"
     rows = conn.execute(
@@ -1077,7 +1184,9 @@ def ensure_lesson(
         if existing is not None:
             return str(existing["lesson_id"]), None, False
 
-    lesson_id, error = add_lesson(storage, lesson_text, category, origin=origin, state=state)
+    lesson_id, error = add_lesson(
+        storage, lesson_text, category, origin=origin, state=state
+    )
     return lesson_id, error, error is None
 
 
@@ -1124,9 +1233,14 @@ def merge_lessons_in_store(
                 "SELECT lesson_id FROM lessons WHERE state = 'active'"
             ).fetchall()
         }
-        missing = [lesson_id for lesson_id in lesson_ids if lesson_id not in existing_ids]
+        missing = [
+            lesson_id for lesson_id in lesson_ids if lesson_id not in existing_ids
+        ]
         if missing:
-            return None, f"Cannot merge: lesson(s) {', '.join(missing)} not found in curated lessons."
+            return (
+                None,
+                f"Cannot merge: lesson(s) {', '.join(missing)} not found in curated lessons.",
+            )
 
         ids = [
             str(row["lesson_id"])
@@ -1178,7 +1292,9 @@ def merge_lessons_in_store(
         return new_id, None
 
 
-def load_lesson_scores_dict(storage_path: Path | str | None = None) -> dict[str, dict[str, Any]]:
+def load_lesson_scores_dict(
+    storage_path: Path | str | None = None,
+) -> dict[str, dict[str, Any]]:
     with open_store(storage_path, sync=(_SYNC_SCORES,)) as conn:
         rows = conn.execute(
             """
@@ -1236,8 +1352,12 @@ def load_last_injection_map(storage_path: Path | str | None = None) -> dict[str,
         rows = conn.execute(
             "SELECT slot_key, lesson_id FROM last_injection_slots ORDER BY CAST(slot_key AS INTEGER)"
         ).fetchall()
-        payload = {str(row["slot_key"]): str(row["lesson_id"]) for row in rows}
-        payload["_timestamp"] = float(_get_meta(conn, "last_injection_timestamp", "0") or "0")
+        payload: dict[str, Any] = {
+            str(row["slot_key"]): str(row["lesson_id"]) for row in rows
+        }
+        payload["_timestamp"] = float(
+            _get_meta(conn, "last_injection_timestamp", "0") or "0"
+        )
         return payload
 
 
@@ -1255,7 +1375,11 @@ def save_last_injection_map(
                 "INSERT INTO last_injection_slots(slot_key, lesson_id) VALUES (?, ?)",
                 (str(key), str(value)),
             )
-        _set_meta(conn, "last_injection_timestamp", str(float(mapping.get("_timestamp", 0) or 0)))
+        _set_meta(
+            conn,
+            "last_injection_timestamp",
+            str(float(mapping.get("_timestamp", 0) or 0)),
+        )
         export_last_injection(conn, storage)
         conn.commit()
 
@@ -1323,7 +1447,9 @@ def append_feedback_event(
         conn.commit()
 
 
-def list_feedback_events(storage_path: Path | str | None = None) -> list[dict[str, Any]]:
+def list_feedback_events(
+    storage_path: Path | str | None = None,
+) -> list[dict[str, Any]]:
     with open_store(storage_path, sync=(_SYNC_EVENTS,)) as conn:
         rows = conn.execute(
             """
@@ -1360,12 +1486,16 @@ def get_feedback_stats(storage_path: Path | str | None = None) -> dict[str, Any]
         ).fetchall()
         return {
             "total_events": int(total),
-            "by_category": {str(row["category_key"]): int(row["count"]) for row in by_cat_rows},
+            "by_category": {
+                str(row["category_key"]): int(row["count"]) for row in by_cat_rows
+            },
             "by_signal": {str(row["signal"]): int(row["count"]) for row in by_sig_rows},
         }
 
 
-def load_reliabilities_dict(storage_path: Path | str | None = None) -> dict[str, dict[str, Any]]:
+def load_reliabilities_dict(
+    storage_path: Path | str | None = None,
+) -> dict[str, dict[str, Any]]:
     with open_store(storage_path, sync=(_SYNC_RELIABILITY,)) as conn:
         rows = conn.execute(
             """
@@ -1412,7 +1542,9 @@ def save_reliabilities_dict(
         conn.commit()
 
 
-def load_feedback_metrics_dict(storage_path: Path | str | None = None) -> dict[str, Any]:
+def load_feedback_metrics_dict(
+    storage_path: Path | str | None = None,
+) -> dict[str, Any]:
     with open_store(storage_path, sync=(_SYNC_METRICS,)) as conn:
         rows = conn.execute(
             "SELECT metric_key, metric_value, metric_text FROM feedback_metrics"
@@ -1468,7 +1600,9 @@ def list_search_documents(
     *,
     active_only: bool = True,
 ) -> list[dict[str, Any]]:
-    with open_store(storage_path, sync=(_SYNC_LESSONS, _SYNC_SCORES, _SYNC_EVENTS)) as conn:
+    with open_store(
+        storage_path, sync=(_SYNC_LESSONS, _SYNC_SCORES, _SYNC_EVENTS)
+    ) as conn:
         query = """
             SELECT doc_id, source_type, source_id, category_key, text, search_text,
                    active, version, content_hash, updated_at
@@ -1501,8 +1635,11 @@ def search_projection_documents(
     *,
     top_k: int = 5,
     category: str | None = None,
+    source_types: Iterable[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    with open_store(storage_path, sync=(_SYNC_LESSONS, _SYNC_SCORES, _SYNC_EVENTS)) as conn:
+    with open_store(
+        storage_path, sync=(_SYNC_LESSONS, _SYNC_SCORES, _SYNC_EVENTS)
+    ) as conn:
         rows = conn.execute(
             """
             SELECT d.doc_id, d.source_type, d.source_id, d.category_key, d.text, d.search_text,
@@ -1519,14 +1656,32 @@ def search_projection_documents(
 
     raw_count = len(rows)
     category_filter_used = None
+    source_type_filter_used = None
     if category:
         category_filter_used = category.lower().strip()
         filtered_rows = [
-            row for row in rows if str(row["category_key"]).lower() == category_filter_used
+            row
+            for row in rows
+            if str(row["category_key"]).lower() == category_filter_used
         ]
     else:
         filtered_rows = list(rows)
     category_filtered = raw_count - len(filtered_rows)
+
+    if source_types:
+        source_type_filter_used = sorted(
+            {
+                str(source_type).lower().strip()
+                for source_type in source_types
+                if str(source_type).strip()
+            }
+        )
+        filtered_rows = [
+            row
+            for row in filtered_rows
+            if str(row["source_type"]).lower() in source_type_filter_used
+        ]
+    source_type_filtered = raw_count - category_filtered - len(filtered_rows)
 
     query_tokens = _tokenize_search(query)
     if not query_tokens:
@@ -1534,6 +1689,8 @@ def search_projection_documents(
             "raw_count": raw_count,
             "category_filtered": category_filtered,
             "category_filter_used": category_filter_used,
+            "source_type_filtered": source_type_filtered,
+            "source_type_filter_used": source_type_filter_used,
             "query_tokens": [],
         }
 
@@ -1578,14 +1735,17 @@ def search_projection_documents(
                 "score": relevance,
                 "matched": matched,
                 "boost": boost,
+                "updated_at": float(row["updated_at"]),
             }
         )
 
-    scored.sort(key=lambda item: (-item["score"], item["doc_id"]))
+    scored.sort(key=lambda item: (-item["score"], -item["updated_at"], item["doc_id"]))
     return scored[:top_k], {
         "raw_count": raw_count,
         "category_filtered": category_filtered,
         "category_filter_used": category_filter_used,
+        "source_type_filtered": source_type_filtered,
+        "source_type_filter_used": source_type_filter_used,
         "query_tokens": sorted(expanded),
     }
 
