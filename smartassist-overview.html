@@ -314,6 +314,7 @@ details > summary::-webkit-details-marker { display: none; }
     <button data-tab="cli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>CLI &amp; Setup</button>
 <button data-tab="automation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>Automation &amp; Demo</button>
 <button data-tab="memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16v12H4z"/><path d="M8 6v12"/><path d="M16 6v12"/></svg>Memory</button>
+<button data-tab="analytics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M10 19v-8"/><path d="M16 19v-4"/><path d="M22 19V9"/></svg>Analytics</button>
   </nav>
   <div class="sidebar-version">v1.0.0 &mdash; <a href="https://github.com/jnrahme/SmartAssist">GitHub</a></div>
 </aside>
@@ -664,6 +665,204 @@ details > summary::-webkit-details-marker { display: none; }
       <text x="450" y="96" text-anchor="middle" fill="#475569" font-size="10">stored in</text>
       <text x="450" y="158" text-anchor="middle" fill="#475569" font-size="10">surfaced by</text>
     </svg>
+  </div>
+</div>
+</div>
+
+<div class="tab-panel" id="tab-analytics">
+<div class="page">
+  <div class="page-header">
+    <div class="overline">Observability</div>
+    <h1>Analytics</h1>
+    <p>Simple view: SmartAssist now has one analytics layer for a single project, one opt-in layer across installs, and one GitHub-native layer for growth.</p>
+  </div>
+
+  <div class="callout c-b" style="margin-top:0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <div>
+      <strong style="color:var(--white)">We chose useful analytics, not creepy analytics.</strong>
+      Local usage stays local by default. Cross-install telemetry is <strong style="color:var(--white)">opt-in</strong>.
+      Growth metrics come from <strong style="color:var(--white)">GitHub's own API</strong>. We did not add tracking pixels,
+      spam bots, or automatic social posting.
+    </div>
+  </div>
+
+  <div class="grid g3" style="margin-top:20px">
+    <div class="card">
+      <h3 style="color:var(--cyan)">1. Local project analytics</h3>
+      <p>
+        This answers the question <strong style="color:var(--white)">"what is SmartAssist doing in this repo?"</strong>
+        It reads the project's own usage and dashboard data.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--cyan);font-weight:700;font-size:.72rem;min-width:18px">A</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Source:</strong> <code>usage_log.jsonl</code> and project runtime data.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--cyan);font-weight:700;font-size:.72rem;min-width:18px">B</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Commands:</strong> <code>smartassist analyze</code> and <code>smartassist dashboard</code>.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--cyan);font-weight:700;font-size:.72rem;min-width:18px">C</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">What it shows:</strong> search hit rate, latency, top queries, tool usage, and dashboard activity.</span></div>
+      </div>
+      <details style="margin-top:14px;background:rgba(34,211,238,.04);border:1px solid rgba(34,211,238,.12);border-radius:10px;overflow:hidden">
+        <summary style="cursor:pointer;padding:10px 14px;font-size:.76rem;font-weight:700;color:var(--cyan);display:flex;align-items:center;gap:8px;user-select:none;list-style:none">
+          <svg class="demo-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+          Pull open: what this is wired to
+        </summary>
+        <div style="padding:12px 14px;border-top:1px solid rgba(34,211,238,.1)">
+          <div style="display:grid;gap:10px">
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Code paths</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0"><code>smartassist/tools/analyze_usage.py</code>, <code>smartassist/tools/generate_dashboard.py</code>, and the existing <code>rag_dashboard</code> tool.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Why it exists</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">This is the fastest way to answer whether SmartAssist is being used and whether retrieval is working inside one project.</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--emerald)">2. Opt-in aggregate telemetry</h3>
+      <p>
+        This answers <strong style="color:var(--white)">"what is happening across installs?"</strong>
+        It is the cross-project KPI layer, but it only turns on when a user enables it.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">A</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Commands:</strong> <code>smartassist telemetry enable</code>, <code>status</code>, <code>export</code>, <code>flush</code>, <code>dashboard</code>.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">B</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Collector:</strong> local bundles can be ingested into an aggregate SQLite database.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">C</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">KPIs:</strong> install funnel, ready rate, search success, satisfaction, retention, weak categories, and failure clusters.</span></div>
+      </div>
+      <details style="margin-top:14px;background:rgba(52,211,153,.04);border:1px solid rgba(52,211,153,.12);border-radius:10px;overflow:hidden">
+        <summary style="cursor:pointer;padding:10px 14px;font-size:.76rem;font-weight:700;color:var(--emerald);display:flex;align-items:center;gap:8px;user-select:none;list-style:none">
+          <svg class="demo-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="3" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+          Pull open: what the telemetry layer stores
+        </summary>
+        <div style="padding:12px 14px;border-top:1px solid rgba(52,211,153,.1)">
+          <div style="display:grid;gap:10px">
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Lifecycle events</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0"><code>install_started</code>, <code>setup_completed</code>, <code>doctor_ready</code>, <code>seed_completed</code>, <code>dashboard_opened</code>, and related setup outcomes.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Aggregate store</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0"><code>aggregate.db</code> keeps daily rollups, weekly rollups, raw lifecycle events, and per-release KPI summaries.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Code paths</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0"><code>smartassist/telemetry.py</code>, <code>smartassist/tools/generate_telemetry_dashboard.py</code>, and <code>tests/test_telemetry.py</code>.</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--amber)">3. GitHub growth analytics</h3>
+      <p>
+        This answers <strong style="color:var(--white)">"are people discovering the repo, giving feedback, and finding contributor paths?"</strong>
+        This is the analytics work we added for growth.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:18px">A</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Workflow:</strong> <code>.github/workflows/growth-analytics.yml</code> runs a weekly GitHub snapshot.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:18px">B</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Script:</strong> <code>python -m smartassist.tools.github_growth_snapshot --repo OWNER/REPO</code>.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--amber);font-weight:700;font-size:.72rem;min-width:18px">C</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">What it measures:</strong> views, clones, referrers, popular paths, open setup issues, feedback issues, contributor-interest issues, good-first-issue backlog, help-wanted backlog, and discussion counts.</span></div>
+      </div>
+      <details style="margin-top:14px;background:rgba(251,191,36,.04);border:1px solid rgba(251,191,36,.12);border-radius:10px;overflow:hidden">
+        <summary style="cursor:pointer;padding:10px 14px;font-size:.76rem;font-weight:700;color:var(--amber);display:flex;align-items:center;gap:8px;user-select:none;list-style:none">
+          <svg class="demo-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="3" style="flex-shrink:0;transition:transform .2s"><path d="M9 18l6-6-6-6"/></svg>
+          Pull open: what we changed around growth
+        </summary>
+        <div style="padding:12px 14px;border-top:1px solid rgba(251,191,36,.1)">
+          <div style="display:grid;gap:10px">
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Community funnel</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">We enabled Discussions, added issue and discussion forms, created routing labels, and seeded starter discussions plus contributor-friendly issues.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Maintainer loop</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">We added a weekly growth checklist issue, a launch pack, PR auto-labeling, and conservative stale triage so contributor and feedback flow stays organized.</p>
+            </div>
+            <div style="padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px">
+              <p style="font-size:.72rem;font-weight:700;color:var(--white);margin-bottom:4px">Important limit</p>
+              <p style="font-size:.72rem;color:var(--dim);margin:0">GitHub traffic only keeps a <strong style="color:var(--white)">14-day window</strong>. That is why the workflow snapshots it weekly instead of assuming GitHub will keep a long history for us.</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:24px">
+    <div class="card" style="border-left:3px solid var(--violet)">
+      <h3 style="color:var(--violet)">What questions we can answer now</h3>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.72rem;min-width:18px">1</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Inside one repo:</strong> Is SmartAssist being used? Are searches returning anything useful? What are people querying?</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.72rem;min-width:18px">2</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Across installs:</strong> Are installs finishing setup? Are they reaching <code>doctor_ready</code>? Are people finding value or churning?</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--violet);font-weight:700;font-size:.72rem;min-width:18px">3</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Across GitHub:</strong> Are people discovering the repo? Which pages are getting attention? Are feedback and contributor lanes actually being used?</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--rose)">
+      <h3 style="color:var(--rose)">What we intentionally did not do</h3>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--rose);font-weight:700;font-size:.72rem;min-width:18px">X</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">No default cloud telemetry:</strong> aggregate product telemetry stays off until someone enables it.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--rose);font-weight:700;font-size:.72rem;min-width:18px">X</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">No social spam bots:</strong> the system helps with routing and reporting, not fake engagement.</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline"><span style="color:var(--emerald);font-weight:700;font-size:.72rem;min-width:18px">✓</span><span style="font-size:.8rem;color:var(--dim)"><strong style="color:var(--white)">Human-in-the-loop growth:</strong> GitHub-native reporting, structured feedback, and a clearer contributor funnel.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-wrap" style="margin-top:24px">
+    <div class="sub-h">Simple map: three analytics layers</div>
+    <p class="sub-p" style="margin-bottom:18px">
+      Same product, three different visibility levels. This is the easiest way to understand what we added.
+    </p>
+    <svg viewBox="0 0 900 310" width="100%" style="max-width:900px">
+      <defs>
+        <marker id="ana-arr-v" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#8b5cf6"/></marker>
+      </defs>
+
+      <rect x="40" y="42" width="240" height="180" rx="18" fill="rgba(34,211,238,.05)" stroke="rgba(34,211,238,.3)" stroke-width="1.5"/>
+      <text x="160" y="76" text-anchor="middle" fill="#22d3ee" font-size="15" font-weight="800">Local project analytics</text>
+      <text x="160" y="104" text-anchor="middle" fill="#94a3b8" font-size="11">One repo, one team, one usage story</text>
+      <text x="160" y="136" text-anchor="middle" fill="#f1f5f9" font-size="12" font-weight="700">usage_log.jsonl</text>
+      <text x="160" y="158" text-anchor="middle" fill="#475569" font-size="10">smartassist analyze</text>
+      <text x="160" y="176" text-anchor="middle" fill="#475569" font-size="10">smartassist dashboard</text>
+
+      <rect x="330" y="42" width="240" height="180" rx="18" fill="rgba(52,211,153,.05)" stroke="rgba(52,211,153,.3)" stroke-width="1.5"/>
+      <text x="450" y="76" text-anchor="middle" fill="#34d399" font-size="15" font-weight="800">Opt-in product telemetry</text>
+      <text x="450" y="104" text-anchor="middle" fill="#94a3b8" font-size="11">Cross-install KPIs when telemetry is enabled</text>
+      <text x="450" y="136" text-anchor="middle" fill="#f1f5f9" font-size="12" font-weight="700">daily + weekly rollups</text>
+      <text x="450" y="158" text-anchor="middle" fill="#475569" font-size="10">aggregate.db</text>
+      <text x="450" y="176" text-anchor="middle" fill="#475569" font-size="10">telemetry dashboard</text>
+
+      <rect x="620" y="42" width="240" height="180" rx="18" fill="rgba(251,191,36,.05)" stroke="rgba(251,191,36,.3)" stroke-width="1.5"/>
+      <text x="740" y="76" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="800">GitHub growth analytics</text>
+      <text x="740" y="104" text-anchor="middle" fill="#94a3b8" font-size="11">Discovery, feedback, and contributor flow</text>
+      <text x="740" y="136" text-anchor="middle" fill="#f1f5f9" font-size="12" font-weight="700">views &middot; clones &middot; referrers</text>
+      <text x="740" y="158" text-anchor="middle" fill="#475569" font-size="10">issues &middot; discussions &middot; backlog</text>
+      <text x="740" y="176" text-anchor="middle" fill="#475569" font-size="10">weekly workflow snapshot</text>
+
+      <line x1="280" y1="132" x2="330" y2="132" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#ana-arr-v)"/>
+      <line x1="570" y1="132" x2="620" y2="132" stroke="#8b5cf6" stroke-width="2" class="flow-line" marker-end="url(#ana-arr-v)"/>
+    </svg>
+  </div>
+
+  <div class="grid g2" style="margin-top:24px">
+    <div class="cli-c">
+      <div class="cmd">smartassist analyze</div>
+      <p>Fast answer for one project: hit rate, latency, top queries, and how the MCP usage is trending locally.</p>
+    </div>
+    <div class="cli-c">
+      <div class="cmd">smartassist telemetry dashboard</div>
+      <p>HTML KPI view for aggregate opt-in telemetry: setup conversion, ready rate, retention, search success, and satisfaction.</p>
+    </div>
+    <div class="cli-c">
+      <div class="cmd">python -m smartassist.tools.github_growth_snapshot --repo OWNER/REPO</div>
+      <p>GitHub-native growth report: repo traffic, top referrers, popular paths, and contributor-funnel counts written to JSON and Markdown artifacts.</p>
+    </div>
+    <div class="cli-c">
+      <div class="cmd">.github/workflows/growth-analytics.yml</div>
+      <p>Weekly workflow that preserves GitHub's short traffic window by creating a repeatable snapshot artifact and step summary.</p>
+    </div>
   </div>
 </div>
 </div>

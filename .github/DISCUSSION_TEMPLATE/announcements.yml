@@ -1,0 +1,28 @@
+title: "[Announcement] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for meaningful SmartAssist updates such as releases, major
+        onboarding improvements, or community milestones.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What changed?
+      description: Start with the user-visible outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter?
+      description: Explain who benefits and what is different now.
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: Helpful links
+      description: Release, issue, PR, docs, or demo links.
+    validations:
+      required: false

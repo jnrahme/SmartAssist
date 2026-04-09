@@ -1,0 +1,29 @@
+title: "[Show and Tell] "
+labels: [feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share how you used SmartAssist in a real repo or workflow.
+
+        Concrete stories are more helpful than broad praise.
+  - type: input
+    id: repo_type
+    attributes:
+      label: What kind of repo or workflow was this?
+      placeholder: Python service, monorepo, docs-heavy repo, personal app, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: win
+    attributes:
+      label: What did SmartAssist improve?
+      description: A before-and-after example is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: rough_edges
+    attributes:
+      label: What still felt rough?
+    validations:
+      required: false

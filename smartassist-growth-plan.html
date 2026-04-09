@@ -1,0 +1,1776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartAssist Growth Plan</title>
+<meta name="description" content="A visual explainer for SmartAssist's KPI, growth, and feedback plan.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030712;
+    --bg2: #0a0f1e;
+    --surface: rgba(255,255,255,.03);
+    --surface-hi: rgba(255,255,255,.055);
+    --border: rgba(255,255,255,.08);
+    --border-hi: rgba(255,255,255,.14);
+    --text: #94a3b8;
+    --text-hi: #cbd5e1;
+    --white: #f1f5f9;
+    --dim: #475569;
+    --violet: #8b5cf6;
+    --blue: #38bdf8;
+    --emerald: #34d399;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+    --cyan: #22d3ee;
+    --pink: #e879f9;
+    --shadow: 0 22px 60px rgba(0, 0, 0, .35);
+    --r: 18px;
+    --r-sm: 12px;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--sans);
+    color: var(--text);
+    background:
+      radial-gradient(circle at top left, rgba(139,92,246,.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(56,189,248,.12), transparent 22%),
+      linear-gradient(180deg, #020617 0%, #030712 46%, #06101f 100%);
+    line-height: 1.65;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: .82em;
+    color: var(--violet);
+    background: rgba(139,92,246,.08);
+    border: 1px solid rgba(139,92,246,.14);
+    border-radius: 6px;
+    padding: 2px 7px;
+  }
+
+  .shell {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    width: 282px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    padding: 24px 18px;
+    border-right: 1px solid var(--border);
+    background: rgba(10, 15, 30, .92);
+    backdrop-filter: blur(20px);
+    overflow-y: auto;
+    z-index: 10;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px 18px;
+    color: var(--white);
+    font-weight: 800;
+    letter-spacing: -.4px;
+  }
+
+  .brand svg {
+    width: 22px;
+    height: 22px;
+    color: var(--violet);
+  }
+
+  .sidebar-label {
+    padding: 16px 10px 10px;
+    color: var(--dim);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .nav a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    border-radius: 12px;
+    color: var(--text);
+    font-size: .9rem;
+    font-weight: 600;
+    transition: .2s ease;
+  }
+
+  .nav a:hover,
+  .nav a.active {
+    color: var(--white);
+    background: rgba(139,92,246,.1);
+  }
+
+  .nav a i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: .7;
+    flex-shrink: 0;
+  }
+
+  .side-card {
+    margin: 18px 8px 0;
+    padding: 16px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.025));
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+
+  .side-card h3 {
+    margin: 0 0 10px;
+    color: var(--white);
+    font-size: .95rem;
+  }
+
+  .side-card ul {
+    margin: 0;
+    padding-left: 16px;
+    color: var(--text);
+    font-size: .83rem;
+  }
+
+  .side-card li + li {
+    margin-top: 8px;
+  }
+
+  .main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-bar,
+  .overlay {
+    display: none;
+  }
+
+  .section {
+    width: min(1120px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: 44px 0;
+  }
+
+  .section + .section {
+    border-top: 1px solid rgba(255,255,255,.05);
+  }
+
+  .hero {
+    padding-top: 34px;
+  }
+
+  .hero-panel {
+    position: relative;
+    overflow: hidden;
+    border-radius: 28px;
+    border: 1px solid var(--border-hi);
+    background:
+      radial-gradient(circle at 20% 0%, rgba(139,92,246,.18), transparent 30%),
+      radial-gradient(circle at 85% 10%, rgba(34,211,238,.14), transparent 30%),
+      linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02));
+    padding: 52px;
+    box-shadow: var(--shadow);
+  }
+
+  .hero-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at center, black 20%, transparent 82%);
+    pointer-events: none;
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--violet);
+    border: 1px solid rgba(139,92,246,.26);
+    background: rgba(139,92,246,.08);
+    position: relative;
+    z-index: 1;
+  }
+
+  .eyebrow::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 14px rgba(52,211,153,.65);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -.03em;
+    margin: 0;
+    color: var(--white);
+  }
+
+  .hero h1 {
+    position: relative;
+    z-index: 1;
+    max-width: 920px;
+    margin-top: 20px;
+    font-size: clamp(2.4rem, 5vw, 4.7rem);
+    line-height: 1.02;
+    font-weight: 900;
+  }
+
+  .hero h1 span {
+    background: linear-gradient(135deg, #fff 0%, #c4b5fd 30%, #7dd3fc 70%, #34d399 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-copy {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr);
+    gap: 26px;
+    margin-top: 24px;
+    align-items: end;
+  }
+
+  .hero-copy p {
+    margin: 0;
+    max-width: 720px;
+    color: var(--text-hi);
+    font-size: clamp(1rem, 1.8vw, 1.16rem);
+  }
+
+  .hero-note {
+    padding: 18px 20px;
+    border-radius: 18px;
+    background: rgba(3,7,18,.55);
+    border: 1px solid rgba(255,255,255,.08);
+  }
+
+  .hero-note strong {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--white);
+    font-size: .95rem;
+  }
+
+  .hero-note p {
+    font-size: .92rem;
+    color: var(--text);
+  }
+
+  .badge-row,
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .badge-row {
+    position: relative;
+    z-index: 1;
+    margin-top: 28px;
+  }
+
+  .badge,
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.04);
+    color: var(--text-hi);
+    font-weight: 600;
+  }
+
+  .badge {
+    padding: 8px 14px;
+    font-size: .78rem;
+  }
+
+  .chip {
+    padding: 6px 11px;
+    font-size: .75rem;
+  }
+
+  .badge i,
+  .chip i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    display: block;
+  }
+
+  .grid {
+    display: grid;
+    gap: 18px;
+  }
+
+  .g2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .g3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .g4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .panel,
+  .card,
+  .stack,
+  .quote,
+  .timeline-step {
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
+    box-shadow: var(--shadow);
+  }
+
+  .panel,
+  .card,
+  .stack,
+  .quote {
+    padding: 24px;
+  }
+
+  .section-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr);
+    gap: 24px;
+    align-items: end;
+    margin-bottom: 24px;
+  }
+
+  .section-head p {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text);
+  }
+
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    color: var(--cyan);
+    font-size: .74rem;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    font-weight: 800;
+  }
+
+  .kicker::before {
+    content: '';
+    width: 18px;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .section-head h2 {
+    font-size: clamp(1.7rem, 3vw, 2.6rem);
+    line-height: 1.08;
+  }
+
+  .card h3,
+  .stack h3,
+  .panel h3,
+  .timeline-step h3 {
+    font-size: 1.02rem;
+    margin-bottom: 10px;
+  }
+
+  .muted {
+    color: var(--text);
+  }
+
+  .feature-list,
+  .clean-list {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .feature-list li + li,
+  .clean-list li + li {
+    margin-top: 10px;
+  }
+
+  .signal-grid {
+    margin-top: 20px;
+  }
+
+  .signal-card {
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.03);
+  }
+
+  .signal-card h4 {
+    font-size: .96rem;
+    margin-bottom: 8px;
+  }
+
+  .signal-card p {
+    margin: 0;
+    font-size: .88rem;
+  }
+
+  .signal-card .source {
+    display: block;
+    margin-top: 10px;
+    color: var(--cyan);
+    font-size: .76rem;
+    font-family: var(--mono);
+  }
+
+  .stack {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stack::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: linear-gradient(180deg, var(--violet), var(--blue));
+  }
+
+  .stack.alt::before {
+    background: linear-gradient(180deg, var(--amber), var(--rose));
+  }
+
+  .micro-label {
+    font-size: .72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+    color: var(--dim);
+    margin-bottom: 10px;
+  }
+
+  .target-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 18px;
+  }
+
+  .target-item {
+    display: flex;
+    gap: 14px;
+    align-items: start;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+
+  .target-item b {
+    color: var(--white);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .target-num {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--white);
+    font-size: .76rem;
+    font-weight: 800;
+    background: rgba(139,92,246,.18);
+    box-shadow: 0 0 20px rgba(139,92,246,.2);
+  }
+
+  .timeline {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .timeline-step {
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .timeline-step::after {
+    content: '';
+    position: absolute;
+    inset: auto -20% -50% auto;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(139,92,246,.16), transparent 72%);
+    pointer-events: none;
+  }
+
+  .timeline-step .step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    margin-bottom: 14px;
+    border-radius: 12px;
+    background: rgba(56,189,248,.12);
+    color: var(--blue);
+    font-size: .85rem;
+    font-weight: 800;
+  }
+
+  .timeline-step p {
+    margin: 0 0 16px;
+  }
+
+  .quote {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .quote-mark {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    font-size: 1.4rem;
+    color: var(--white);
+    background: linear-gradient(135deg, rgba(139,92,246,.9), rgba(56,189,248,.8));
+  }
+
+  .quote strong {
+    display: block;
+    color: var(--white);
+    margin-bottom: 8px;
+  }
+
+  .feedback-lanes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .lane {
+    position: relative;
+    padding: 22px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+    box-shadow: var(--shadow);
+  }
+
+  .lane-tag {
+    display: inline-flex;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.05);
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+  }
+
+  .lane p {
+    margin: 0 0 16px;
+  }
+
+  .lane ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .lane ul li + li {
+    margin-top: 8px;
+  }
+
+  .priority-list {
+    display: grid;
+    gap: 14px;
+  }
+
+  .priority-item {
+    display: grid;
+    grid-template-columns: 70px minmax(0, 1fr) minmax(240px, .9fr);
+    gap: 18px;
+    align-items: center;
+    padding: 18px 20px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+
+  .priority-rank {
+    display: inline-flex;
+    justify-content: center;
+    padding: 10px 0;
+    border-radius: 12px;
+    font-size: .82rem;
+    font-weight: 800;
+    color: var(--white);
+    background: rgba(139,92,246,.16);
+  }
+
+  .priority-item h4 {
+    margin-bottom: 4px;
+    font-size: 1rem;
+  }
+
+  .reason-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .reason-card {
+    padding: 22px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.018));
+    box-shadow: var(--shadow);
+  }
+
+  .reason-card h3 {
+    margin-bottom: 10px;
+  }
+
+  .callout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr);
+    gap: 18px;
+    align-items: stretch;
+  }
+
+  .callout-main {
+    padding: 26px;
+    border-radius: 20px;
+    border: 1px solid rgba(52,211,153,.18);
+    background: linear-gradient(180deg, rgba(52,211,153,.08), rgba(52,211,153,.03));
+    box-shadow: var(--shadow);
+  }
+
+  .callout-main h3 {
+    margin-bottom: 10px;
+  }
+
+  .question-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+  }
+
+  .question-card {
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.03);
+    color: var(--text-hi);
+    font-weight: 600;
+    font-size: .9rem;
+  }
+
+  .footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .footer-links a {
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.04);
+    color: var(--text-hi);
+    font-size: .86rem;
+    font-weight: 600;
+  }
+
+  .footer-links a:hover {
+    background: rgba(255,255,255,.06);
+  }
+
+  @media (max-width: 1080px) {
+    .g4,
+    .question-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .hero-copy,
+    .section-head,
+    .callout,
+    .priority-item {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 920px) {
+    .sidebar {
+      position: fixed;
+      left: -310px;
+      top: 0;
+      bottom: 0;
+      transition: left .25s ease;
+      width: 286px;
+      height: auto;
+    }
+
+    .sidebar.open {
+      left: 0;
+    }
+
+    .mobile-bar {
+      display: flex;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(3,7,18,.92);
+      backdrop-filter: blur(18px);
+    }
+
+    .mobile-bar button {
+      border: none;
+      background: none;
+      color: var(--text-hi);
+      padding: 6px;
+      cursor: pointer;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.52);
+      z-index: 15;
+    }
+
+    .overlay.show {
+      display: block;
+    }
+
+    .section {
+      width: min(1120px, calc(100% - 32px));
+    }
+
+    .hero-panel {
+      padding: 34px 24px;
+    }
+
+    .g3,
+    .feedback-lanes,
+    .timeline,
+    .reason-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .g2,
+    .g4,
+    .question-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .section {
+      padding: 30px 0;
+    }
+
+    .hero h1 {
+      font-size: 2.3rem;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="mobile-bar">
+  <div class="brand" style="padding:0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    SmartAssist Plan
+  </div>
+  <button type="button" id="menuButton" aria-label="Open navigation">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+</div>
+<div class="overlay" id="overlay"></div>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      SmartAssist Growth Plan
+    </div>
+
+    <div class="sidebar-label">Sections</div>
+    <nav class="nav" id="nav">
+      <a href="#overview"><i></i>Overview</a>
+      <a href="#why-now"><i></i>Why this plan exists</a>
+      <a href="#kpis"><i></i>KPI stack</a>
+      <a href="#telemetry"><i></i>Shared KPI pipeline</a>
+      <a href="#views"><i></i>Where KPIs live</a>
+      <a href="#feedback"><i></i>Feedback system</a>
+      <a href="#growth"><i></i>Go-to-market</a>
+      <a href="#why-it-works"><i></i>Why it will work</a>
+      <a href="#next-moves"><i></i>Immediate moves</a>
+    </nav>
+
+    <div class="sidebar-label">Core thesis</div>
+    <div class="side-card">
+      <h3>Start with truth already in the repo.</h3>
+      <ul>
+        <li>Use current product signals before inventing new telemetry.</li>
+        <li>Add cross-user measurement through a separate opt-in rollup pipeline.</li>
+        <li>Grow through proof, not hype.</li>
+      </ul>
+    </div>
+
+    <div class="sidebar-label">What success looks like</div>
+    <div class="side-card">
+      <h3>One weekly scorecard answers five questions.</h3>
+      <ul>
+        <li>Are people discovering SmartAssist?</li>
+        <li>Are they getting through setup?</li>
+        <li>Are they reaching the learning loop?</li>
+      </ul>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section class="section hero" id="overview">
+      <div class="hero-panel">
+        <div class="eyebrow">KPI + growth strategy</div>
+        <h1>Measure what is real. <span>Grow what proves itself.</span></h1>
+        <div class="hero-copy">
+          <p>
+            This plan gives SmartAssist a practical operating system for growth:
+            use the product evidence it already generates, add only the minimum
+            opt-in telemetry needed for cross-install truth, and turn product proof
+            into a repeatable feedback loop for adoption.
+          </p>
+          <div class="hero-note">
+            <strong>Why this is the right shape</strong>
+            <p>
+              It respects SmartAssist's local-first promise while still giving you a
+              path to learn what works across many developers.
+            </p>
+          </div>
+        </div>
+        <div class="badge-row">
+          <span class="badge" style="color:var(--emerald)"><i></i>Local-first</span>
+          <span class="badge" style="color:var(--blue)"><i></i>Evidence-backed</span>
+          <span class="badge" style="color:var(--amber)"><i></i>Opt-in telemetry only</span>
+          <span class="badge" style="color:var(--cyan)"><i></i>Built on existing repo surfaces</span>
+        </div>
+      </div>
+
+      <div class="grid g3" style="margin-top:22px">
+        <div class="card">
+          <div class="micro-label">Track now</div>
+          <h3>Use the signals SmartAssist already emits</h3>
+          <p class="muted">
+            The repo already has <code>smartassist analyze</code>,
+            <code>rag_dashboard</code>, <code>smartassist dashboard</code>, QA artifacts,
+            smoke checks, and release workflows. The plan starts there.
+          </p>
+        </div>
+        <div class="card">
+          <div class="micro-label">Add later</div>
+          <h3>Add a separate sanitized KPI layer where local logs stop helping</h3>
+          <p class="muted">
+            Cross-install questions like conversion by agent or onboarding drop-off
+            need aggregate data, but the shared layer should upload weekly rollups,
+            not raw project logs.
+          </p>
+        </div>
+        <div class="card">
+          <div class="micro-label">Review weekly</div>
+          <h3>Turn metrics into decisions, not decoration</h3>
+          <p class="muted">
+            The scorecard exists to answer five operating questions every week.
+            If it does not change a product or growth decision, it does not belong.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="why-now">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Why this plan exists</div>
+          <h2>SmartAssist already has strong internal proof, but weak cross-user visibility.</h2>
+        </div>
+        <p>
+          The right move is not to bolt on a giant analytics stack. The right move is
+          to separate what the repo already proves from what only aggregated adoption
+          data can answer.
+        </p>
+      </div>
+
+      <div class="grid g2">
+        <div class="stack">
+          <div class="micro-label">What already exists</div>
+          <h3>Product evidence is already in the codebase</h3>
+          <ul class="feature-list">
+            <li><code>smartassist analyze</code> reads <code>usage_log.jsonl</code> and exposes hit rate, latency, and query behavior.</li>
+            <li><code>rag_dashboard</code> surfaces reliability, corpus stats, and feedback counts.</li>
+            <li><code>smartassist dashboard</code> turns runtime state into an operator-facing HTML view.</li>
+            <li>The QA harness, smoke scripts, and CI workflows already prove setup and runtime behavior repeatedly.</li>
+            <li>Website, PyPI publish, and npm release workflows already exist as distribution surfaces.</li>
+          </ul>
+        </div>
+        <div class="stack alt">
+          <div class="micro-label">What is still unknown</div>
+          <h3>Maintainer questions local logs cannot answer</h3>
+          <ul class="feature-list">
+            <li>How many external developers finish setup successfully?</li>
+            <li>Which agent integrations convert best?</li>
+            <li>Where do new users drop off in onboarding?</li>
+            <li>Which features drive repeated usage across many installs?</li>
+            <li>What churn signals appear across versions and operating systems?</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="quote" style="margin-top:20px">
+        <div class="quote-mark">✦</div>
+        <div>
+          <strong>The plan works because it does not pretend these are the same problem.</strong>
+          Local product health is already measurable. Cross-install adoption is not.
+          The strategy wins by treating those as two different layers instead of mixing
+          them into one fuzzy dashboard.
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="kpis">
+      <div class="section-head">
+        <div>
+          <div class="kicker">KPI stack</div>
+          <h2>Two layers: what SmartAssist can measure now, and what it should only measure with consent.</h2>
+        </div>
+        <p>
+          This keeps the product honest. Layer 1 improves the product using signals that
+          already exist. Layer 2 is reserved for maintainer visibility across many installs.
+        </p>
+      </div>
+
+      <div class="grid g2">
+        <div class="stack">
+          <div class="micro-label">Layer 1</div>
+          <h3>Track now from existing repo evidence</h3>
+          <p class="muted">
+            Use current runtime logs, dashboards, QA artifacts, release workflows, and
+            dogfood projects to answer acquisition, activation, value, trust, and retention
+            proxy questions immediately.
+          </p>
+          <div class="signal-grid grid g2">
+            <div class="signal-card">
+              <h4>Activation</h4>
+              <p>Successful <code>setup</code>, <code>init</code>, and <code>doctor --json</code> readiness.</p>
+              <span class="source">QA harness · smoke scripts</span>
+            </div>
+            <div class="signal-card">
+              <h4>Product value</h4>
+              <p>Search hit rate, helpful feedback share, lesson create/boost/demote mix.</p>
+              <span class="source">analyze · rag_dashboard</span>
+            </div>
+            <div class="signal-card">
+              <h4>Trust</h4>
+              <p>PR checks, QA scenario pass rate, package smoke, and pipx smoke success.</p>
+              <span class="source">GitHub Actions · QA demo</span>
+            </div>
+            <div class="signal-card">
+              <h4>Quality by category</h4>
+              <p>Weak categories, reliability scores, and repeated negative feedback patterns.</p>
+              <span class="source">boundary packs · rag_dashboard</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack alt">
+          <div class="micro-label">Layer 2</div>
+          <h3>Add only privacy-safe opt-in lifecycle events and rollups</h3>
+          <p class="muted">
+            If SmartAssist needs maintainer insight across many developers, collect only
+            coarse lifecycle events and weekly summaries, and only by explicit opt-in.
+          </p>
+          <div class="chip-row" style="margin:18px 0 16px">
+            <span class="chip" style="color:var(--rose)"><i></i>No prompt contents</span>
+            <span class="chip" style="color:var(--rose)"><i></i>No code contents</span>
+            <span class="chip" style="color:var(--amber)"><i></i>No hidden telemetry</span>
+            <span class="chip" style="color:var(--emerald)"><i></i>Opt-in only</span>
+          </div>
+          <ul class="feature-list">
+            <li><code>install_started</code> and <code>setup_completed</code> measure onboarding conversion.</li>
+            <li><code>doctor_ready</code> reveals setup quality by version and agent.</li>
+            <li><code>seed_completed</code> and <code>first_feedback_event</code> measure time to first value.</li>
+            <li><code>agent_configured</code> compares Claude, Codex, Gemini, and OpenCode activation.</li>
+            <li>Weekly rollups track searches, searches with results, feedback ratio, and weak categories.</li>
+            <li><code>uninstall_requested</code> reveals churn and friction.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="micro-label">Starter targets</div>
+        <h3>Use a small set of operating thresholds</h3>
+        <div class="target-list">
+          <div class="target-item">
+            <span class="target-num">1</span>
+            <div><b>Search hit rate above 70%</b> Keep the retrieval loop clearly useful in dogfood projects.</div>
+          </div>
+          <div class="target-item">
+            <span class="target-num">2</span>
+            <div><b>Helpful feedback greater than negative feedback</b> The product should help more than it hurts before scale-up.</div>
+          </div>
+          <div class="target-item">
+            <span class="target-num">3</span>
+            <div><b>Every release passes setup proof</b> Project init, package smoke, and pipx smoke stay green.</div>
+          </div>
+          <div class="target-item">
+            <span class="target-num">4</span>
+            <div><b>Time to first value under ten minutes</b> New users should install, initialize, and see SmartAssist working quickly.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="telemetry">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Shared KPI pipeline</div>
+          <h2>How SmartAssist will collect useful KPIs across developers without breaking trust.</h2>
+        </div>
+        <p>
+          The maintainer KPI layer should be separate from the current local analytics layer.
+          That means no uploading <code>usage_log.jsonl</code>, no prompt capture, and no raw
+          project context. Shared KPIs come from anonymous lifecycle events and weekly rollups.
+        </p>
+      </div>
+
+      <div class="grid g2">
+        <div class="stack">
+          <div class="micro-label">What stays local</div>
+          <h3>Current project logs remain on the user's machine</h3>
+          <ul class="feature-list">
+            <li><code>mcp_server.py</code> already writes local runtime evidence to <code>usage_log.jsonl</code>.</li>
+            <li><code>codex_activity.py</code> appends local session metadata for the dashboard experience.</li>
+            <li><code>analyze_usage.py</code> and <code>generate_dashboard.py</code> are already excellent for one project or one developer.</li>
+            <li>Those files are inputs for rollups, not the thing we should upload.</li>
+          </ul>
+        </div>
+
+        <div class="stack alt">
+          <div class="micro-label">What gets shared</div>
+          <h3>Only anonymous lifecycle events and weekly KPI summaries</h3>
+          <ul class="feature-list">
+            <li><code>install_started</code>, <code>setup_completed</code>, <code>setup_failed</code></li>
+            <li><code>project_initialized</code>, <code>agent_configured</code>, <code>doctor_ready</code></li>
+            <li><code>seed_completed</code>, <code>dashboard_opened</code>, <code>uninstall_requested</code></li>
+            <li>Weekly rollups: searches, searches with results, positive feedback, negative feedback, and weak categories</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:20px">
+        <div class="panel">
+          <div class="micro-label">Implementation flow</div>
+          <h3>Four stages make the KPI system safe and useful</h3>
+          <div class="target-list">
+            <div class="target-item">
+              <span class="target-num">1</span>
+              <div><b>Consent + anonymous install id</b> Ask during <code>setup</code> or <code>setup-agent</code>, then store consent outside project workspaces.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">2</span>
+              <div><b>Emit lifecycle events from existing CLI paths</b> Setup, init, doctor, seed, uninstall, and agent configuration are the cleanest KPI anchors.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">3</span>
+              <div><b>Build weekly rollups locally</b> Summarize search counts, success rate, feedback ratio, and weak categories from existing local analytics.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">4</span>
+              <div><b>Batch upload or export</b> Flush a sanitized queue to a simple hosted collector, or generate an export bundle when hosted telemetry is not ready yet.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="micro-label">Code anchors</div>
+          <h3>Where the instrumentation plugs into the current repo</h3>
+          <div class="target-list">
+            <div class="target-item">
+              <span class="target-num">A</span>
+              <div><b><code>cli.py</code></b> owns <code>cmd_setup</code>, <code>cmd_init</code>, <code>cmd_setup_agent</code>, <code>cmd_doctor</code>, <code>cmd_seed</code>, and <code>cmd_uninstall</code>.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">B</span>
+              <div><b><code>mcp_server.py::_log_usage()</code></b> already captures local usage, so it should feed a sanitized rollup helper instead of shipping raw queries upstream.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">C</span>
+              <div><b><code>rag_feedback()</code> and feedback metrics</b> provide the easiest product-quality counters for shared KPI summaries.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">D</span>
+              <div><b><code>generate_dashboard.py</code> and launcher flows</b> are the natural place to record dashboard engagement and show telemetry status.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="micro-label">Useful KPI output</div>
+        <h3>What this shared KPI layer will actually tell us</h3>
+        <div class="signal-grid grid g3">
+          <div class="signal-card">
+            <h4>Setup conversion</h4>
+            <p><code>setup_completed / install_started</code> shows where onboarding is leaking.</p>
+            <span class="source">docs + setup flow</span>
+          </div>
+          <div class="signal-card">
+            <h4>Ready rate</h4>
+            <p><code>doctor_ready / setup_completed</code> reveals registration and environment quality.</p>
+            <span class="source">cmd_doctor</span>
+          </div>
+          <div class="signal-card">
+            <h4>Activation by agent</h4>
+            <p><code>agent_configured</code> tells us where to invest Claude, Codex, Gemini, or OpenCode effort.</p>
+            <span class="source">setup-agent</span>
+          </div>
+          <div class="signal-card">
+            <h4>Time to first value</h4>
+            <p>Time from setup to seed or first feedback/search rollup tells us if onboarding is too slow.</p>
+            <span class="source">setup + seed + rollup</span>
+          </div>
+          <div class="signal-card">
+            <h4>Product value</h4>
+            <p>Search success rate and feedback ratio show whether SmartAssist is helping more than it hurts.</p>
+            <span class="source">usage rollups + feedback</span>
+          </div>
+          <div class="signal-card">
+            <h4>Retention + churn</h4>
+            <p>Weekly activity by install id and <code>uninstall_requested</code> tell us whether value persists.</p>
+            <span class="source">weekly summaries</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="views">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Where KPIs live</div>
+          <h2>We should view KPIs in separate surfaces for local debugging, maintainer decisions, and release control.</h2>
+        </div>
+        <p>
+          If everything lands in one dashboard, it becomes noisy. SmartAssist needs one local
+          operator view and one shared maintainer view, plus a weekly and release rhythm for decisions.
+        </p>
+      </div>
+
+      <div class="reason-grid">
+        <div class="reason-card">
+          <div class="micro-label">Existing local view</div>
+          <h3>Project dashboard and local analytics</h3>
+          <p>
+            Developers should continue using <code>smartassist dashboard</code>,
+            <code>smartassist analyze</code>, and <code>rag_dashboard</code> to inspect one
+            project or one workspace at a time.
+          </p>
+          <p class="muted">
+            This is for troubleshooting onboarding, retrieval quality, and weak categories locally.
+            It is not the main surface for cross-developer product decisions.
+          </p>
+        </div>
+
+        <div class="reason-card">
+          <div class="micro-label">New primary surface</div>
+          <h3>Maintainer aggregate dashboard</h3>
+          <p>
+            The shared KPI rollups should feed one maintainer-facing dashboard. The simplest
+            version is a generated HTML page backed by the telemetry collector.
+          </p>
+          <p class="muted">
+            This view should filter by time, SmartAssist version, agent, and OS family, and it is
+            the main place to watch setup conversion, ready rate, search success, retention, churn,
+            and weak-category trends.
+          </p>
+        </div>
+
+        <div class="reason-card">
+          <div class="micro-label">Decision ritual</div>
+          <h3>Weekly scorecard report</h3>
+          <p>
+            The aggregate dashboard should generate one weekly scorecard summary with KPI deltas,
+            top failures, biggest wins, and the next product decision.
+          </p>
+          <p class="muted">
+            Dashboards are for exploration. The weekly scorecard is what forces an informed decision.
+          </p>
+        </div>
+
+        <div class="reason-card">
+          <div class="micro-label">Release gate</div>
+          <h3>Version comparison view</h3>
+          <p>
+            Before each release, maintainers should compare the current version against the previous
+            stable release on setup conversion, doctor-ready rate, search success, negative feedback,
+            and uninstall signals.
+          </p>
+          <p class="muted">
+            This is how SmartAssist uses product evidence to decide whether to ship, hold, or rollback.
+          </p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="micro-label">Decision cadence</div>
+        <h3>How maintainers use the KPI surfaces</h3>
+        <div class="target-list">
+          <div class="target-item">
+            <span class="target-num">D</span>
+            <div><b>Daily or ad hoc</b> Use the local dashboard and aggregate dashboard to inspect onboarding problems, product regressions, and usage anomalies.</div>
+          </div>
+          <div class="target-item">
+            <span class="target-num">W</span>
+            <div><b>Weekly</b> Review the scorecard and choose the next product, onboarding, or growth priority from the KPI deltas.</div>
+          </div>
+          <div class="target-item">
+            <span class="target-num">R</span>
+            <div><b>Per release</b> Check the version comparison view before publishing and again after rollout to catch regressions quickly.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:20px">
+        <div class="panel">
+          <div class="micro-label">Setup architecture</div>
+          <h3>How to stand up the aggregate dashboard</h3>
+          <div class="target-list">
+            <div class="target-item">
+              <span class="target-num">1</span>
+              <div><b>Client telemetry helper</b> Write opt-in lifecycle events to a user-level queue and build daily and weekly KPI rollups locally.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">2</span>
+              <div><b>Collector API</b> Accept anonymous events and rollups over one small HTTPS ingestion endpoint.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">3</span>
+              <div><b>Shared KPI store</b> Keep raw events, daily rollups, weekly rollups, and release rollups in one relational database.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">4</span>
+              <div><b>Dashboard generator</b> Produce a maintainer-facing HTML dashboard from rollup tables and publish it to a private URL.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="micro-label">Read model</div>
+          <h3>What the dashboard should read from</h3>
+          <div class="target-list">
+            <div class="target-item">
+              <span class="target-num">W</span>
+              <div><b>Weekly rollups first</b> This is the main KPI surface for strategic trends and informed decisions.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">D</span>
+              <div><b>Daily rollups second</b> Use these to spot regressions, onboarding failures, and recovery after fixes.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">R</span>
+              <div><b>Release rollups third</b> Compare the current version against the previous stable release before shipping.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">!</span>
+              <div><b>Raw events only for drill-down</b> Do not drive decisions from noisy client events when a stable rollup already answers the question.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="micro-label">Version 1 dashboard</div>
+        <h3>The first maintainer dashboard only needs six panels</h3>
+        <div class="signal-grid grid g3">
+          <div class="signal-card">
+            <h4>Onboarding funnel</h4>
+            <p>Install started → setup completed → doctor ready.</p>
+            <span class="source">funnel</span>
+          </div>
+          <div class="signal-card">
+            <h4>Activation by agent</h4>
+            <p>Which integrations convert and which ones stall.</p>
+            <span class="source">agent rollups</span>
+          </div>
+          <div class="signal-card">
+            <h4>Retention</h4>
+            <p>D7 and D30 install retention trend.</p>
+            <span class="source">weekly activity</span>
+          </div>
+          <div class="signal-card">
+            <h4>Product value</h4>
+            <p>Search success rate and satisfaction ratio by version.</p>
+            <span class="source">usage + feedback</span>
+          </div>
+          <div class="signal-card">
+            <h4>Weak categories</h4>
+            <p>Where SmartAssist keeps getting things wrong.</p>
+            <span class="source">quality rollups</span>
+          </div>
+          <div class="signal-card">
+            <h4>Churn + failures</h4>
+            <p>Uninstall signals and top setup failure clusters.</p>
+            <span class="source">failure rollups</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:20px">
+        <div class="panel">
+          <div class="micro-label">Scaling path</div>
+          <h3>Yes — this can scale without redesigning the client side</h3>
+          <div class="target-list">
+            <div class="target-item">
+              <span class="target-num">1</span>
+              <div><b>Phase 1</b> Local batching, one stateless collector, one relational DB, scheduled rollups, and a generated HTML dashboard.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">2</span>
+              <div><b>Phase 2</b> Add a message queue and async workers if direct writes begin to compete with rollups or dashboard reads.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">3</span>
+              <div><b>Phase 3</b> Move large raw history to cold or append-only analytics storage while keeping fast KPI rollups in the serving database.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="micro-label">Why it scales</div>
+          <h3>The contracts stay stable while the backend evolves</h3>
+          <div class="target-list">
+            <div class="target-item">
+              <span class="target-num">C</span>
+              <div><b>Client contract</b> The client keeps sending the same small anonymous event and rollup payloads.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">D</span>
+              <div><b>Dashboard contract</b> The dashboard keeps reading precomputed rollups, not raw event firehoses.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">T</span>
+              <div><b>Upgrade triggers</b> Only scale up when ingest latency, rollup windows, dashboard speed, or query responsiveness start to degrade.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="feedback">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Feedback system</div>
+          <h2>Three feedback lanes, each with a different job.</h2>
+        </div>
+        <p>
+          SmartAssist already learns best from contextual product feedback. The growth
+          plan keeps that core loop, then adds public and campaign feedback only where
+          they improve adoption and roadmap clarity.
+        </p>
+      </div>
+
+      <div class="feedback-lanes">
+        <article class="lane">
+          <div class="lane-tag" style="color:var(--emerald)">Lane 1 · product quality</div>
+          <h3>In-product feedback</h3>
+          <p>
+            This is the highest-signal loop because it comes directly from real usage
+            during real coding work.
+          </p>
+          <ul>
+            <li><code>:)</code> and <code>:(</code> with context</li>
+            <li><code>rag_feedback</code></li>
+            <li><code>apply_feedback_protocol</code></li>
+            <li>Lesson creation, boosting, demotion, and comparison logging</li>
+          </ul>
+        </article>
+
+        <article class="lane">
+          <div class="lane-tag" style="color:var(--blue)">Lane 2 · operator insight</div>
+          <h3>Public feedback</h3>
+          <p>
+            GitHub should become the structured channel for setup blockers, success
+            reports, use cases, and feature requests.
+          </p>
+          <ul>
+            <li>Issues for bugs and broken setup</li>
+            <li>Discussions for wins, blockers, workflows, and requests</li>
+            <li>Release threads for version-specific regressions</li>
+          </ul>
+        </article>
+
+        <article class="lane">
+          <div class="lane-tag" style="color:var(--amber)">Lane 3 · growth learning</div>
+          <h3>Campaign feedback</h3>
+          <p>
+            Every public launch should ask for the same next step so replies stay
+            actionable and comparable.
+          </p>
+          <ul>
+            <li>Install it</li>
+            <li>Run setup</li>
+            <li>Use it for one real task</li>
+            <li>Report what worked, what broke, and which agent you used</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="quote" style="margin-top:20px">
+        <div class="quote-mark">↺</div>
+        <div>
+          <strong>Why this loop should work</strong>
+          It asks users for evidence, not opinions. That keeps the feedback system close
+          to the product's real value instead of drifting into vague feature wishlist noise.
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="growth">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Go-to-market</div>
+          <h2>Win the developers already living inside coding agents before trying to reach everyone.</h2>
+        </div>
+        <p>
+          SmartAssist is an infrastructure-layer devtool. It spreads best through trust,
+          workflow proof, and high-context communities, not through generic top-of-funnel marketing.
+        </p>
+      </div>
+
+      <div class="grid g2">
+        <div class="panel">
+          <div class="micro-label">Audience</div>
+          <h3>Primary users to target first</h3>
+          <ul class="feature-list">
+            <li>Claude Code users</li>
+            <li>Codex users</li>
+            <li>OpenCode users</li>
+            <li>Developers already experimenting with multi-agent workflows</li>
+            <li>Teams that care about prompt quality, repeated mistakes, and engineering feedback loops</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <div class="micro-label">Positioning</div>
+          <h3>Lead with one durable message</h3>
+          <div class="quote" style="margin-top:14px">
+            <div class="quote-mark">“</div>
+            <div>
+              <strong>SmartAssist is AI memory that learns from developer feedback and works across coding agents.</strong>
+              That message is believable because the repo already backs it up with local-first storage,
+              measurable learning loops, and evidence-backed QA artifacts.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="micro-label">Channel priority</div>
+        <h3>Use the assets SmartAssist already owns</h3>
+        <div class="priority-list" style="margin-top:16px">
+          <div class="priority-item">
+            <div class="priority-rank">Priority 1</div>
+            <div>
+              <h4>README, website, and architecture overview</h4>
+              <p class="muted">These are the first conversion surfaces people already hit.</p>
+            </div>
+            <div class="muted">Tighten messaging around memory, feedback, and fewer repeated mistakes.</div>
+          </div>
+          <div class="priority-item">
+            <div class="priority-rank">Priority 2</div>
+            <div>
+              <h4>GitHub releases and release notes</h4>
+              <p class="muted">Best place to announce product proof and specific improvements.</p>
+            </div>
+            <div class="muted">Every release should show what got more reliable, not just what changed.</div>
+          </div>
+          <div class="priority-item">
+            <div class="priority-rank">Priority 3</div>
+            <div>
+              <h4>QA demo artifacts and short demo clips</h4>
+              <p class="muted">SmartAssist becomes easier to trust when people can see it work.</p>
+            </div>
+            <div class="muted">Turn the deterministic demo into a public proof asset, not an internal-only artifact.</div>
+          </div>
+          <div class="priority-item">
+            <div class="priority-rank">Priority 4</div>
+            <div>
+              <h4>AI devtool communities</h4>
+              <p class="muted">Warm audiences already feel the pain SmartAssist solves.</p>
+            </div>
+            <div class="muted">Post with one CTA: install it, use it once, and report exactly what happened.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="why-it-works">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Why it will work</div>
+          <h2>This plan compounds because each step is built on something SmartAssist already knows how to do.</h2>
+        </div>
+        <p>
+          The strategy is credible because it stays close to the repo's current strengths,
+          current assets, and current audience instead of assuming a different product than the one that exists.
+        </p>
+      </div>
+
+      <div class="reason-grid">
+        <div class="reason-card">
+          <h3>1. It starts from real product truth</h3>
+          <p>
+            SmartAssist already has usage analytics, reliability scoring, dashboards,
+            smoke checks, and QA demos. That means the first measurement layer is not speculative.
+          </p>
+        </div>
+        <div class="reason-card">
+          <h3>2. It avoids trust-breaking telemetry</h3>
+          <p>
+            The plan keeps local-first as the default and adds one separate sanitized KPI layer.
+            Raw project logs stay local, while shared telemetry is reduced to anonymous lifecycle events and rollups.
+          </p>
+        </div>
+        <div class="reason-card">
+          <h3>3. It targets a warm market first</h3>
+          <p>
+            Developers already using Claude Code, Codex, and similar tools feel the exact pain SmartAssist solves:
+            repeated mistakes, weak continuity, and poor feedback retention.
+          </p>
+        </div>
+        <div class="reason-card">
+          <h3>4. It turns proof into distribution</h3>
+          <p>
+            README, overview docs, QA demos, and release notes become growth assets.
+            The product does not need invented marketing theater; it needs its best evidence packaged clearly.
+          </p>
+        </div>
+      </div>
+
+      <div class="timeline" style="margin-top:20px">
+        <div class="timeline-step">
+          <div class="step">01</div>
+          <h3>Measure now</h3>
+          <p>Use current repo signals to tighten onboarding, product quality, and trust before scaling distribution.</p>
+          <div class="chip-row">
+            <span class="chip" style="color:var(--cyan)"><i></i><code>smartassist analyze</code></span>
+            <span class="chip" style="color:var(--emerald)"><i></i><code>rag_dashboard</code></span>
+          </div>
+        </div>
+        <div class="timeline-step">
+          <div class="step">02</div>
+          <h3>Add opt-in lifecycle signals</h3>
+          <p>Add anonymous install events first, then derive weekly KPI rollups from existing local analytics instead of shipping raw logs.</p>
+          <div class="chip-row">
+            <span class="chip" style="color:var(--amber)"><i></i>setup_completed</span>
+            <span class="chip" style="color:var(--amber)"><i></i>weekly_rollup</span>
+          </div>
+        </div>
+        <div class="timeline-step">
+          <div class="step">03</div>
+          <h3>Scale with proof</h3>
+          <p>Push the strongest evidence into releases, demos, and community posts once onboarding is stable and measurable.</p>
+          <div class="chip-row">
+            <span class="chip" style="color:var(--violet)"><i></i>QA demo</span>
+            <span class="chip" style="color:var(--blue)"><i></i>release notes</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="next-moves">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Immediate moves</div>
+          <h2>Six actions make the shared KPI model real without changing the core learning loop.</h2>
+        </div>
+        <p>
+          These are the implementation steps that turn the plan from narrative into a real
+          maintainer feedback system.
+        </p>
+      </div>
+
+      <div class="callout">
+        <div class="callout-main">
+          <h3>Recommended sequence</h3>
+          <div class="target-list">
+            <div class="target-item">
+              <span class="target-num">1</span>
+              <div><b>Add a centralized telemetry helper</b> Create one write path for shared KPI events and keep consent state outside project workspaces.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">2</span>
+              <div><b>Instrument setup and activation first</b> Wire <code>setup</code>, <code>init</code>, <code>setup-agent</code>, <code>doctor</code>, <code>seed</code>, and <code>uninstall</code>.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">3</span>
+              <div><b>Summarize local analytics into weekly rollups</b> Use existing usage and feedback signals to build a sanitized KPI bundle.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">4</span>
+              <div><b>Add telemetry commands</b> Ship <code>status</code>, <code>enable</code>, <code>disable</code>, <code>flush</code>, and <code>export</code> so telemetry stays transparent.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">5</span>
+              <div><b>Stand up a minimal ingestion endpoint</b> Store sanitized events, build daily aggregates, and expose a maintainer dashboard.</div>
+            </div>
+            <div class="target-item">
+              <span class="target-num">6</span>
+              <div><b>Keep the human loop alive</b> Use GitHub Discussions, issues, and the QA demo as the qualitative layer on top of telemetry.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="micro-label">Decision rule</div>
+          <h3>If a metric cannot change a decision, do not track it.</h3>
+          <p class="muted">
+            The scorecard is doing its job if it answers these five questions clearly every week:
+          </p>
+          <div class="question-grid">
+            <div class="question-card">Are more developers discovering SmartAssist?</div>
+            <div class="question-card">Are they getting through setup?</div>
+            <div class="question-card">Are they reaching the learning loop?</div>
+            <div class="question-card">Is SmartAssist helping more than it hurts?</div>
+            <div class="question-card">Do we know where it fails by category, agent, and onboarding step?</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-links">
+        <a href="docs/plans/2026-04-07-growth-kpi-and-feedback-plan.md">Open the source plan</a>
+        <a href="smartassist-overview.html">Open architecture overview</a>
+        <a href="website/index.html">Open website</a>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('overlay');
+  const menuButton = document.getElementById('menuButton');
+  const links = Array.from(document.querySelectorAll('#nav a'));
+  const sections = links
+    .map((link) => document.querySelector(link.getAttribute('href')))
+    .filter(Boolean);
+
+  function setMenu(open) {
+    sidebar.classList.toggle('open', open);
+    overlay.classList.toggle('show', open);
+  }
+
+  if (menuButton) {
+    menuButton.addEventListener('click', () => {
+      setMenu(!sidebar.classList.contains('open'));
+    });
+  }
+
+  overlay.addEventListener('click', () => setMenu(false));
+
+  links.forEach((link) => {
+    link.addEventListener('click', () => setMenu(false));
+  });
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter((entry) => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+    if (!visible) return;
+    links.forEach((link) => {
+      link.classList.toggle(
+        'active',
+        link.getAttribute('href') === `#${visible.target.id}`,
+      );
+    });
+  }, {
+    rootMargin: '-20% 0px -55% 0px',
+    threshold: [0.2, 0.45, 0.65],
+  });
+
+  sections.forEach((section) => observer.observe(section));
+</script>
+</body>
+</html>

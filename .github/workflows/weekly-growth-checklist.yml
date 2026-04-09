@@ -1,0 +1,37 @@
+name: Weekly Growth Checklist
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  create-weekly-issue:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Create this week's growth issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          title="Weekly growth loop - $(date -u +%Y-%m-%d)"
+          existing=$(gh issue list --repo "$REPO" --state all --search "$title in:title" --json title --jq 'length')
+          if [ "$existing" -gt 0 ]; then
+            echo "Weekly issue already exists: $title"
+            exit 0
+          fi
+
+          gh issue create \
+            --repo "$REPO" \
+            --title "$title" \
+            --body-file .github/growth-weekly-issue.md \
+            --label community \
+            --label "area: workflows"

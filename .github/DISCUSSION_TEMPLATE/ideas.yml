@@ -1,0 +1,27 @@
+title: "[Idea] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this before opening a full feature issue when the idea still needs
+        discussion or shaping.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: direction
+    attributes:
+      label: What direction do you want to explore?
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or tradeoffs
+      description: Compatibility, UX, performance, maintenance, or rollout concerns.
+    validations:
+      required: false

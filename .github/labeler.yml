@@ -1,0 +1,48 @@
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+          - "README.md"
+          - "MEMORY.md"
+          - "*.html"
+
+"area: website":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "website/**"
+
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+
+"area: workflows":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+
+"area: hooks":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "smartassist/hooks/**"
+
+"area: cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "smartassist/cli.py"
+          - "smartassist/claude_sa.py"
+          - "smartassist/codex_sa.py"
+          - "smartassist/monitor.py"
+
+"area: mcp":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "smartassist/mcp_server.py"
+
+"area: packaging":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "pyproject.toml"
+          - "npm-package/**"
+          - "scripts/**"

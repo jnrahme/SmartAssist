@@ -1,0 +1,49 @@
+name: Contributor interest
+description: Raise your hand if you want a focused way to help SmartAssist.
+title: "[contrib] "
+labels:
+  - community
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for wanting to help.
+
+        This form is the fastest way for maintainers to route you to a focused,
+        contributor-friendly task.
+  - type: dropdown
+    id: interest
+    attributes:
+      label: What kind of contribution are you looking for?
+      options:
+        - Docs and onboarding
+        - Tests and QA
+        - CLI and workflows
+        - Hooks and integrations
+        - Website and messaging
+        - Triage and community support
+        - Not sure yet
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: What context or experience do you already have?
+      description: Tools, languages, workflows, or SmartAssist areas you know.
+    validations:
+      required: false
+  - type: textarea
+    id: goal
+    attributes:
+      label: What would make a first contribution feel successful for you?
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I read CONTRIBUTING.md first.
+          required: true
+        - label: I am okay with maintainers suggesting a smaller scoped issue.
+          required: false

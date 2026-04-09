@@ -26,7 +26,5 @@ node_modules/
 /package-lock.json
 /package.json
 
-# SmartAssist data
-.claude/smartassist/
 .playwright-cli/
 .mcp.json.bak*

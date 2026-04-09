@@ -5,8 +5,8 @@ codex-sa -- Launch Codex with SmartAssist dashboard and live log tail.
 Left pane:  Codex (interactive)
 Right pane: Live SmartAssist activity log (auto-scrolling)
 
-Also starts a lightweight bridge that mirrors Codex session activity from
-~/.codex/sessions into SmartAssist's dashboard logs.
+Codex activity is mirrored on dashboard refresh, and the launcher cleans up
+legacy background watcher daemons from older SmartAssist versions.
 """
 
 import os
@@ -16,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from smartassist.codex_activity import reap_legacy_project_watcher
 from smartassist.dashboard_runtime import ensure_dashboard_running
 
 SESSION_NAME = "codex-sa"
@@ -74,49 +75,13 @@ def _escape_applescript(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _sync_pid_path(data_dir: Path) -> Path:
-    return data_dir / "codex_sync.pid"
-
-
-def _pid_running(pid: int) -> bool:
-    try:
-        os.kill(int(pid), 0)
-    except (ProcessLookupError, ValueError, PermissionError, OSError):
-        return False
-    return True
-
-
-def _start_codex_sync(data_dir: Path) -> int | None:
-    pid_path = _sync_pid_path(data_dir)
-    if pid_path.exists():
-        try:
-            existing = int(pid_path.read_text().strip())
-        except (OSError, ValueError):
-            existing = None
-        if existing and _pid_running(existing):
-            return existing
-        pid_path.unlink(missing_ok=True)
-
-    try:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "smartassist.codex_activity", "--watch"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except OSError:
-        return None
-
-    pid_path.write_text(str(proc.pid))
-    return proc.pid
-
-
 def _launch_tmux(log_file: Path) -> int:
     cwd = os.getcwd()
     quoted_cwd = shlex.quote(cwd)
 
     if _tmux_session_exists():
-        os.execvp("tmux", ["tmux", "attach-session", "-t", SESSION_NAME])
+        subprocess.run(["tmux", "attach-session", "-t", SESSION_NAME])
+        subprocess.run(["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True)
         return 0
 
     subprocess.run(
@@ -177,7 +142,8 @@ def _launch_tmux(log_file: Path) -> int:
         check=True,
     )
 
-    os.execvp("tmux", ["tmux", "attach-session", "-t", SESSION_NAME])
+    subprocess.run(["tmux", "attach-session", "-t", SESSION_NAME])
+    subprocess.run(["tmux", "kill-session", "-t", SESSION_NAME], capture_output=True)
     return 0
 
 
@@ -237,7 +203,7 @@ def main() -> int:
 
     log_file = data_dir / "rag_live.log"
     log_file.touch()
-    _start_codex_sync(data_dir)
+    reap_legacy_project_watcher(data_dir)
 
     dashboard_url = _start_dashboard() or "http://localhost:3000"
     print(f"Dashboard: {dashboard_url}")

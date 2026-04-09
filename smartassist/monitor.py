@@ -70,7 +70,7 @@ def main() -> int:
     if log_file:
         print(f" {BOLD}Live Log:{RESET}\n")
         sys.stdout.flush()
-        os.execvp("tail", ["tail", "-f", log_file])
+        os.execvp("tail", ["tail", "-F", log_file])
 
     return 0
 

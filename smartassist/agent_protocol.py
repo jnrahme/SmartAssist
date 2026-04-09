@@ -44,6 +44,7 @@ def render_codex_agents_md() -> str:
         "If the current workspace exposes SmartAssist MCP tools, use them proactively.\n\n"
         "## Before acting\n\n"
         "- Call `rag_search` before code edits, tests, commits, or architecture decisions that may have project-specific rules.\n"
+        "- If the repo contains `.agents/skills/smartassist-memory-architect/SKILL.md`, read it before touching SmartAssist memory, retrieval, ranking, vectorization, or docs about those systems.\n"
         "- Treat SmartAssist memory as project-specific guidance, not generic advice.\n\n"
         f"## SmartAssist feedback workflow\n\n{body}\n"
     )

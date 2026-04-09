@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a focused improvement to SmartAssist.
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea.
+
+        The best requests start with a user problem, not just a proposed
+        implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What do you want SmartAssist to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What are you doing today instead?
+      description: Workarounds, competing tools, or manual steps are useful here.
+    validations:
+      required: false
+  - type: textarea
+    id: success
+    attributes:
+      label: How would we know this worked well?
+    validations:
+      required: true

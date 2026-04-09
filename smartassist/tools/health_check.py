@@ -11,11 +11,16 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import Counter
 
 from smartassist.claude_config import get_mcp_status
-from smartassist.config import EMBEDDING_MODEL, EMBEDDING_DIM, get_storage_path, get_db_path
+from smartassist.config import (
+    EMBEDDING_MODEL,
+    EMBEDDING_DIM,
+    get_storage_path,
+    get_db_path,
+)
 
 # ANSI colors for terminal output
 BOLD = "\033[1m"
@@ -91,6 +96,7 @@ def check_database():
 
     try:
         import lancedb
+
         db = lancedb.connect(str(db_path))
 
         try:
@@ -122,7 +128,8 @@ def check_database():
 
         sample = results[:20]
         well_formatted = sum(
-            1 for r in sample
+            1
+            for r in sample
             if "Correction:" in r.get("text", "") or r.get("text", "").startswith("[")
         )
         pct = well_formatted / len(sample) * 100
@@ -133,6 +140,10 @@ def check_database():
 
         return True, {"count": count, "categories": dict(cats), "table": table}
 
+    except ImportError:
+        fail("lancedb not installed in this Python environment")
+        info("Run: pip install smartassist[dev] or pipx reinstall smartassist")
+        return False, {}
     except Exception as e:
         fail(f"Database error: {e}")
         return False, {}
@@ -183,14 +194,18 @@ def check_feedback_log():
 
     dupe_pct = dupes / total * 100 if total else 0
     if dupe_pct > 95:
-        info(f"Response == Correction in {dupe_pct:.0f}% (PR harvester pattern - expected)")
+        info(
+            f"Response == Correction in {dupe_pct:.0f}% (PR harvester pattern - expected)"
+        )
     else:
         ok(f"Duplicate response/correction: {dupe_pct:.0f}%")
 
     if clean_log.exists():
         clean_count = sum(1 for line in open(clean_log) if line.strip())
         removed = total - clean_count
-        ok(f"After cleanup: {GREEN}{BOLD}{clean_count:,}{RESET} clean lessons ({removed:,} junk removed)")
+        ok(
+            f"After cleanup: {GREEN}{BOLD}{clean_count:,}{RESET} clean lessons ({removed:,} junk removed)"
+        )
     else:
         info("No clean log yet (run smartassist vectorize)")
 
@@ -211,10 +226,7 @@ def check_reliability_scores():
     with open(reliability_file) as f:
         data = json.load(f)
 
-    categories = {
-        k: v for k, v in data.items()
-        if isinstance(v, dict) and "alpha" in v
-    }
+    categories = {k: v for k, v in data.items() if isinstance(v, dict) and "alpha" in v}
     if not categories:
         fail("No categories in reliability scores")
         return False
@@ -223,7 +235,13 @@ def check_reliability_scores():
     print(f"  {'=' * 15} {'=' * 38} {'=' * 10}")
 
     weak_count = 0
-    for cat, info_data in sorted(categories.items(), key=lambda x: x[1].get("alpha", 1) / (x[1].get("alpha", 1) + x[1].get("beta", 1)), reverse=True):
+    for cat, info_data in sorted(
+        categories.items(),
+        key=lambda x: (
+            x[1].get("alpha", 1) / (x[1].get("alpha", 1) + x[1].get("beta", 1))
+        ),
+        reverse=True,
+    ):
         alpha = info_data.get("alpha", 1)
         beta = info_data.get("beta", 1)
         score = alpha / (alpha + beta)
@@ -237,7 +255,9 @@ def check_reliability_scores():
     else:
         ok("All categories above 70%")
 
-    info(f"Formula: Reliability = a / (a + b)  |  Threshold: 70%  |  Decay: 30-day half-life")
+    info(
+        f"Formula: Reliability = a / (a + b)  |  Threshold: 70%  |  Decay: 30-day half-life"
+    )
 
     return True
 
@@ -251,7 +271,9 @@ def check_usage_evidence():
 
     if not usage_log.exists():
         warn("No usage_log.jsonl yet (system hasn't been used via MCP)")
-        info("Usage will be recorded automatically when Claude calls rag_search or rag_dashboard")
+        info(
+            "Usage will be recorded automatically when Claude calls rag_search or rag_dashboard"
+        )
         return True
 
     events = []
@@ -275,9 +297,19 @@ def check_usage_evidence():
     latencies = [s.get("latency_ms", 0) for s in searches if s.get("latency_ms")]
     avg_lat = sum(latencies) / len(latencies) if latencies else 0
 
-    now = datetime.now()
-    last_7d = [e for e in events if datetime.fromisoformat(e["timestamp"]) > now - timedelta(days=7)]
-    last_24h = [e for e in events if datetime.fromisoformat(e["timestamp"]) > now - timedelta(hours=24)]
+    now = datetime.now(tz=timezone.utc)
+    last_7d = [
+        e
+        for e in events
+        if datetime.fromisoformat(e["timestamp"]).astimezone(timezone.utc)
+        > now - timedelta(days=7)
+    ]
+    last_24h = [
+        e
+        for e in events
+        if datetime.fromisoformat(e["timestamp"]).astimezone(timezone.utc)
+        > now - timedelta(hours=24)
+    ]
 
     metric("Total tool calls", f"{len(events)}")
     metric("  rag_search calls", f"{len(searches)}")
@@ -295,7 +327,7 @@ def check_usage_evidence():
             q = s.get("query", "?")[:55]
             n = s.get("results_count", 0)
             color = GREEN if n > 0 else DIM
-            print(f"     {DIM}{ts}{RESET}  {color}[{n} results]{RESET}  \"{q}\"")
+            print(f'     {DIM}{ts}{RESET}  {color}[{n} results]{RESET}  "{q}"')
 
     return True
 
@@ -370,13 +402,24 @@ def check_search_quality():
         model = SentenceTransformer(EMBEDDING_MODEL)
         db = lancedb.connect(str(db_path))
         table = db.open_table("documents")
+    except ImportError as e:
+        if "lancedb" in str(e):
+            fail("lancedb not installed in this Python environment")
+            info("Run: pip install smartassist[dev] or pipx reinstall smartassist")
+        else:
+            fail(f"Missing dependency: {e}")
+        return False
     except Exception as e:
         fail(f"Cannot load search components: {e}")
         return False
 
     MAX_DISTANCE = 1.30
     test_queries = [
-        ("how to style components with theme colors", ["semantic", "theme", "color"], True),
+        (
+            "how to style components with theme colors",
+            ["semantic", "theme", "color"],
+            True,
+        ),
         ("how to write unit tests", ["test", "mock", "jest", "tobevisible"], True),
         ("git commit message format", ["commit", "git"], True),
         ("quantum physics dark matter theory", [], False),
@@ -395,20 +438,22 @@ def check_search_quality():
                 has_match = any(w in texts for w in expected_words)
                 if has_match:
                     cats = [r.get("category", "?") for r in results]
-                    ok(f"\"{query[:45]}\"")
-                    info(f"-> {len(results)} results, categories: {', '.join(set(cats))}")
+                    ok(f'"{query[:45]}"')
+                    info(
+                        f"-> {len(results)} results, categories: {', '.join(set(cats))}"
+                    )
                 else:
-                    warn(f"\"{query[:45]}\" - results found but no keyword match")
+                    warn(f'"{query[:45]}" - results found but no keyword match')
                     all_passed = False
             else:
-                fail(f"\"{query[:45]}\" - expected results, got none")
+                fail(f'"{query[:45]}" - expected results, got none')
                 all_passed = False
         else:
             if not results:
-                ok(f"\"{query[:45]}\"")
+                ok(f'"{query[:45]}"')
                 info(f"-> Correctly returned 0 results (irrelevant query filtered)")
             else:
-                warn(f"\"{query[:45]}\" - should return nothing, got {len(results)}")
+                warn(f'"{query[:45]}" - should return nothing, got {len(results)}')
                 all_passed = False
 
     return all_passed
@@ -466,7 +511,9 @@ def main():
         print(f"  {BG_GREEN}{BOLD} {passed}/{total} ALL CHECKS PASSED {RESET}")
         print(f"\n  {GREEN}System is healthy and operational.{RESET}")
     else:
-        print(f"  {BG_RED}{BOLD} {passed}/{total} CHECKS PASSED - {total - passed} NEED ATTENTION {RESET}")
+        print(
+            f"  {BG_RED}{BOLD} {passed}/{total} CHECKS PASSED - {total - passed} NEED ATTENTION {RESET}"
+        )
 
     print(f"\n  {DIM}Health check completed in {elapsed:.1f}s{RESET}\n")
 

@@ -1,0 +1,42 @@
+name: First Interaction
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Welcome first-time contributors
+        uses: actions/first-interaction@v3
+        with:
+          issue_message: |
+            Thanks for opening your first SmartAssist issue.
+
+            If this is setup friction, the exact command output helps the most.
+            If this turns into a contribution, start here:
+            https://github.com/jnrahme/SmartAssist/blob/main/CONTRIBUTING.md
+
+            We use structured issue forms so setup pain, product feedback, and
+            feature requests land in the right place:
+            https://github.com/jnrahme/SmartAssist/issues/new/choose
+          pr_message: |
+            Thanks for your first SmartAssist pull request.
+
+            A small, focused summary plus exact verification commands makes this
+            much easier to review.
+
+            Contributor guide:
+            https://github.com/jnrahme/SmartAssist/blob/main/CONTRIBUTING.md
+
+            If your change touched retrieval, memory, or ranking behavior,
+            please double-check:
+            https://github.com/jnrahme/SmartAssist/blob/main/MEMORY.md

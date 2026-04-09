@@ -1,0 +1,38 @@
+title: "[Q&A] "
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask one focused question per discussion.
+
+        Before posting, try the README troubleshooting steps and run
+        `smartassist doctor` if your question is about setup.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: Explain the goal, not just the symptom.
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Which agent are you using?
+      options:
+        - Claude Code
+        - Codex
+        - Gemini
+        - ChatGPT
+        - Amp
+        - OpenCode
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: What have you already tried?
+      description: Include exact commands or output if relevant.
+    validations:
+      required: false

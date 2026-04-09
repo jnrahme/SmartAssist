@@ -1,0 +1,42 @@
+name: Growth Analytics
+
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  discussions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  github-growth-snapshot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Generate GitHub growth snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -m smartassist.tools.github_growth_snapshot \
+            --repo "${{ github.repository }}" \
+            --output-dir growth-artifacts/github
+
+      - name: Publish growth summary
+        run: cat growth-artifacts/github/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload growth analytics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-analytics
+          path: growth-artifacts/github/**

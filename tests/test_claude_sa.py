@@ -244,10 +244,9 @@ class TestLaunchTmux:
                 "smartassist.claude_sa.os.getcwd", return_value="/tmp/space dir/project"
             ),
             patch("smartassist.claude_sa.subprocess.run", side_effect=fake_run),
-            patch("smartassist.claude_sa.os.execvp", side_effect=SystemExit(0)),
+            patch("smartassist.claude_sa.os.execvp"),
         ):
-            with pytest.raises(SystemExit):
-                _launch_tmux(log)
+            _launch_tmux(log)
 
         send_keys_call = calls[1]
         assert "cd '/tmp/space dir/project' && claude" in send_keys_call[4]
@@ -259,15 +258,13 @@ class TestLaunchTmux:
         with (
             patch("smartassist.claude_sa._tmux_session_exists", return_value=True),
             patch("smartassist.claude_sa.subprocess.run") as mock_run,
-            patch(
-                "smartassist.claude_sa.os.execvp", side_effect=SystemExit(0)
-            ) as mock_exec,
+            patch("smartassist.claude_sa.os.execvp") as mock_execvp,
         ):
-            with pytest.raises(SystemExit):
-                _launch_tmux(log)
+            _launch_tmux(log)
 
-        mock_run.assert_not_called()
-        mock_exec.assert_called_once_with(
+        calls = [c.args[0] for c in mock_run.call_args_list]
+        assert calls == []
+        mock_execvp.assert_called_once_with(
             "tmux", ["tmux", "attach-session", "-t", SESSION_NAME]
         )
 

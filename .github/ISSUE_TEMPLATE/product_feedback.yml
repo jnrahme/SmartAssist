@@ -1,0 +1,60 @@
+name: Product feedback
+description: Tell us what SmartAssist improved, missed, or made confusing.
+title: "[feedback] "
+labels:
+  - feedback
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the highest-value issue form for the product.
+
+        Real workflow feedback helps more than broad opinions. Tell us where
+        SmartAssist actually helped or got in your way.
+  - type: input
+    id: repo_context
+    attributes:
+      label: What kind of repo or workflow were you using?
+      placeholder: Python service, TypeScript monorepo, docs-heavy repo, etc.
+    validations:
+      required: true
+  - type: dropdown
+    id: path
+    attributes:
+      label: Which path did you use?
+      options:
+        - smartassist setup
+        - smartassist init
+        - setup-agent for another agent
+        - Only read the docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: improved
+    attributes:
+      label: What got better because of SmartAssist?
+      description: A concrete before-and-after story is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: rough_edges
+    attributes:
+      label: What still felt wrong, unclear, or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: next_value
+    attributes:
+      label: What one improvement would make you keep using it?
+    validations:
+      required: true
+  - type: checkboxes
+    id: follow_up
+    attributes:
+      label: Follow-up
+      options:
+        - label: I am open to follow-up questions in this issue.
+          required: false
+        - label: I would consider contributing if there is a focused issue.
+          required: false

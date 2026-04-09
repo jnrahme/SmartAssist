@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Discussions
+    url: https://github.com/jnrahme/SmartAssist/discussions
+    about: Ask questions, share ideas, or show how you use SmartAssist.
+  - name: Contribution guide
+    url: https://github.com/jnrahme/SmartAssist/blob/main/CONTRIBUTING.md
+    about: Start here if you want to submit a pull request.
+  - name: Security policy
+    url: https://github.com/jnrahme/SmartAssist/security/policy
+    about: Report vulnerabilities privately instead of using public issues.

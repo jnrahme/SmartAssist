@@ -4,6 +4,7 @@ SmartAssist CLI - Portable RAG learning system for Claude Code.
 
 Usage:
     smartassist setup         Configure Claude Code (MCP server + hooks + init)
+    smartassist telemetry     Manage opt-in telemetry and aggregate KPIs
     smartassist doctor        Audit install readiness and runtime wiring
     smartassist uninstall     Remove SmartAssist from Claude Code config
     smartassist init          Initialize SmartAssist in current project
@@ -84,6 +85,33 @@ def _write_text_file(path: Path, content: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content.rstrip() + "\n")
     return path
+
+
+def _record_telemetry_event(
+    event_name: str,
+    *,
+    agent_type: str = "",
+    metadata: dict | None = None,
+) -> None:
+    try:
+        from smartassist.telemetry import record_lifecycle_event
+
+        record_lifecycle_event(
+            event_name,
+            agent_type=agent_type,
+            metadata=metadata or {},
+        )
+    except Exception:
+        pass
+
+
+def _register_telemetry_project(storage_path: Path) -> None:
+    try:
+        from smartassist.telemetry import register_project
+
+        register_project(storage_path)
+    except Exception:
+        pass
 
 
 def _project_backup_key(project_root: Path) -> str:
@@ -366,6 +394,7 @@ def cmd_init(log=None):
     storage.mkdir(parents=True, exist_ok=True)
     lancedb.mkdir(parents=True, exist_ok=True)
     initialize_store(storage)
+    _register_telemetry_project(storage)
 
     exclude_path = _ensure_local_git_excludes(
         cwd,
@@ -393,6 +422,7 @@ def cmd_init(log=None):
 
     if already_initialized:
         print(f"  MCP registration verified: {mcp_path}")
+        _record_telemetry_event("project_initialized")
         return 0
 
     print(f"\n  Created: {data_dir}/")
@@ -405,6 +435,7 @@ def cmd_init(log=None):
     print(f"  1. Add lessons: smartassist seed")
     print(f"  2. Vectorize:   smartassist vectorize")
     print(f"  3. Check:       smartassist health")
+    _record_telemetry_event("project_initialized")
     return 0
 
 
@@ -432,6 +463,10 @@ def cmd_doctor():
         print(json.dumps(report, indent=2))
     else:
         print(report_to_text(report), end="")
+    _record_telemetry_event(
+        "doctor_ready" if report["overall_status"] == "ready" else "doctor_not_ready",
+        metadata={"status": report["overall_status"]},
+    )
     return 0 if report["overall_status"] == "ready" else 1
 
 
@@ -541,7 +576,10 @@ def cmd_dashboard():
     """Generate HTML dashboard."""
     from smartassist.tools.generate_dashboard import main
 
-    return main()
+    rc = main()
+    if rc == 0:
+        _record_telemetry_event("dashboard_opened")
+    return rc
 
 
 def cmd_seed():
@@ -570,6 +608,7 @@ def cmd_seed():
         from smartassist.hooks.seed_from_claudemd import seed_database
 
         seed_database()
+        _record_telemetry_event("seed_completed", metadata={"mode": "claude_md"})
         return 0
 
     # --print: just output the prompt (original behavior)
@@ -603,7 +642,13 @@ def cmd_seed():
 
     from smartassist.tools.llm_seed import run_llm_seed
 
-    return run_llm_seed(llm=llm, model=model, base_url=base_url, api_key=api_key)
+    rc = run_llm_seed(llm=llm, model=model, base_url=base_url, api_key=api_key)
+    if rc == 0:
+        _record_telemetry_event(
+            "seed_completed",
+            metadata={"mode": "deep", "llm": llm or "auto"},
+        )
+    return rc
 
 
 def _clean_stale_shell_aliases():
@@ -766,6 +811,8 @@ def cmd_setup():
     summary = []
     log_lines = []
 
+    _record_telemetry_event("install_started", agent_type="claude")
+
     def log(msg):
         summary.append(msg)
         log_lines.append(f"[{datetime.now().isoformat()}] {msg}")
@@ -775,12 +822,22 @@ def cmd_setup():
 
     # Python >= 3.10
     if sys.version_info < (3, 10):
+        _record_telemetry_event(
+            "setup_failed",
+            agent_type="claude",
+            metadata={"stage": "python_version"},
+        )
         print(f"Error: Python >= 3.10 required (found {sys.version})")
         return 1
     log(f"Python: {sys.version_info.major}.{sys.version_info.minor} OK")
 
     # smartassist in PATH
     if not shutil.which("smartassist"):
+        _record_telemetry_event(
+            "setup_failed",
+            agent_type="claude",
+            metadata={"stage": "smartassist_path"},
+        )
         print("Error: 'smartassist' command not found in PATH")
         print(
             "  Install with: pipx install git+https://github.com/jnrahme/SmartAssist.git"
@@ -791,6 +848,11 @@ def cmd_setup():
     # ~/.claude/ exists
     claude_dir = Path.home() / ".claude"
     if not claude_dir.exists():
+        _record_telemetry_event(
+            "setup_failed",
+            agent_type="claude",
+            metadata={"stage": "claude_dir"},
+        )
         print("Error: ~/.claude/ directory not found")
         print("  Install Claude Code first: https://claude.ai/code")
         return 1
@@ -908,6 +970,7 @@ def cmd_setup():
     print("  smartassist seed       Seed lessons from CLAUDE.md")
     print("  smartassist health     Verify everything works")
     print("  claude-sa              Launch Claude Code with RAG monitor")
+    _record_telemetry_event("setup_completed", agent_type="claude")
     return 0
 
 
@@ -916,6 +979,7 @@ def cmd_uninstall():
 
     Project data is NOT deleted. Run `pipx uninstall smartassist` for full removal.
     """
+    _record_telemetry_event("uninstall_requested")
     claude_dir = Path.home() / ".claude"
     removed = []
     project_root = Path.cwd().resolve()
@@ -1262,6 +1326,192 @@ def cmd_qa():
     return 1
 
 
+def cmd_telemetry():
+    if len(sys.argv) < 3 or sys.argv[2] in ("-h", "--help", "help"):
+        print("Usage: smartassist telemetry <subcommand> [options]\n")
+        print("Subcommands:")
+        print(f"  {'status':<18} Show telemetry config and queue status")
+        print(f"  {'enable':<18} Enable anonymous telemetry [--endpoint URL]")
+        print(f"  {'disable':<18} Disable anonymous telemetry")
+        print(f"  {'export':<18} Export a sanitized telemetry bundle [--output PATH]")
+        print(
+            f"  {'flush':<18} POST the current bundle to the collector [--endpoint URL]"
+        )
+        print(
+            f"  {'ingest':<18} Import a bundle into an aggregate DB [--input PATH] [--db PATH]"
+        )
+        print(
+            f"  {'dashboard':<18} Generate aggregate KPI HTML [--db PATH] [--output PATH] [--open]"
+        )
+        print(
+            f"  {'serve-collector':<18} Run a local telemetry collector [--db PATH] [--host HOST] [--port PORT]"
+        )
+        return 0
+
+    from smartassist.telemetry import (
+        DEFAULT_COLLECTOR_HOST,
+        DEFAULT_COLLECTOR_PORT,
+        disable_telemetry,
+        enable_telemetry,
+        export_bundle,
+        flush_bundle,
+        get_aggregate_db_path,
+        get_telemetry_status,
+        ingest_bundle,
+        serve_collector,
+    )
+    from smartassist.tools.generate_telemetry_dashboard import generate_dashboard
+
+    subcmd = sys.argv[2]
+
+    if subcmd == "status":
+        status = get_telemetry_status()
+        enabled = "yes" if status["enabled"] else "no"
+        install_id = status["install_id"] or "(not created yet)"
+        endpoint = status["endpoint"] or "(not configured)"
+        print(f"Telemetry enabled: {enabled}")
+        print(f"Install ID: {install_id}")
+        print(f"Endpoint: {endpoint}")
+        print(f"Known projects: {status['known_projects']}")
+        print(f"Queued events: {status['queued_events']}")
+        print(f"Queue path: {status['queue_path']}")
+        print(f"Aggregate DB: {status['aggregate_db_path']}")
+        return 0
+
+    if subcmd == "enable":
+        endpoint = ""
+        if "--endpoint" in sys.argv:
+            idx = sys.argv.index("--endpoint")
+            if idx + 1 >= len(sys.argv):
+                print("Error: --endpoint requires a value")
+                return 1
+            endpoint = sys.argv[idx + 1]
+        config = enable_telemetry(endpoint=endpoint)
+        print("Anonymous telemetry enabled.")
+        print(f"Install ID: {config['install_id']}")
+        if config.get("endpoint"):
+            print(f"Endpoint: {config['endpoint']}")
+        return 0
+
+    if subcmd == "disable":
+        disable_telemetry()
+        print("Anonymous telemetry disabled.")
+        return 0
+
+    if subcmd == "export":
+        output = None
+        if "--output" in sys.argv:
+            idx = sys.argv.index("--output")
+            if idx + 1 >= len(sys.argv):
+                print("Error: --output requires a value")
+                return 1
+            output = sys.argv[idx + 1]
+        destination, payload = export_bundle(output)
+        print(destination)
+        print(f"Events: {len(payload['lifecycle_events'])}")
+        print(f"Daily rollups: {len(payload['daily_rollups'])}")
+        print(f"Weekly rollups: {len(payload['weekly_rollups'])}")
+        return 0
+
+    if subcmd == "flush":
+        endpoint = ""
+        if "--endpoint" in sys.argv:
+            idx = sys.argv.index("--endpoint")
+            if idx + 1 >= len(sys.argv):
+                print("Error: --endpoint requires a value")
+                return 1
+            endpoint = sys.argv[idx + 1]
+        ok, result = flush_bundle(endpoint=endpoint)
+        if not ok:
+            print(result)
+            return 1
+        if not isinstance(result, dict):
+            print("Collector returned an invalid response")
+            return 1
+        print(f"Flushed telemetry to {result['endpoint']}")
+        print(json.dumps(result["response"], indent=2))
+        return 0
+
+    if subcmd == "ingest":
+        if "--input" not in sys.argv:
+            print("Error: smartassist telemetry ingest requires --input PATH")
+            return 1
+        input_idx = sys.argv.index("--input")
+        if input_idx + 1 >= len(sys.argv):
+            print("Error: --input requires a value")
+            return 1
+        input_path = Path(sys.argv[input_idx + 1]).expanduser().resolve()
+        if not input_path.exists():
+            print(f"Error: {input_path} does not exist")
+            return 1
+        db_path = get_aggregate_db_path()
+        if "--db" in sys.argv:
+            db_idx = sys.argv.index("--db")
+            if db_idx + 1 >= len(sys.argv):
+                print("Error: --db requires a value")
+                return 1
+            db_path = Path(sys.argv[db_idx + 1]).expanduser().resolve()
+        payload = json.loads(input_path.read_text())
+        result = ingest_bundle(db_path, payload)
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if subcmd == "dashboard":
+        db_path = get_aggregate_db_path()
+        output = None
+        open_browser = "--open" in sys.argv
+        if "--db" in sys.argv:
+            db_idx = sys.argv.index("--db")
+            if db_idx + 1 >= len(sys.argv):
+                print("Error: --db requires a value")
+                return 1
+            db_path = Path(sys.argv[db_idx + 1]).expanduser().resolve()
+        if "--output" in sys.argv:
+            output_idx = sys.argv.index("--output")
+            if output_idx + 1 >= len(sys.argv):
+                print("Error: --output requires a value")
+                return 1
+            output = sys.argv[output_idx + 1]
+        destination = generate_dashboard(
+            db_path,
+            output_path=output,
+            open_browser=open_browser,
+        )
+        print(destination)
+        return 0
+
+    if subcmd == "serve-collector":
+        db_path = get_aggregate_db_path()
+        host = DEFAULT_COLLECTOR_HOST
+        port = DEFAULT_COLLECTOR_PORT
+        if "--db" in sys.argv:
+            db_idx = sys.argv.index("--db")
+            if db_idx + 1 >= len(sys.argv):
+                print("Error: --db requires a value")
+                return 1
+            db_path = Path(sys.argv[db_idx + 1]).expanduser().resolve()
+        if "--host" in sys.argv:
+            host_idx = sys.argv.index("--host")
+            if host_idx + 1 >= len(sys.argv):
+                print("Error: --host requires a value")
+                return 1
+            host = sys.argv[host_idx + 1]
+        if "--port" in sys.argv:
+            port_idx = sys.argv.index("--port")
+            if port_idx + 1 >= len(sys.argv):
+                print("Error: --port requires a value")
+                return 1
+            try:
+                port = int(sys.argv[port_idx + 1])
+            except ValueError:
+                print("Error: --port must be an integer")
+                return 1
+        return serve_collector(db_path, host=host, port=port)
+
+    print(f"Unknown telemetry subcommand: {subcmd}")
+    return 1
+
+
 def cmd_setup_agent():
     """Register SmartAssist MCP server with a specific AI agent.
 
@@ -1286,7 +1536,9 @@ def cmd_setup_agent():
         if a == "claude":
             # Use existing setup for Claude
             print(f"[{a}] Running full Claude Code setup...")
-            cmd_setup()
+            rc = cmd_setup()
+            if rc != 0:
+                return rc
         elif a == "codex":
             _setup_codex()
         elif a == "gemini":
@@ -1297,6 +1549,7 @@ def cmd_setup_agent():
             _setup_amp()
         elif a == "opencode":
             _setup_opencode()
+        _record_telemetry_event("agent_configured", agent_type=a)
 
     print("\nDone! SmartAssist is registered with: " + ", ".join(agents))
     return 0
@@ -1434,6 +1687,7 @@ def _setup_opencode():
 def main():
     commands = {
         "setup": cmd_setup,
+        "telemetry": cmd_telemetry,
         "setup-agent": cmd_setup_agent,
         "doctor": cmd_doctor,
         "uninstall": cmd_uninstall,
@@ -1459,6 +1713,7 @@ def main():
         print("Usage: smartassist <command> [options]\n")
         print("Commands:")
         print(f"  {'setup':<15} Configure Claude Code (MCP server + hooks + init)")
+        print(f"  {'telemetry':<15} Manage anonymous telemetry and aggregate KPIs")
         print(
             f"  {'setup-agent':<15} Register with any agent: claude, codex, gemini, chatgpt, amp, opencode, all"
         )

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import signal
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +15,8 @@ from pathlib import Path
 from smartassist.config import atomic_write_json, get_project_root, get_storage_path
 
 SYNC_STATE_FILE = "codex_sync_state.json"
+LEGACY_SYNC_PID_FILE = "codex_sync.pid"
+RUNTIME_SYNC_DIR = "smartassist/sync-state"
 DEFAULT_POLL_INTERVAL = 1.0
 RECENT_SESSION_LIMIT = 8
 INITIAL_BACKFILL_WINDOW_SECS = 2 * 60 * 60
@@ -24,20 +29,77 @@ def get_codex_home() -> Path:
     return Path.home() / ".codex"
 
 
-def get_sync_state_path(storage_path: Path | None = None) -> Path:
+def _project_root_from_storage(storage_path: Path) -> Path:
+    return Path(storage_path).resolve().parent.parent.parent
+
+
+def _runtime_project_key(project_root: Path) -> str:
+    resolved = project_root.resolve()
+    slug = (
+        "".join(ch.lower() if ch.isalnum() else "-" for ch in resolved.name).strip("-")
+        or "project"
+    )
+    digest = hashlib.sha1(str(resolved).encode("utf-8")).hexdigest()[:12]
+    return f"{slug}-{digest}"
+
+
+def _runtime_sync_dir(codex_home: Path | None = None) -> Path:
+    return (codex_home or get_codex_home()) / RUNTIME_SYNC_DIR
+
+
+def _legacy_sync_state_path(storage_path: Path | None = None) -> Path:
     storage = storage_path or get_storage_path()
     return storage / SYNC_STATE_FILE
 
 
-def load_sync_state(storage_path: Path | None = None) -> dict:
-    state_path = get_sync_state_path(storage_path)
-    default = {"version": 1, "files": {}}
-    if not state_path.exists():
-        return default
+def _legacy_sync_pid_path(storage_path: Path | None = None) -> Path:
+    storage = storage_path or get_storage_path()
+    return storage / LEGACY_SYNC_PID_FILE
 
-    try:
-        raw = json.loads(state_path.read_text())
-    except (OSError, json.JSONDecodeError):
+
+def get_sync_state_path(
+    storage_path: Path | None = None,
+    *,
+    project_root: Path | None = None,
+    codex_home: Path | None = None,
+) -> Path:
+    if project_root is None:
+        project_root = (
+            _project_root_from_storage(storage_path)
+            if storage_path is not None
+            else get_project_root()
+        )
+    return _runtime_sync_dir(codex_home) / f"{_runtime_project_key(project_root)}.json"
+
+
+def load_sync_state(
+    storage_path: Path | None = None,
+    *,
+    project_root: Path | None = None,
+    codex_home: Path | None = None,
+) -> dict:
+    state_path = get_sync_state_path(
+        storage_path,
+        project_root=project_root,
+        codex_home=codex_home,
+    )
+    default = {"version": 1, "files": {}}
+
+    candidates = [state_path]
+    if storage_path is not None:
+        candidates.append(_legacy_sync_state_path(storage_path))
+
+    raw = None
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            raw = json.loads(candidate.read_text())
+            break
+        except (OSError, json.JSONDecodeError):
+            continue
+
+    if raw is None:
         return default
 
     files = raw.get("files")
@@ -62,8 +124,94 @@ def load_sync_state(storage_path: Path | None = None) -> dict:
     return {"version": 1, "files": normalized}
 
 
-def save_sync_state(state: dict, storage_path: Path | None = None) -> None:
-    atomic_write_json(get_sync_state_path(storage_path), state)
+def save_sync_state(
+    state: dict,
+    storage_path: Path | None = None,
+    *,
+    project_root: Path | None = None,
+    codex_home: Path | None = None,
+) -> None:
+    atomic_write_json(
+        get_sync_state_path(
+            storage_path,
+            project_root=project_root,
+            codex_home=codex_home,
+        ),
+        state,
+    )
+    if storage_path is not None:
+        _legacy_sync_state_path(storage_path).unlink(missing_ok=True)
+
+
+def clear_sync_state(
+    storage_path: Path | None = None,
+    *,
+    project_root: Path | None = None,
+    codex_home: Path | None = None,
+) -> None:
+    get_sync_state_path(
+        storage_path,
+        project_root=project_root,
+        codex_home=codex_home,
+    ).unlink(missing_ok=True)
+    if storage_path is not None:
+        _legacy_sync_state_path(storage_path).unlink(missing_ok=True)
+
+
+def _state_snapshot(state: dict) -> str:
+    return json.dumps(state, sort_keys=True)
+
+
+def _read_pid(pid_path: Path) -> int | None:
+    try:
+        return int(pid_path.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _read_process_command(pid: int) -> str:
+    result = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def _terminate_process(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
+
+    deadline = time.time() + 1.0
+    while time.time() < deadline:
+        if not _read_process_command(pid):
+            return
+        time.sleep(0.05)
+
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def reap_legacy_project_watcher(storage_path: Path | None = None) -> bool:
+    pid_path = _legacy_sync_pid_path(storage_path)
+    if not pid_path.exists():
+        return False
+
+    pid = _read_pid(pid_path)
+    if pid is not None:
+        command = _read_process_command(pid)
+        if "smartassist.codex_activity" in command and "--watch" in command:
+            _terminate_process(pid)
+
+    pid_path.unlink(missing_ok=True)
+    return True
 
 
 def _parse_timestamp(raw: str | None) -> tuple[str, str]:
@@ -251,7 +399,20 @@ def sync_codex_activity(
     storage = storage_path or get_storage_path()
     codex_dir = codex_home or get_codex_home()
     project = project_root or get_project_root()
-    state = load_sync_state(storage)
+    reap_legacy_project_watcher(storage)
+    state_path = get_sync_state_path(
+        storage,
+        project_root=project,
+        codex_home=codex_dir,
+    )
+    legacy_state_path = _legacy_sync_state_path(storage)
+    legacy_state_exists = legacy_state_path.exists()
+    state = load_sync_state(
+        storage,
+        project_root=project,
+        codex_home=codex_dir,
+    )
+    state_before = _state_snapshot(state)
     now = time.time()
     prompts_logged = 0
     sessions_logged = 0
@@ -395,7 +556,26 @@ def sync_codex_activity(
         except OSError:
             continue
 
-    save_sync_state(state, storage)
+    state_after = _state_snapshot(state)
+    if files:
+        if (
+            state_after != state_before
+            or legacy_state_exists
+            or not state_path.exists()
+        ):
+            save_sync_state(
+                state,
+                storage,
+                project_root=project,
+                codex_home=codex_dir,
+            )
+    else:
+        clear_sync_state(
+            storage,
+            project_root=project,
+            codex_home=codex_dir,
+        )
+
     return {
         "prompts_logged": prompts_logged,
         "sessions_logged": sessions_logged,

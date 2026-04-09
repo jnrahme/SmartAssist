@@ -147,6 +147,14 @@ Design: Hook still creates lessons (production unchanged). Claude also drafts a 
 4. `smartassist/config.py` — `SMARTASSIST_DATA_DIR` resolution (key challenge for multi-project support)
 5. `tests/test_feedback_lesson.py` — 180 tests covering the feedback/lesson system
 
+## Memory + ML Architect Skill
+
+When touching SmartAssist memory, retrieval, ranking, feedback attribution, vectorization, or docs that explain those systems, read:
+
+- `.agents/skills/smartassist-memory-architect/SKILL.md`
+
+That skill is the project-specific architect guide for this area. It separates the memory model (semantic / episodic / working memory), the two Thompson loops, the canonical SQLite store, and the delivery surfaces so those concerns do not get flattened together.
+
 ---
 
 <!-- ============================================================

@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible SmartAssist bug outside the initial setup path.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report.
+
+        Please keep this focused on one bug. If the issue started during setup,
+        use the Setup friction form instead.
+  - type: input
+    id: version
+    attributes:
+      label: SmartAssist version or commit
+      placeholder: 1.1.0b1 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include stack traces, screenshots, or logs if relevant.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: macOS 15, Python 3.11, Claude Code, etc.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I can reproduce this issue reliably.
+          required: true
+        - label: I searched existing issues for the same bug.
+          required: false

@@ -313,12 +313,13 @@ _MAX_LIVE_LOG_BYTES = 512 * 1024  # 512 KB
 
 
 def _rotate_live_log(live_log):
-    """Truncate rag_live.log when it exceeds _MAX_LIVE_LOG_BYTES."""
     try:
         if live_log.exists() and live_log.stat().st_size > _MAX_LIVE_LOG_BYTES:
-            # Keep the last half
             data = live_log.read_bytes()
-            live_log.write_bytes(data[len(data) // 2 :])
+            keep = data[len(data) // 2 :]
+            tmp = live_log.with_suffix(".log.tmp")
+            tmp.write_bytes(keep)
+            tmp.replace(live_log)
     except OSError:
         pass
 

@@ -1,6 +1,6 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from smartassist.codex_sa import _auto_setup, _start_codex_sync
+from smartassist.codex_sa import _auto_setup, main
 
 
 class TestCodexSa:
@@ -28,29 +28,23 @@ class TestCodexSa:
         assert calls[1] == ["smartassist", "setup-agent", "codex"]
         assert calls[2] == ["smartassist", "seed"]
 
-    def test_start_codex_sync_reuses_existing_pid(self, tmp_path):
+    def test_main_reaps_legacy_watcher_before_launching(self, tmp_path):
         data_dir = tmp_path / ".claude" / "smartassist" / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
-        (data_dir / "codex_sync.pid").write_text("4242")
 
         with (
-            patch("smartassist.codex_sa._pid_running", return_value=True),
-            patch("smartassist.codex_sa.subprocess.Popen") as mock_popen,
+            patch("smartassist.codex_sa.find_data_dir", return_value=data_dir),
+            patch("smartassist.codex_sa.reap_legacy_project_watcher") as mock_reap,
+            patch(
+                "smartassist.codex_sa._start_dashboard",
+                return_value="http://localhost:3000",
+            ),
+            patch("smartassist.codex_sa.shutil.which", return_value=None),
+            patch(
+                "smartassist.codex_sa._launch_fallback", return_value=0
+            ) as mock_launch,
         ):
-            assert _start_codex_sync(data_dir) == 4242
+            assert main() == 0
 
-        mock_popen.assert_not_called()
-
-    def test_start_codex_sync_spawns_bridge_when_missing(self, tmp_path):
-        data_dir = tmp_path / ".claude" / "smartassist" / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-
-        with patch(
-            "smartassist.codex_sa.subprocess.Popen",
-            return_value=MagicMock(pid=777),
-        ) as mock_popen:
-            pid = _start_codex_sync(data_dir)
-
-        assert pid == 777
-        assert (data_dir / "codex_sync.pid").read_text() == "777"
-        mock_popen.assert_called_once()
+        mock_reap.assert_called_once_with(data_dir)
+        mock_launch.assert_called_once()

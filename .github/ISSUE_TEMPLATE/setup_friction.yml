@@ -1,0 +1,72 @@
+name: Setup friction
+description: Report anything that blocked or confused install, setup, or first use.
+title: "[setup] "
+labels:
+  - bug
+  - setup
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying SmartAssist.
+
+        This form is for install pain, setup surprises, and first-value friction.
+        Exact commands and output help more than summaries.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did the friction happen?
+      options:
+        - Install command
+        - smartassist setup
+        - smartassist init
+        - Agent-specific setup
+        - First feedback loop
+        - Docs or onboarding
+        - smartassist doctor
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, shell, and Python version
+      placeholder: macOS 15, zsh, Python 3.11.9
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent you were setting up
+      placeholder: Claude Code, Codex, OpenCode, or other
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Exact command(s) you ran
+      placeholder: Paste the exact commands in order.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Include output, screenshots, or logs if you have them.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I included the exact command or output, not just a summary.
+          required: true
+        - label: I checked the README troubleshooting section first.
+          required: false
