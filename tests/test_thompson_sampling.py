@@ -105,7 +105,7 @@ class TestThompsonSampling:
             model.reliabilities["testing"].last_updated,
         )
 
-        assert score == pytest.approx(10.0 / 12.0)
+        assert score == pytest.approx(5.5 / 7.0, rel=1e-3)
         assert after[0] < before[0]
         assert after[1] < before[1]
         assert after[2] > before[2]
@@ -113,3 +113,26 @@ class TestThompsonSampling:
         reloaded = ThompsonSamplingModel(storage)
         assert reloaded.reliabilities["testing"].alpha == after[0]
         assert reloaded.reliabilities["testing"].beta == after[1]
+
+    def test_long_idle_decay_returns_collapsed_scores_to_prior(self, set_data_dir):
+        model = ThompsonSamplingModel(str(set_data_dir / "data"))
+        model.reliabilities["code_edit"] = CategoryReliability(
+            category="code_edit",
+            alpha=0.0122,
+            beta=0.9537,
+            last_updated=time.time() - 86400 * 3650,
+        )
+
+        assert model.get_reliability("code_edit") == pytest.approx(0.5)
+        assert "code_edit" not in model.get_weak_categories()
+
+    def test_decay_never_drops_counts_below_prior(self, set_data_dir):
+        model = ThompsonSamplingModel(str(set_data_dir / "data"))
+        model.reliabilities["git"] = CategoryReliability(
+            category="git", alpha=50.0, beta=0.4, last_updated=time.time() - 86400 * 3650
+        )
+
+        model.get_reliability("git")
+
+        assert model.reliabilities["git"].alpha >= 1.0
+        assert model.reliabilities["git"].beta >= 1.0

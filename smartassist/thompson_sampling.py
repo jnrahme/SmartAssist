@@ -17,6 +17,10 @@ from smartassist.store import load_reliabilities_dict, save_reliabilities_dict
 log = logging.getLogger(__name__)
 
 
+PRIOR = 1.0
+MIN_WEAK_EVIDENCE = 2.0
+
+
 @dataclass
 class CategoryReliability:
     """Reliability tracking for a category using Beta-Bernoulli model"""
@@ -33,8 +37,9 @@ class CategoryReliability:
         return self.alpha / (self.alpha + self.beta)
 
     def is_weak(self, threshold: float = 0.70) -> bool:
-        """Check if category is weak (<70% success)"""
-        return self.get_success_rate() < threshold
+        """Check if category is weak (<70% success) with enough live evidence to judge"""
+        evidence = (self.alpha - PRIOR) + (self.beta - PRIOR)
+        return evidence >= MIN_WEAK_EVIDENCE and self.get_success_rate() < threshold
 
 
 class ThompsonSamplingModel:
@@ -110,9 +115,9 @@ class ThompsonSamplingModel:
         # Apply floor
         decay_weight = max(decay_weight, self.floor_weight)
 
-        # Apply decay to alpha and beta (use max to prevent zero, not additive)
-        rel.alpha = max(self.floor_weight, rel.alpha * decay_weight)
-        rel.beta = max(self.floor_weight, rel.beta * decay_weight)
+        # Decay evidence toward the Beta(1, 1) prior so stale categories return to 50%
+        rel.alpha = max(PRIOR, PRIOR + (rel.alpha - PRIOR) * decay_weight)
+        rel.beta = max(PRIOR, PRIOR + (rel.beta - PRIOR) * decay_weight)
         rel.last_updated = now
 
     def record_success(self, category: str, intensity: int = 5):

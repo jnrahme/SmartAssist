@@ -409,3 +409,18 @@ class TestSessionHookIntegration:
         assert rules_path is not None
         updated = json.loads(rules_path.read_text())
         assert len(updated["promoted_boundaries"]) == 1
+
+
+def test_ensure_boundary_pack_rebuilds_pack_from_older_version(set_data_dir):
+    from smartassist.boundary_packs import BOUNDARY_PACK_VERSION, ensure_boundary_pack
+
+    storage = set_data_dir / "data"
+    storage.mkdir(parents=True, exist_ok=True)
+    stale = {"version": BOUNDARY_PACK_VERSION - 1, "weak_categories": [{"category": "git", "reliability": 0.01}]}
+    (storage / "boundary_pack.json").write_text(json.dumps(stale))
+
+    pack = ensure_boundary_pack(storage)
+
+    assert pack["version"] == BOUNDARY_PACK_VERSION
+    assert pack["weak_categories"] == []
+

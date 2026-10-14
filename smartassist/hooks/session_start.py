@@ -20,9 +20,9 @@ from smartassist.config import get_storage_path
 def format_lessons_for_session():
     protocol = (
         "\n" + "=" * 60 + "\n"
-        "SMARTASSIST FEEDBACK PROTOCOL\n"
-        "=" * 60 + "\n"
-        "Claude hooks already process feedback automatically. When feedback handling is unavailable, "
+        + "SMARTASSIST FEEDBACK PROTOCOL\n"
+        + "=" * 60 + "\n"
+        + "Claude hooks already process feedback automatically. When feedback handling is unavailable, "
         "use `apply_feedback_protocol` with the user's correction or confirmed pattern.\n\n"
         f"{render_feedback_protocol()}\n"
     )
