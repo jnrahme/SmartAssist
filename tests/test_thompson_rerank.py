@@ -33,8 +33,34 @@ class TestThompsonRerank:
 
         # New lessons should keep their retrieval score (thompson_sample = 1.0)
         assert result[0]["final_score"] == 0.8
-        assert result[0]["thompson_sample"] == 1.0
+        assert result[0]["thompson_mean"] == 0.5
         assert result[1]["final_score"] == 0.5
+
+    @pytest.mark.parametrize(
+        "state",
+        [
+            {"alpha": 1.0, "beta": 1.0, "injection_count": 40},
+            {"alpha": 0.012, "beta": 0.05, "injection_count": 9},
+            {"alpha": 6.0, "beta": 3.0, "injection_count": 9, "age_days": 3650},
+        ],
+    )
+    def test_injected_but_unjudged_or_stale_lessons_keep_retrieval_score(self, set_data_dir, state):
+        now = time.time()
+        state = {**state, "last_updated": now - 86400 * state.pop("age_days", 0)}
+        candidates = [{"id": "L001", "score": 0.6, "category": "git", "lesson": "x"}]
+
+        result = thompson_rerank(candidates, {"L001": state}, now=now)
+
+        assert result[0]["final_score"] == pytest.approx(0.6, rel=0.05)
+
+    def test_negative_feedback_cannot_erase_a_relevant_lesson(self, set_data_dir):
+        now = time.time()
+        candidates = [{"id": "L001", "score": 0.6, "category": "git", "lesson": "x"}]
+        state = {"alpha": 1.0, "beta": 50.0, "last_updated": now, "injection_count": 50}
+
+        result = thompson_rerank(candidates, {"L001": state}, now=now)
+
+        assert result[0]["final_score"] >= 0.3
 
     def test_proven_lessons_rank_higher(self, set_data_dir):
         """Lessons with high alpha should rank higher than low alpha."""
