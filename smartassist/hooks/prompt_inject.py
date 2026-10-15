@@ -633,8 +633,13 @@ def _reconstruct_injected_lessons(storage_path):
     return reconstructed
 
 
-def build_rich_feedback_context(sentiment, user_context, reinforcement_results):
-    """Build context for Claude — instruct compare_lesson when context is available."""
+def build_rich_feedback_context(sentiment, user_context, reinforcement_results, created_lesson=None):
+    """Build context for Claude after feedback.
+
+    One creation path per feedback: when the hook already recorded a lesson
+    (``created_lesson`` = (id, text)) the agent is told about it instead of being
+    asked to create another one; otherwise it is asked to write the lesson.
+    """
     action = "boosted" if sentiment == "positive" else "demoted"
     if reinforcement_results:
         id_summaries = []
@@ -647,7 +652,14 @@ def build_rich_feedback_context(sentiment, user_context, reinforcement_results):
 
     parts = [summary]
 
-    if user_context and len(user_context.strip()) >= 15:
+    if created_lesson and created_lesson[0]:
+        lesson_id, lesson_text = created_lesson
+        parts.append(f'User {sentiment} feedback: "{user_context}"')
+        parts.append(
+            f"Recorded as lesson [{lesson_id}]: {lesson_text}. Do not create another "
+            "lesson for this feedback. Apply it now and acknowledge briefly."
+        )
+    elif user_context and len(user_context.strip()) >= 15:
         parts.append(f'User {sentiment} feedback: "{user_context}"')
         parts.append(
             "ACTION REQUIRED: Before responding to the user, you MUST call the "
@@ -868,11 +880,11 @@ def main():
         except RuntimeError:
             storage_path = None
 
-        # ALSO tell the LLM to create a better version with full context
         context = build_rich_feedback_context(
             sentiment,
             user_context,
             reinforcement_results,
+            created_lesson=(created_id, created_lesson),
         )
         output = {
             "hookSpecificOutput": {

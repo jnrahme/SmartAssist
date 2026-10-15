@@ -499,3 +499,20 @@ class TestSetupAgentArtifacts:
         assert config["model"] == "openai/gpt-5"
         assert config["small_model"] == "openai/gpt-5-mini"
         assert config["mcp"]["smartassist"]["enabled"] is True
+
+
+def test_session_end_hook_runs_on_every_exit_reason():
+    from smartassist.cli import HOOK_DEFS
+
+    session_end = [h for h in HOOK_DEFS if h["event"] == "SessionEnd"]
+
+    assert session_end and session_end[0]["matcher"] is None
+
+
+def test_doctor_expectations_match_installed_hook_definitions():
+    from smartassist.cli import HOOK_DEFS
+    from smartassist.tools.doctor import EXPECTED_HOOKS
+
+    installed = {h["event"]: {"command": h["command"], "matcher": h["matcher"]} for h in HOOK_DEFS}
+
+    assert installed == EXPECTED_HOOKS

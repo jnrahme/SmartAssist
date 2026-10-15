@@ -740,7 +740,8 @@ HOOK_DEFS = [
     },
     {
         "event": "SessionEnd",
-        "matcher": "other",
+        # No matcher: run on every exit reason (normal exits are "prompt_input_exit")
+        "matcher": None,
         "command": "smartassist-session-end",
     },
 ]

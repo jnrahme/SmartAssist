@@ -119,3 +119,20 @@ class TestRecurringMistakes:
         assert f"[{lesson_id}]" in context
         assert len(list_lessons(storage)) == before
         assert load_lesson_scores()[lesson_id]["boost"] > 1.0
+
+
+@pytest.mark.parametrize(
+    "created,asks_to_create",
+    [(("L178", "Don't use yarn, this repo uses pnpm"), False), ((None, None), True)],
+)
+def test_feedback_context_has_one_creation_path(created, asks_to_create):
+    from smartassist.hooks.prompt_inject import build_rich_feedback_context
+
+    context = build_rich_feedback_context(
+        "negative", "dont use yarn, this repo uses pnpm", [], created_lesson=created
+    )
+
+    assert ("ACTION REQUIRED" in context) is asks_to_create
+    if not asks_to_create:
+        assert "[L178]" in context and "Do not create another" in context
+

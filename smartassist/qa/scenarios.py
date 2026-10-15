@@ -1124,7 +1124,7 @@ def _scenario_boundary_pack_refreshes_after_repeated_negative_feedback(sandbox: 
         before_state = snapshot_storage(sandbox.storage_path)
         _record_step(steps, "snapshot_before", "Seeded repeated negative feedback and weak reliability state")
 
-        with patch("smartassist.hooks.session_end.subprocess.run", return_value=None):
+        with patch("smartassist.config.spawn_background_job", return_value=object()):
             _result, end_output = _capture_stdout(session_end.capture_session_learning)
         start_output = session_start.format_lessons_for_session()
         pack_path = get_boundary_pack_path(sandbox.storage_path)

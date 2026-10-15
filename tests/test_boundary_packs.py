@@ -380,13 +380,12 @@ class TestSessionHookIntegration:
 
         captured = {}
 
-        def _fake_run(args, capture_output, timeout):
-            captured["args"] = args
-            captured["capture_output"] = capture_output
-            captured["timeout"] = timeout
-            return None
+        def _fake_spawn(module, *args, **kwargs):
+            captured["module"] = module
+            captured["kwargs"] = kwargs
+            return object()
 
-        monkeypatch.setattr("smartassist.hooks.session_end.subprocess.run", _fake_run)
+        monkeypatch.setattr("smartassist.config.spawn_background_job", _fake_spawn)
 
         capture_session_learning()
 
@@ -396,7 +395,8 @@ class TestSessionHookIntegration:
             in output
         )
         assert "Updating RAG database with new learnings..." in output
-        assert captured["args"][-1] == "smartassist.hooks.vectorize_learnings"
+        assert captured["module"] == "smartassist.hooks.vectorize_learnings"
+        assert captured["kwargs"]["lock_name"] == "vectorize"
 
         pack_path = get_boundary_pack_path(storage)
         assert pack_path is not None and pack_path.exists()
