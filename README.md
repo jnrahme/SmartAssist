@@ -105,6 +105,29 @@ Every feedback signal makes the system smarter:
 
 ---
 
+## Semantic Retrieval (opt-in)
+
+Lexical retrieval is the default: fast and precise, but it misses paraphrased
+prompts. Semantic retrieval adds a warm local embedding service
+(`BAAI/bge-small-en-v1.5`) and fuses its similarity with the lexical score
+([ADR 0002](docs/adr/0002-semantic-retrieval-service.md)).
+
+Enable it per project:
+
+```bash
+echo '{"semantic_retrieval": true}' > .claude/smartassist/data/settings.json
+# or for every project: export SMARTASSIST_SEMANTIC=1
+```
+
+The first prompt starts the service in the background and uses lexical
+retrieval; later prompts use the hybrid ranking (~30 ms per query). The
+service listens on a user-only Unix socket and exits after 30 minutes idle.
+If it is unavailable, prompts fall back to lexical retrieval instead of
+waiting.
+
+Measure retrieval on your own store with
+[`benchmarks/retrieval_eval.py`](benchmarks/retrieval_eval.py).
+
 ## MCP Tools
 
 | Tool | What it does |

@@ -106,8 +106,9 @@ def thompson_rerank(
             sample = mean
         else:
             sample = random.betavariate(alpha, beta_val)
-        # Centered on 1.0 so feedback re-orders lessons without erasing relevance
-        factor = 0.5 + sample
+        # Centered on 1.0 and bounded so feedback re-orders lessons without
+        # outweighing relevance
+        factor = 0.8 + 0.4 * sample
 
         reranked.append({
             **candidate,

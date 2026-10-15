@@ -207,6 +207,12 @@ MAX_INJECTED_LESSONS = 3
 INJECTION_CHAR_BUDGET = 1200
 # Seeded lessons duplicate files the agent already reads (e.g. CLAUDE.md)
 ORIGIN_WEIGHTS = {"seed": 0.6}
+# Feedback re-orders relevant lessons; it must not outweigh relevance itself
+BOOST_INFLUENCE = 0.1
+BOOST_FACTOR_RANGE = (0.8, 1.2)
+# Hybrid retrieval (ADR 0002): cosine + LEXICAL_BONUS * min(lexical, 1) >= threshold
+SEMANTIC_THRESHOLD = 0.60
+LEXICAL_BONUS = 0.15
 
 
 STEM_LENGTH = 6
@@ -264,6 +270,55 @@ def build_idf(lessons):
     return {t: 1.0 + log((n + 1) / (df + 1)) for t, df in doc_freq.items()}
 
 
+def boost_factor(boost):
+    """Map a stored boost (0..3) to a bounded ranking nudge (0.8..1.2)."""
+    low, high = BOOST_FACTOR_RANGE
+    return min(max(1.0 + BOOST_INFLUENCE * (boost - DEFAULT_BOOST), low), high)
+
+
+def semantic_search(user_message, query_tokens, lessons, idf, lesson_scores, storage_path):
+    """Hybrid semantic + lexical ranking, or None to keep lexical-only results.
+
+    Opt-in (ADR 0002). Returns None whenever the embedding service is disabled,
+    not running yet, or too slow, so a prompt never waits on the model.
+    """
+    try:
+        from smartassist.semantic import client
+    except ImportError:
+        return None
+    if not client.is_enabled(storage_path):
+        return None
+    candidates = [l for l in lessons if not lesson_scores.get(l.get("id", ""), {}).get("blocked")]
+    cosines = client.similarity_scores(user_message, candidates)
+    if cosines is None:
+        return None
+    lexical = {
+        r["id"]: r
+        for r in search_lessons(
+            query_tokens, candidates, idf, top_k=len(candidates),
+            lesson_scores=lesson_scores, min_coverage=0.0,
+        )
+    }
+    ranked = []
+    for lesson in candidates:
+        lesson_id = lesson.get("id", "")
+        lex = lexical.get(lesson_id)
+        fused = cosines.get(lesson_id, 0.0) + LEXICAL_BONUS * min(lex["score"] if lex else 0.0, 1.0)
+        if fused < SEMANTIC_THRESHOLD:
+            continue
+        boost = lesson_scores.get(lesson_id, {}).get("boost", DEFAULT_BOOST)
+        ranked.append({
+            "id": lesson_id,
+            "lesson": lesson["lesson"],
+            "category": lesson["category"],
+            "score": fused * boost_factor(boost) * ORIGIN_WEIGHTS.get(lesson.get("origin", ""), 1.0),
+            "matched": lex["matched"] if lex else set(),
+            "retrieval": "semantic",
+        })
+    ranked.sort(key=lambda r: -r["score"])
+    return ranked[:CANDIDATE_DEPTH]
+
+
 def apply_injection_budget(results, limit=MAX_INJECTED_LESSONS, char_budget=INJECTION_CHAR_BUDGET):
     """Keep the top lessons that fit the count and character budget, in rank order."""
     kept, used = [], 0
@@ -278,7 +333,7 @@ def apply_injection_budget(results, limit=MAX_INJECTED_LESSONS, char_budget=INJE
     return kept
 
 
-def search_lessons(query_tokens, lessons, idf, top_k=5, lesson_scores=None):
+def search_lessons(query_tokens, lessons, idf, top_k=5, lesson_scores=None, min_coverage=None):
     """Rank lessons by IDF coverage: the share of the query's information they match.
 
     Terms the corpus has never seen get the maximum IDF, so a prompt that is mostly
@@ -309,12 +364,12 @@ def search_lessons(query_tokens, lessons, idf, top_k=5, lesson_scores=None):
                 score += idf.get(qt, max_idf) * term_weight
                 matched.add(qt)
         coverage = score / query_weight
-        if coverage < MIN_COVERAGE:
+        if coverage < (MIN_COVERAGE if min_coverage is None else min_coverage):
             continue
         relevance = coverage
 
-        boost = score_entry.get("boost", DEFAULT_BOOST)
-        relevance *= boost * ORIGIN_WEIGHTS.get(lesson.get("origin", ""), 1.0)
+        relevance *= boost_factor(score_entry.get("boost", DEFAULT_BOOST))
+        relevance *= ORIGIN_WEIGHTS.get(lesson.get("origin", ""), 1.0)
 
         scored.append(
             {
@@ -860,6 +915,9 @@ def main():
     results = search_lessons(
         query_tokens, lessons, idf, top_k=CANDIDATE_DEPTH, lesson_scores=lesson_scores
     )
+    semantic = semantic_search(user_message, query_tokens, lessons, idf, lesson_scores, storage_path)
+    if semantic is not None:
+        results = semantic
     results = [r for r in results if r["score"] >= 0.15]
 
     # Thompson Sampling reranking — the RLHF reinforcement loop
