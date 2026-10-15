@@ -255,6 +255,7 @@ def capture_commit_lessons(*, verbose: bool = True):
             "correction": lesson["correction"],
             "timestamp": time.time(),
             "session_id": f"commit_{commit_info['sha'][:8]}",
+            "provenance": {"source": "commit_hook"},
         }
         append_feedback_event(storage_path, entry)
 

@@ -861,6 +861,7 @@ def rag_feedback(
             "response": "",
             "correction": notes,
             "context": "rag_feedback MCP tool",
+            "provenance": {"source": "mcp", "tool": "rag_feedback"},
         },
     )
 
@@ -1117,6 +1118,7 @@ def create_lesson(
             "response": "",
             "correction": lesson,
             "context": context or "create_lesson MCP tool",
+            "provenance": {"source": "mcp", "tool": "create_lesson"},
         },
     )
 
@@ -1472,6 +1474,7 @@ def merge_lessons(lesson_ids: str, new_lesson: str, category: str) -> str:
             "response": "",
             "correction": new_lesson,
             "context": f"Merged from: {', '.join(ids)}",
+            "provenance": {"source": "mcp", "tool": "merge_lessons"},
         },
     )
 

@@ -14,10 +14,16 @@ from typing import Any
 
 from smartassist.config import atomic_write_json, get_storage_path, locked_update_json
 from smartassist.gates import get_prevention_rules_path
+from smartassist.store import (
+    SYNTHETIC_EVENT_SOURCES,
+    event_source,
+    list_lessons,
+    project_root_for_storage,
+)
 from smartassist.thompson_sampling import ThompsonSamplingModel
 from smartassist.tools.cleanup_and_vectorize import clean_correction_text, get_dedup_key
 
-BOUNDARY_PACK_VERSION = 2
+BOUNDARY_PACK_VERSION = 3
 NEGATIVE_SIGNALS = {"thumbs_down", "angry", "correction", "sad"}
 PROMOTION_THRESHOLD = 2
 MAX_PROMOTED_BOUNDARIES = 5
@@ -103,7 +109,8 @@ def build_boundary_pack(
     max_recent: int = MAX_RECENT_MISTAKES,
 ) -> dict[str, Any]:
     """Build a bounded pack of high-salience boundaries and recent mistakes."""
-    events = _load_feedback_events(storage_path)
+    all_events = _load_feedback_events(storage_path)
+    events = evidence_events(all_events, storage_path)
     thompson = ThompsonSamplingModel(str(storage_path))
     weak_categories = thompson.get_weak_categories(threshold=threshold)
     reliability_scores = thompson.get_all_reliabilities()
@@ -132,7 +139,8 @@ def build_boundary_pack(
         "promoted_boundaries": promoted[:max_promoted],
         "recent_mistakes": recent,
         "stats": {
-            "feedback_events": len(events),
+            "feedback_events": len(all_events),
+            "evidence_events": len(events),
             "negative_feedback_events": sum(
                 1 for event in events if str(event.get("signal") or "") in NEGATIVE_SIGNALS
             ),
@@ -300,6 +308,8 @@ def format_boundary_pack_for_session(pack: dict[str, Any]) -> str:
             lines.append("")
 
     if recent:
+        if lines[-1] != "":
+            lines.append("")
         lines.append("Recent mistakes to avoid:\n")
         for index, item in enumerate(recent, 1):
             category = str(item.get("category") or "unknown").upper()
@@ -362,6 +372,36 @@ def _pack_is_stale(storage_path: Path, pack_path: Path) -> bool:
         except OSError:
             return True
     return False
+
+
+def evidence_events(events: list[dict[str, Any]], storage_path: Path) -> list[dict[str, Any]]:
+    """Keep events that are real evidence about this project.
+
+    Drops seeded docs and commit-message heuristics (context, not mistakes), events
+    recorded for another project, and events whose lesson was retired or superseded.
+    """
+    project_root = project_root_for_storage(storage_path)
+    try:
+        inactive = {
+            get_dedup_key(lesson["lesson"])
+            for lesson in list_lessons(storage_path, include_inactive=True)
+            if lesson.get("state") != "active"
+        }
+    except Exception:
+        inactive = set()
+
+    kept = []
+    for event in events:
+        if event_source(event) in SYNTHETIC_EVENT_SOURCES:
+            continue
+        recorded_root = (event.get("provenance") or {}).get("project_root")
+        if recorded_root and project_root and recorded_root != project_root:
+            continue
+        correction = str(event.get("correction") or "")
+        if correction and get_dedup_key(correction) in inactive:
+            continue
+        kept.append(event)
+    return kept
 
 
 def _load_feedback_events(storage_path: Path) -> list[dict[str, Any]]:

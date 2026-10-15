@@ -321,7 +321,71 @@ def _create_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_feedback_events_category ON feedback_events(category_key);
         """
     )
+    _ensure_column(conn, "feedback_events", "provenance", "TEXT NOT NULL DEFAULT '{}'")
     conn.commit()
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    """Additive, idempotent migration for stores created by older versions."""
+    columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
+# Event sources. Only user-originated events count as real mistakes/feedback;
+# seeded docs and commit-message heuristics are context, not evidence.
+EVENT_SOURCE_USER = "user"
+EVENT_SOURCE_SEED = "seed"
+EVENT_SOURCE_COMMIT_HOOK = "commit_hook"
+SYNTHETIC_EVENT_SOURCES = {EVENT_SOURCE_SEED, EVENT_SOURCE_COMMIT_HOOK}
+
+_LEGACY_SOURCE_MARKERS = (
+    ("From CLAUDE.md", EVENT_SOURCE_SEED),
+    ("Deep seed:", EVENT_SOURCE_SEED),
+    ("deep-seed", EVENT_SOURCE_SEED),
+    ("Branch: ", EVENT_SOURCE_COMMIT_HOOK),
+    ("Commit: ", EVENT_SOURCE_COMMIT_HOOK),
+    ("Good practice:", EVENT_SOURCE_COMMIT_HOOK),
+)
+
+
+def event_source(event: dict[str, Any]) -> str:
+    """Where an event came from: recorded provenance, else inferred for legacy rows."""
+    recorded = (event.get("provenance") or {}).get("source")
+    if recorded:
+        return str(recorded)
+    if str(event.get("session_id") or "").startswith("commit_"):
+        return EVENT_SOURCE_COMMIT_HOOK
+    context = str(event.get("context") or "")
+    for marker, source in _LEGACY_SOURCE_MARKERS:
+        if context.startswith(marker):
+            return source
+    return EVENT_SOURCE_USER
+
+
+def project_root_for_storage(storage: Path | str | None) -> str | None:
+    """<root>/.claude/smartassist/data -> <root>."""
+    if storage is None:
+        return None
+    parents = Path(storage).resolve().parents
+    return str(parents[2]) if len(parents) > 2 else None
+
+
+def _provenance_json(event: dict[str, Any], storage: Path | None) -> str:
+    provenance = dict(event.get("provenance") or {})
+    if "project_root" not in provenance:
+        project_root = project_root_for_storage(storage)
+        if project_root:
+            provenance["project_root"] = project_root
+    return json.dumps(provenance, sort_keys=True)
+
+
+def _parse_provenance(raw: Any) -> dict[str, Any]:
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _get_meta(conn: sqlite3.Connection, key: str, default: str = "") -> str:
@@ -703,8 +767,8 @@ def _sync_events_from_legacy(conn: sqlite3.Connection, storage: Path) -> None:
             """
             INSERT INTO feedback_events(
                 timestamp, signal, category_key, intensity, query, response,
-                correction, context, session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                correction, context, session_id, provenance
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 float(event.get("timestamp", time.time()) or time.time()),
@@ -716,6 +780,7 @@ def _sync_events_from_legacy(conn: sqlite3.Connection, storage: Path) -> None:
                 str(event.get("correction") or ""),
                 str(event.get("context") or ""),
                 str(event.get("session_id") or "default"),
+                json.dumps(event.get("provenance") or {}, sort_keys=True),
             ),
         )
     _rebuild_search_projection(conn)
@@ -933,7 +998,7 @@ def export_feedback_events(
     rows = conn.execute(
         """
         SELECT timestamp, signal, category_key, intensity, query, response,
-               correction, context, session_id
+               correction, context, session_id, provenance
           FROM feedback_events
          ORDER BY event_id
         """
@@ -951,6 +1016,9 @@ def export_feedback_events(
             "context": str(row["context"] or ""),
             "session_id": str(row["session_id"] or "default"),
         }
+        provenance = _parse_provenance(row["provenance"])
+        if provenance:
+            payload["provenance"] = provenance
         lines.append(json.dumps(payload))
     _atomic_write_text(path, ("\n".join(lines) + ("\n" if lines else "")))
     _update_signature_meta(conn, "legacy_sig:feedback_log", path)
@@ -1783,8 +1851,8 @@ def append_feedback_event(
             """
             INSERT INTO feedback_events(
                 timestamp, signal, category_key, intensity, query, response,
-                correction, context, session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                correction, context, session_id, provenance
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 float(event.get("timestamp", time.time()) or time.time()),
@@ -1796,6 +1864,7 @@ def append_feedback_event(
                 str(event.get("correction") or ""),
                 str(event.get("context") or ""),
                 str(event.get("session_id") or "default"),
+                _provenance_json(event, storage),
             ),
         )
         _rebuild_search_projection(conn)
@@ -1810,13 +1879,14 @@ def list_feedback_events(
         rows = conn.execute(
             """
             SELECT timestamp, signal, category_key, intensity, query, response,
-                   correction, context, session_id
+                   correction, context, session_id, provenance
               FROM feedback_events
              ORDER BY event_id
             """
         ).fetchall()
         return [
             {
+                "provenance": _parse_provenance(row["provenance"]),
                 "timestamp": float(row["timestamp"]),
                 "signal": str(row["signal"]),
                 "category": str(row["category_key"]),

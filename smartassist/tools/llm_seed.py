@@ -333,6 +333,7 @@ def store_lessons(lessons, project_root):
             "response": "",
             "correction": text,
             "context": "deep-seed LLM-generated lesson",
+            "provenance": {"source": "seed"},
         })
 
         # Update Thompson
