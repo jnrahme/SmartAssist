@@ -1705,6 +1705,9 @@ def load_last_injection_map(storage_path: Path | str | None = None) -> dict[str,
         payload["_timestamp"] = float(
             _get_meta(conn, "last_injection_timestamp", "0") or "0"
         )
+        session_id = _get_meta(conn, "last_injection_session_id", "")
+        if session_id:
+            payload["_session_id"] = session_id
         return payload
 
 
@@ -1727,6 +1730,7 @@ def save_last_injection_map(
             "last_injection_timestamp",
             str(float(mapping.get("_timestamp", 0) or 0)),
         )
+        _set_meta(conn, "last_injection_session_id", str(mapping.get("_session_id", "") or ""))
         export_last_injection(conn, storage)
         conn.commit()
 
