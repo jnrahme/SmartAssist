@@ -573,28 +573,15 @@ def seed_database():
     """Write lessons to feedback log and vectorize."""
     storage_path = get_storage_path()
     feedback_log = storage_path / "feedback_log.jsonl"
-    vectorization_log = storage_path / "vectorization_log.json"
     lessons_dir = storage_path / "lessons_learned"
 
-    # Clear old seed data
-    print("Clearing old seed data...")
-    feedback_log.write_text("")
-    from smartassist.config import atomic_write_json
-    atomic_write_json(vectorization_log, {
-        "total_vectorized": 0,
-        "last_processed_line": 0,
-        "last_vectorization": None,
-        "total_documents_in_rag": 0,
-    })
+    # Replace only the previous seed. User corrections, reliability scores and
+    # lesson files are real history and are never cleared by re-seeding.
+    from smartassist.store import EVENT_SOURCE_SEED, remove_feedback_events_by_source
 
-    # Reset reliability scores
-    reliability_file = storage_path / "reliability_scores.json"
-    atomic_write_json(reliability_file, {})
-
-    # Clear old lesson files
+    removed = remove_feedback_events_by_source(storage_path, {EVENT_SOURCE_SEED})
+    print(f"Replacing {removed} previous seed event(s); user events are kept")
     lessons_dir.mkdir(exist_ok=True)
-    for f in lessons_dir.glob("*.md"):
-        f.unlink()
 
     # Generate lessons
     lessons = create_lessons()
@@ -657,20 +644,6 @@ def seed_database():
     print(f"Promoted {promoted} active lesson(s) into smartassist.db")
     lesson_files = list(lessons_dir.glob("*.md"))
     print(f"Created {len(lesson_files)} lesson files in {lessons_dir}")
-
-    # Update Thompson Sampling scores from the seed data
-    from smartassist.thompson_sampling import ThompsonSamplingModel
-    thompson = ThompsonSamplingModel(str(storage_path))
-
-    for lesson in lessons:
-        if lesson["signal"] in ("thumbs_up", "happy"):
-            thompson.record_success(lesson["category"], lesson["intensity"])
-        elif lesson["signal"] in ("thumbs_down", "angry", "sad"):
-            thompson.record_failure(lesson["category"], lesson["intensity"])
-        elif lesson["signal"] == "correction":
-            thompson.record_failure(lesson["category"], lesson["intensity"] // 2)
-
-    print("Updated Thompson Sampling reliability scores")
 
     # Vectorize into LanceDB
     print("\nVectorizing into RAG database...")

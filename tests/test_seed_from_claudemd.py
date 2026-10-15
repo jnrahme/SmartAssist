@@ -508,3 +508,24 @@ class TestSeedDatabase:
         lesson_texts = {lesson["lesson"] for lesson in lessons}
         assert "Always use renderWithProviders instead of plain render in tests" in lesson_texts
         assert "Never force push to main or release branches" in lesson_texts
+
+    def test_reseed_keeps_user_events_and_replaces_previous_seed(self, tmp_path, monkeypatch, set_data_dir):
+        from smartassist.store import append_feedback_event, list_feedback_events
+
+        (tmp_path / "CLAUDE.md").write_text("## Git\n\n- Never force push to main or release branches\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "smartassist.hooks.seed_from_claudemd.subprocess.run",
+            lambda *args, **kwargs: SimpleNamespace(stdout="{}", stderr=""),
+        )
+        storage = set_data_dir / "data"
+        append_feedback_event(storage, {"signal": "correction", "category": "git",
+                                        "correction": "Sync with stage before pushing"})
+
+        seed_database()
+        seed_database()
+
+        corrections = [event["correction"] for event in list_feedback_events(storage)]
+        assert "Sync with stage before pushing" in corrections
+        assert corrections.count("Never force push to main or release branches") == 1
+

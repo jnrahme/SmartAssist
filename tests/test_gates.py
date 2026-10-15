@@ -6,6 +6,8 @@ import io
 import json
 import time
 
+import pytest
+
 from smartassist.gates import (
     build_pretool_hook_output,
     evaluate_pretool_gate,
@@ -398,7 +400,7 @@ class TestCommitHookMain:
 
 
 class TestCommitCapturePromotion:
-    def test_commit_capture_promotes_corrections_into_active_lessons(self, monkeypatch, set_data_dir):
+    def _capture(self, monkeypatch, lessons):
         monkeypatch.setattr(commit_hook, "was_recent_commit", lambda: True)
         monkeypatch.setattr(
             commit_hook,
@@ -408,36 +410,86 @@ class TestCommitCapturePromotion:
         monkeypatch.setattr(commit_hook, "already_captured", lambda sha: False)
         monkeypatch.setattr(commit_hook, "get_changed_files", lambda: ["src/auth/login.ts"])
         monkeypatch.setattr(commit_hook, "get_commit_diff_content", lambda: "diff")
-        monkeypatch.setattr(
-            commit_hook,
-            "extract_lessons_from_commit",
-            lambda *_args: [
-                {
-                    "signal": "correction",
-                    "category": "git",
-                    "intensity": 3,
-                    "query": 'git commit -m "Fix auth flow"',
-                    "response": "Commit message missing ticket prefix",
-                    "correction": "Use format: [TICKET-XXX] Description",
-                    "context": "Commit: Fix auth flow. Branch: feature/auth.",
-                }
-            ],
-        )
+        monkeypatch.setattr(commit_hook, "extract_lessons_from_commit", lambda *_args: lessons)
         marked = []
         monkeypatch.setattr(commit_hook, "mark_captured", lambda sha: marked.append(sha))
         monkeypatch.setattr(commit_hook.subprocess, "run", lambda *args, **kwargs: None)
-
         commit_hook.capture_commit_lessons(verbose=False)
+        return marked
 
-        lessons = list_lessons(_storage_path(set_data_dir))
-        assert any(
-            lesson["lesson"] == "Use format: [TICKET-XXX] Description"
-            and lesson["category"] == "git"
-            for lesson in lessons
-        )
-        events = list_feedback_events(_storage_path(set_data_dir))
-        assert any(event["correction"] == "Use format: [TICKET-XXX] Description" for event in events)
+    @staticmethod
+    def _lesson(correction, **extra):
+        return {
+            "signal": "correction",
+            "category": "code_edit",
+            "intensity": 3,
+            "query": "Commit code changes",
+            "response": "finding",
+            "correction": correction,
+            "context": "Commit: Fix auth flow.",
+            **extra,
+        }
+
+    def test_objective_anti_pattern_is_promoted(self, monkeypatch, set_data_dir):
+        rule = "Remove debug statements (console.log, print, debugger) before committing."
+
+        marked = self._capture(monkeypatch, [self._lesson(rule, promote=True)])
+
+        assert any(lesson["lesson"] == rule for lesson in list_lessons(_storage_path(set_data_dir)))
         assert marked == ["abc12345"]
+
+    def test_heuristic_is_logged_but_not_promoted(self, monkeypatch, set_data_dir):
+        rule = "Consider including test updates when modifying multiple source files."
+
+        self._capture(monkeypatch, [self._lesson(rule)])
+
+        assert not any(lesson["lesson"] == rule for lesson in list_lessons(_storage_path(set_data_dir)))
+        events = list_feedback_events(_storage_path(set_data_dir))
+        assert any(event["correction"] == rule for event in events)
+
+    def test_commit_capture_does_not_change_category_reliability(self, monkeypatch, set_data_dir):
+        self._capture(monkeypatch, [self._lesson("Use format: [TICKET-XXX] Description", category="git")])
+
+        reliability = _storage_path(set_data_dir) / "reliability_scores.json"
+        assert not reliability.exists() or "git" not in reliability.read_text()
+
+
+class TestCommitConvention:
+    @pytest.mark.parametrize(
+        "files,expected",
+        [
+            ({"commitlint.config.js": "module.exports = {}"}, "conventional"),
+            ({"package.json": '{"commitlint": {"extends": []}}'}, "conventional"),
+            ({"package.json": '{"name": "x"}'}, None),
+            ({}, None),
+        ],
+    )
+    def test_detects_declared_convention(self, tmp_path, files, expected):
+        for name, body in files.items():
+            (tmp_path / name).write_text(body)
+
+        assert commit_hook.detect_commit_convention(tmp_path) == expected
+
+    @pytest.mark.parametrize(
+        "message,valid",
+        [
+            ("feat(BTMAPP-1897): add commitlint", True),
+            ("fix: handle empty list", True),
+            ("refactor!: drop legacy api", True),
+            ("[SA-053] Fix hook token bloat", False),
+            ("Fix auth flow", False),
+        ],
+    )
+    def test_conventional_commit_pattern(self, message, valid):
+        assert bool(commit_hook.CONVENTIONAL_COMMIT.match(message)) is valid
+
+    def test_no_declared_convention_emits_no_format_lesson(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(commit_hook, "project_root_or_none", lambda: tmp_path)
+        lessons = commit_hook.extract_lessons_from_commit(
+            {"message": "[SA-053] Fix hook token bloat", "sha": "abc"}, [], ""
+        )
+
+        assert not [lesson for lesson in lessons if lesson["category"] == "git"]
 
 
 class TestLessonScoresInitialization:

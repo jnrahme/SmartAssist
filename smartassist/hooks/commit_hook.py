@@ -12,6 +12,7 @@ import json
 import subprocess
 import time
 import re
+from pathlib import Path
 
 from smartassist.config import get_storage_path, get_project_root
 from smartassist.gates import build_pretool_hook_output, evaluate_pretool_gate
@@ -112,6 +113,41 @@ def mark_captured(sha):
     atomic_write_json(capture_log, data)
 
 
+CONVENTIONAL_COMMIT = re.compile(
+    r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|rfc|hotfix)(\([^)]+\))?!?: \S"
+)
+_COMMITLINT_FILES = (
+    "commitlint.config.js", "commitlint.config.cjs", "commitlint.config.mjs",
+    "commitlint.config.ts", ".commitlintrc", ".commitlintrc.json",
+    ".commitlintrc.yml", ".commitlintrc.yaml", ".commitlintrc.js",
+)
+
+
+def project_root_or_none():
+    try:
+        return get_project_root()
+    except Exception:
+        return None
+
+
+def detect_commit_convention(project_root):
+    """Return "conventional" when the project configures commitlint, else None.
+
+    Without a declared convention the hook does not guess a commit format.
+    """
+    if project_root is None:
+        return None
+    root = Path(project_root)
+    if any((root / name).exists() for name in _COMMITLINT_FILES):
+        return "conventional"
+    try:
+        if "commitlint" in json.loads((root / "package.json").read_text()):
+            return "conventional"
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def extract_lessons_from_commit(commit_info, changed_files, diff_content):
     """Analyze commit and extract lessons as feedback entries."""
     from smartassist.feedback_system import FeedbackCategory
@@ -133,28 +169,28 @@ def extract_lessons_from_commit(commit_info, changed_files, diff_content):
     src_files = [f for f in changed_files if f.startswith("src/") and "__tests__" not in f]
     style_files = [f for f in changed_files if "style" in f.lower()]
 
-    # ── Lesson: commit message format ────────────────────────────────
-    ticket_match = re.match(r"\[([A-Z]+-\d+)\]", msg)
-    if ticket_match:
-        lessons.append({
-            "signal": "thumbs_up",
-            "category": FeedbackCategory.GIT.value,
-            "intensity": 3,
-            "query": f"Commit on branch {branch}",
-            "response": f"Used correct commit format: {msg[:80]}",
-            "correction": None,
-            "context": f"Branch: {branch}, Files: {len(changed_files)}",
-        })
-    elif msg and not msg.startswith("Merge"):
-        lessons.append({
-            "signal": "correction",
-            "category": FeedbackCategory.GIT.value,
-            "intensity": 3,
-            "query": f"Commit on branch {branch}",
-            "response": f"Commit message missing ticket: {msg[:80]}",
-            "correction": "Use format: [TICKET-XXX] Description",
-            "context": f"Branch: {branch}",
-        })
+    # ── Lesson: commit message format (only when the project declares one) ─
+    if detect_commit_convention(project_root_or_none()) == "conventional" and msg and not msg.startswith("Merge"):
+        if CONVENTIONAL_COMMIT.match(msg):
+            lessons.append({
+                "signal": "thumbs_up",
+                "category": FeedbackCategory.GIT.value,
+                "intensity": 3,
+                "query": f"Commit on branch {branch}",
+                "response": f"Used Conventional Commits format: {msg[:80]}",
+                "correction": None,
+                "context": f"Branch: {branch}, Files: {len(changed_files)}",
+            })
+        else:
+            lessons.append({
+                "signal": "correction",
+                "category": FeedbackCategory.GIT.value,
+                "intensity": 3,
+                "query": f"Commit on branch {branch}",
+                "response": f"Commit message is not Conventional Commits: {msg[:80]}",
+                "correction": "Use Conventional Commits: type(scope): message",
+                "context": f"Branch: {branch}",
+            })
 
     # ── Lesson: tests included with source changes ───────────────────
     if src_files and test_files:
@@ -194,6 +230,7 @@ def extract_lessons_from_commit(commit_info, changed_files, diff_content):
                 "response": f"Committed {len(debug_stmts)} debug statement(s)",
                 "correction": "Remove debug statements (console.log, print, debugger) before committing.",
                 "context": "Clean commits should not contain debug output.",
+                "promote": True,
             })
 
     # ── Lesson: record what areas of code were touched ───────────────
@@ -260,7 +297,9 @@ def capture_commit_lessons(*, verbose: bool = True):
         append_feedback_event(storage_path, entry)
 
         correction = (lesson.get("correction") or "").strip()
-        if lesson["signal"] == "correction" and correction:
+        # Heuristics (file counts, message shape) are logged, not promoted:
+        # only objective anti-patterns found in the diff become lessons
+        if lesson["signal"] == "correction" and correction and lesson.get("promote"):
             _lesson_id, _error, created = ensure_lesson(
                 storage_path,
                 correction,
@@ -270,16 +309,8 @@ def capture_commit_lessons(*, verbose: bool = True):
             if created:
                 promoted += 1
 
-    # Update Thompson Sampling
-    from smartassist.thompson_sampling import ThompsonSamplingModel
-    thompson = ThompsonSamplingModel(str(storage_path))
-    for lesson in lessons:
-        if lesson["signal"] in ("thumbs_up", "happy"):
-            thompson.record_success(lesson["category"], lesson["intensity"])
-        elif lesson["signal"] in ("thumbs_down", "angry", "sad"):
-            thompson.record_failure(lesson["category"], lesson["intensity"])
-        elif lesson["signal"] == "correction":
-            thompson.record_failure(lesson["category"], lesson["intensity"] // 2)
+    # Category reliability is learned from user feedback only, never from
+    # commit heuristics (they made every Conventional Commit a "git failure")
 
     mark_captured(commit_info["sha"])
 
