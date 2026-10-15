@@ -50,3 +50,7 @@ smartassist-codex-sync = "smartassist.codex_activity:main"
 
 [tool.setuptools.packages.find]
 include = ["smartassist*"]
+
+[tool.setuptools.package-data]
+# Adapter templates are data files the CLI points users at; they are not packages
+smartassist = ["adapters/*", "adapters/*/*", "adapters/*/.*"]
