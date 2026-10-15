@@ -17,6 +17,7 @@ from smartassist.boundary_packs import (
 from smartassist.gates import get_prevention_rules_path
 from smartassist.hooks.session_end import capture_session_learning
 from smartassist.hooks.session_start import format_lessons_for_session
+from smartassist.store import add_lesson
 
 
 def _storage_path(data_dir):
@@ -377,6 +378,7 @@ class TestSessionHookIntegration:
             ],
         )
         _write_reliabilities(storage, {"git": (1.0, 4.0)})
+        add_lesson(storage, repeated, "git")
 
         captured = {}
 

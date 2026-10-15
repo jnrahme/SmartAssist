@@ -111,12 +111,16 @@ def test_concurrent_writers_get_unique_lesson_ids(set_data_dir):
 
     storage = str(set_data_dir / "data")
     add_lesson(storage, "Seed lesson so the store exists", "git")
-    with multiprocessing.get_context("spawn").Pool(8) as pool:
-        results = pool.map(_add_in_subprocess, [(storage, i) for i in range(8)])
+    with multiprocessing.get_context("spawn").Pool(16) as pool:
+        results = pool.map(_add_in_subprocess, [(storage, i) for i in range(16)])
 
     ids = [lesson_id for lesson_id, error in results]
     assert all(error is None for _, error in results)
-    assert len(set(ids)) == 8
+    assert len(set(ids)) == 16
+    # No writer's lesson may be dropped by another writer's legacy resync
+    from smartassist.store import list_lessons
+
+    assert set(ids) <= {lesson["id"] for lesson in list_lessons(storage)}
 
 
 def test_duplicate_text_in_another_category_is_rejected(set_data_dir):

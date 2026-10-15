@@ -649,6 +649,13 @@ def _sync_legacy_surfaces(
     storage: Path,
     sync: set[str],
 ) -> None:
+    # Compare legacy file signatures and re-import under the write lock. Writers
+    # export the JSON and its signature inside their own write transaction, so
+    # without the lock a reader could re-import a copy taken just before another
+    # process committed and silently drop that process's new rows.
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
     if _SYNC_LESSONS in sync:
         _sync_lessons_from_legacy(conn, storage)
     if _SYNC_SCORES in sync:
