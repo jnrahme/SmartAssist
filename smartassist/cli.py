@@ -564,6 +564,13 @@ def cmd_maintenance():
     return 0
 
 
+def cmd_review():
+    """Report, retire and restore lessons; rebuild reliability from user evidence."""
+    from smartassist.tools.review import main
+
+    return main(sys.argv[2:])
+
+
 def cmd_analyze():
     """Show usage analytics."""
     from smartassist.tools.analyze_usage import analyze
@@ -1698,6 +1705,7 @@ def main():
         "migrate": cmd_migrate,
         "vectorize": cmd_vectorize,
         "maintenance": cmd_maintenance,
+        "review": cmd_review,
         "analyze": cmd_analyze,
         "dashboard": cmd_dashboard,
         "qa": cmd_qa,
@@ -1726,6 +1734,7 @@ def main():
         print(f"  {'migrate PATH':<15} Migrate data from old rag-setup location")
         print(f"  {'vectorize':<15} Re-vectorize curated lessons")
         print(f"  {'maintenance':<15} Run staleness + compaction checks")
+        print(f"  {'review':<15} Report/retire/restore stale or duplicate lessons (dry run by default)")
         print(f"  {'analyze':<15} Show usage analytics")
         print(f"  {'dashboard':<15} Generate HTML dashboard")
         print(f"  {'qa':<15} Run QA scenarios and demo generation")

@@ -674,45 +674,71 @@ def _sync_legacy_surfaces(
 
 
 def _sync_lessons_from_legacy(conn: sqlite3.Connection, storage: Path) -> None:
+    """Apply external edits of curated_lessons.json without losing lesson history.
+
+    The JSON lists the active corpus. Listed lessons are updated or added; active
+    lessons it no longer lists are retired with a reason (never deleted). An
+    unreadable or missing file changes nothing.
+    """
     path = storage / "curated_lessons.json"
     signature = _file_signature(path)
     meta_key = "legacy_sig:curated_lessons"
     if signature == _get_meta(conn, meta_key, ""):
         return
-
-    lessons: list[dict[str, Any]] = []
-    if path.exists():
-        try:
-            raw = json.loads(path.read_text())
-            if isinstance(raw, list):
-                lessons = [item for item in raw if isinstance(item, dict)]
-        except (json.JSONDecodeError, OSError):
-            lessons = []
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(raw, list):
+        return
 
     now = time.time()
-    conn.execute("DELETE FROM lessons")
-    for lesson in lessons:
-        lesson_id = str(lesson.get("id") or "").strip()
-        text = str(lesson.get("lesson") or "").strip()
-        category = str(lesson.get("category") or "unknown").strip() or "unknown"
-        if not lesson_id or not text:
+    listed: dict[str, tuple[str, str]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
             continue
-        conn.execute(
-            """
-            INSERT INTO lessons(
-                lesson_id, text, category_key, state, origin,
-                created_at, updated_at, content_hash
-            ) VALUES (?, ?, ?, 'active', 'legacy', ?, ?, ?)
-            """,
-            (
-                lesson_id,
-                text,
-                category,
-                now,
-                now,
-                _canonical_hash(text, category),
-            ),
-        )
+        lesson_id = str(item.get("id") or "").strip()
+        text = str(item.get("lesson") or "").strip()
+        category = str(item.get("category") or "unknown").strip() or "unknown"
+        if lesson_id and text:
+            listed[lesson_id] = (text, category)
+
+    existing = {
+        str(row["lesson_id"]): row
+        for row in conn.execute("SELECT lesson_id, text, category_key, state FROM lessons")
+    }
+    for lesson_id, (text, category) in listed.items():
+        row = existing.get(lesson_id)
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO lessons(
+                    lesson_id, text, category_key, state, origin,
+                    created_at, updated_at, content_hash
+                ) VALUES (?, ?, ?, 'active', 'legacy', ?, ?, ?)
+                """,
+                (lesson_id, text, category, now, now, _canonical_hash(text, category)),
+            )
+        elif (row["text"], row["category_key"], row["state"]) != (text, category, "active"):
+            conn.execute(
+                """
+                UPDATE lessons
+                   SET text = ?, category_key = ?, state = 'active', updated_at = ?,
+                       content_hash = ?, retired_reason = NULL, retired_at = NULL
+                 WHERE lesson_id = ?
+                """,
+                (text, category, now, _canonical_hash(text, category), lesson_id),
+            )
+    for lesson_id, row in existing.items():
+        if row["state"] == "active" and lesson_id not in listed:
+            conn.execute(
+                """
+                UPDATE lessons
+                   SET state = 'retired', retired_reason = ?, retired_at = ?, updated_at = ?
+                 WHERE lesson_id = ?
+                """,
+                ("removed from curated_lessons.json", datetime.now().isoformat(), now, lesson_id),
+            )
     _rebuild_search_projection(conn)
     _set_meta(conn, meta_key, signature)
 
@@ -1389,6 +1415,29 @@ def retire_lesson(
         _rebuild_search_projection(conn)
         export_lessons(conn, storage)
         conn.commit()
+
+
+def restore_lesson(storage_path: Path | str | None, lesson_id: str) -> bool:
+    """Reactivate a retired lesson (undo of retire). Returns False if not found."""
+    storage = _resolve_storage_path(storage_path)
+    with open_store(storage, sync=(_SYNC_LESSONS, _SYNC_SCORES)) as conn:
+        updated = conn.execute(
+            """
+            UPDATE lessons
+               SET state = 'active', retired_reason = NULL, retired_at = NULL, updated_at = ?
+             WHERE lesson_id = ? AND state != 'active'
+            """,
+            (time.time(), lesson_id),
+        ).rowcount
+        conn.execute(
+            "UPDATE lesson_scores SET blocked = 0, retired = 0 WHERE lesson_id = ?",
+            (lesson_id,),
+        )
+        _rebuild_search_projection(conn)
+        export_lessons(conn, storage)
+        export_scores(conn, storage)
+        conn.commit()
+    return bool(updated)
 
 
 def merge_lessons_in_store(
