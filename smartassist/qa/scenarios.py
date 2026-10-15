@@ -818,7 +818,7 @@ def _scenario_demote_retires_lesson_everywhere(sandbox: ScenarioSandbox) -> Scen
         before_state = snapshot_storage(sandbox.storage_path)
         _record_step(steps, "snapshot_before", "Seeded one lesson and captured baseline state", lesson_id=lesson_id)
 
-        with patch("smartassist.mcp_server.spawn_managed", lambda *args, **kwargs: None):
+        with patch("smartassist.mcp_server.spawn_background_job", lambda *args, **kwargs: None):
             demotion_results = [mcp_server.demote_lesson(lesson_id) for _ in range(3)]
         rag_output = mcp_server.rag_search("semantic theme tokens dashboard headers", top_k=3)
         hook_output = _invoke_prompt_hook(
@@ -1369,7 +1369,7 @@ def _scenario_merge_lessons_consolidates_scores(sandbox: ScenarioSandbox) -> Sce
         before_state = snapshot_storage(sandbox.storage_path)
         _record_step(steps, "snapshot_before", "Seeded overlapping lessons and existing scores")
 
-        with patch("smartassist.mcp_server.spawn_managed", lambda *args, **kwargs: None):
+        with patch("smartassist.mcp_server.spawn_background_job", lambda *args, **kwargs: None):
             result = mcp_server.merge_lessons("L001,L002", merged_text, "code_edit")
         _record_step(steps, "merge_lessons", "Merged two overlapping lessons into one consolidated lesson", result=result)
 

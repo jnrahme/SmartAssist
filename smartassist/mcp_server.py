@@ -30,7 +30,7 @@ from mcp.server.fastmcp import FastMCP
 
 from smartassist.config import (
     get_storage_path,
-    spawn_managed,
+    spawn_background_job,
 )
 from smartassist.lesson_feedback import (
     _context_to_lesson,
@@ -226,10 +226,7 @@ def _trigger_vectorization(full_rebuild: bool = False):
         if full_rebuild
         else "smartassist.hooks.vectorize_learnings"
     )
-    try:
-        spawn_managed([sys.executable, "-m", module])
-    except Exception:
-        pass
+    spawn_background_job(module, lock_name="vectorize", wait=full_rebuild)
 
 
 def _get_db():
