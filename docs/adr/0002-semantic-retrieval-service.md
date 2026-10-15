@@ -56,3 +56,14 @@ Add a small **local embedding service**:
 - First use downloads `bge-small-en-v1.5` (~130 MB) to the Hugging Face cache.
 - Lesson embeddings are recomputed only when lesson text changes.
 - Default stays off until held-out results are confirmed on a second project.
+
+## Update (2026-10-15): query instruction
+
+Queries are embedded with BGE's retrieval instruction ("Represent this sentence
+for searching relevant passages: "), lessons without it, as the model is
+trained. At the unchanged 0.60 threshold, on a store with stale and duplicate
+lessons retired: tuned 80% → 90% recall, noise 25% → 0%; held-out unchanged at
+64% / 0%. `bge-base-en-v1.5` reached 73% held-out only at a different
+threshold (chosen on the evaluation set) and loads ~10× slower, so it is not
+adopted yet.
+

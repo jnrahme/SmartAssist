@@ -5,6 +5,9 @@ import os
 from pathlib import Path
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
+# BGE models are trained to embed retrieval queries with this instruction
+# (passages/lessons are embedded without it)
+QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 IDLE_SECONDS = 30 * 60
 
 
