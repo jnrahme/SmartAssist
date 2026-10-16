@@ -1942,6 +1942,31 @@ def append_feedback_event(
         conn.commit()
 
 
+def evidence_event_ids(storage_path: Path | str | None, event_ids: list[str]) -> set[str]:
+    """Subset of event IDs that are user evidence (not seeded docs or commit heuristics)."""
+    ids = [int(i) for i in event_ids if str(i).isdigit()]
+    if not ids:
+        return set()
+    with open_store(storage_path) as conn:
+        rows = conn.execute(
+            f"SELECT event_id, context, session_id, provenance FROM feedback_events "
+            f"WHERE event_id IN ({','.join('?' * len(ids))})",
+            ids,
+        ).fetchall()
+    return {
+        str(row["event_id"])
+        for row in rows
+        if event_source(
+            {
+                "context": row["context"],
+                "session_id": row["session_id"],
+                "provenance": _parse_provenance(row["provenance"]),
+            }
+        )
+        not in SYNTHETIC_EVENT_SOURCES
+    }
+
+
 def remove_feedback_events_by_source(
     storage_path: Path | str | None,
     sources: set[str],

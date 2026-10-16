@@ -213,6 +213,8 @@ BOOST_FACTOR_RANGE = (0.8, 1.2)
 # Hybrid retrieval (ADR 0002): cosine + LEXICAL_BONUS * min(lexical, 1) >= threshold
 SEMANTIC_THRESHOLD = 0.60
 LEXICAL_BONUS = 0.15
+# Drop candidates far below the best match: same recall, fewer filler tokens
+RELATIVE_CUTOFF = 0.85
 
 
 STEM_LENGTH = 6
@@ -325,6 +327,9 @@ def semantic_search(user_message, query_tokens, lessons, idf, lesson_scores, sto
             "retrieval": "semantic",
         })
     ranked.sort(key=lambda r: -r["score"])
+    if ranked:
+        floor = RELATIVE_CUTOFF * ranked[0]["score"]
+        ranked = [r for r in ranked if r["score"] >= floor]
     return ranked[:CANDIDATE_DEPTH]
 
 
@@ -1013,14 +1018,25 @@ def main():
     try:
         from smartassist.store import search_projection_documents
 
+        from smartassist.project_facts import stale_reason
+        from smartassist.store import evidence_event_ids, project_root_for_storage
+
         ep_results, _ = search_projection_documents(
             storage_path,
             user_message,
-            top_k=3,
+            top_k=6,
             category=None,
             source_types=["event"],
         )
-        episodes.extend(ep_results[:2])
+        # Past corrections must be the user's, and still true for this project
+        evidence = evidence_event_ids(storage_path, [ep.get("source_id", "") for ep in ep_results])
+        root = project_root_for_storage(storage_path)
+        episodes.extend(
+            [
+                ep for ep in ep_results
+                if ep.get("source_id") in evidence and not stale_reason(ep.get("text", ""), root)
+            ][:2]
+        )
     except Exception:
         pass
 
