@@ -736,6 +736,7 @@ def create_lesson_from_feedback(user_context, sentiment, reinforcement_results):
             "response": "",
             "correction": lesson_text,
             "context": f"hook-created from feedback: {user_context}",
+            "provenance": {"source": "user", "via": "prompt_hook"},
         },
     )
 

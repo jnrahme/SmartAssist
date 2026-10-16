@@ -301,6 +301,7 @@ def bullet_to_lesson(
         "correction": clean,
         "context": f"From CLAUDE.md section: {section.header}"
                    + (f" > {section.parent_header}" if section.parent_header else ""),
+        "provenance": {"source": "seed"},
     }
 
 
@@ -331,6 +332,7 @@ def code_block_to_lesson(
         "response": "Used wrong command or skipped this step",
         "correction": f"Use: {command_text}",
         "context": f"From CLAUDE.md section: {section.header}",
+        "provenance": {"source": "seed"},
     }
 
 
