@@ -602,6 +602,29 @@ def write_to_live_log_feedback(
         pass
 
 
+def _normalize_lesson(text):
+    return " ".join(str(text).lower().split()).rstrip(".")
+
+
+def _format_episode(ep, seen_lessons, sanitize):
+    """Render one episode as `[category] lesson (context)`, or None if it repeats a shown lesson."""
+    cat = ep.get("category", "")
+    text = sanitize(ep.get("text", ""))
+    prefix = f"[{cat}] "
+    while text.startswith(prefix):
+        text = text[len(prefix):]
+    lesson, _, context = text.partition(" Context: ")
+    lesson, context = lesson.strip(), context.strip()
+    key = _normalize_lesson(lesson)
+    if not key or key in seen_lessons:
+        return None
+    seen_lessons.add(key)
+    norm_context = _normalize_lesson(context)
+    if context and norm_context not in key and key not in norm_context:
+        return f"[{cat}] {lesson} (context: {context})"
+    return f"[{cat}] {lesson}"
+
+
 def main():
     try:
         hook_input = json.load(sys.stdin)
@@ -841,12 +864,13 @@ def main():
         )
 
     # Format episodic memory (past corrections relevant to this query)
-    if episodes:
-        episode_lines = []
-        for ep in episodes[:2]:  # max 2 episodes to avoid context bloat
-            text = _sanitize(ep.get("text", ""))
-            cat = ep.get("category", "")
-            episode_lines.append(f"[{cat}] {text}")
+    seen_lessons = {_normalize_lesson(r.get("lesson", "")) for r in semantic_lessons}
+    episode_lines = []
+    for ep in episodes[:2]:  # max 2 episodes to avoid context bloat
+        line = _format_episode(ep, seen_lessons, _sanitize)
+        if line:
+            episode_lines.append(line)
+    if episode_lines:
         parts.append(
             "Past corrections on similar work:\n"
             + "\n".join(f"- {l}" for l in episode_lines)

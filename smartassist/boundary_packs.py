@@ -17,7 +17,7 @@ from smartassist.gates import get_prevention_rules_path
 from smartassist.thompson_sampling import ThompsonSamplingModel
 from smartassist.tools.cleanup_and_vectorize import clean_correction_text, get_dedup_key
 
-BOUNDARY_PACK_VERSION = 1
+BOUNDARY_PACK_VERSION = 2
 NEGATIVE_SIGNALS = {"thumbs_down", "angry", "correction", "sad"}
 PROMOTION_THRESHOLD = 2
 MAX_PROMOTED_BOUNDARIES = 5
@@ -63,7 +63,7 @@ def ensure_boundary_pack(storage_path: Path | None = None) -> dict[str, Any]:
         return refresh_boundary_pack(storage)
 
     pack = load_boundary_pack(storage)
-    if pack is None:
+    if pack is None or pack.get("version") != BOUNDARY_PACK_VERSION:
         return refresh_boundary_pack(storage)
 
     return pack
