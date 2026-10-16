@@ -25,6 +25,7 @@ from smartassist.lesson_feedback import (
     save_last_injection,
     load_session_state,
     save_session_state,
+    find_recurring_lessons,
     reinforce_recent_lessons,
     create_lesson_from_feedback,
     log_comparison_entry,
@@ -64,6 +65,8 @@ FEEDBACK_SIGNALS = {
     "+1": "positive",
     "-1": "negative",
 }
+
+STANDALONE_ONLY_SIGNALS = {"+1", "-1"}
 
 # ── Stop words ───────────────────────────────────────────────────────────
 STOP_WORDS = {
@@ -505,8 +508,11 @@ def detect_feedback_signal(message):
     if stripped in FEEDBACK_SIGNALS:
         return FEEDBACK_SIGNALS[stripped], ""
 
-    # Prefix match — signal at start, rest is context
+    # Prefix match — signal at start, rest is context. Numeric votes only count
+    # standalone: "-1 is the default value" is a request, not feedback.
     for signal, sentiment in sorted(FEEDBACK_SIGNALS.items(), key=lambda x: -len(x[0])):
+        if signal in STANDALONE_ONLY_SIGNALS:
+            continue
         if stripped.startswith(signal) and len(stripped) > len(signal):
             # Word boundary check: char after signal must be whitespace
             char_after = stripped[len(signal)]
@@ -607,6 +613,40 @@ def build_rich_feedback_context(sentiment, user_context, reinforcement_results):
     return "\n".join(parts)
 
 
+def storage_path_or_none():
+    try:
+        return get_storage_path()
+    except RuntimeError:
+        return None
+
+
+def emit_recurrence_context(storage_path, user_context, recurring_ids):
+    """Tell the agent it repeated a mistake it had already been warned about."""
+    texts = {}
+    if storage_path is not None:
+        texts = {lesson.get("id", ""): lesson.get("lesson", "") for lesson in list_lessons(storage_path)}
+        write_to_live_log_feedback(storage_path, user_context, "recurrence", user_context=user_context)
+    lines = [
+        "RECURRING MISTAKE: the user's correction repeats a lesson you were already shown "
+        "this session. The lesson was strengthened; no new lesson is needed.",
+    ]
+    lines += [f"- [{lid}] {texts.get(lid, '')}".rstrip() for lid in recurring_ids]
+    lines.append(
+        f'User feedback: "{user_context}". Apply the lesson above now, '
+        "say briefly what you will do differently, and continue."
+    )
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": "\n".join(lines),
+                }
+            }
+        )
+    )
+
+
 def write_to_live_log_feedback(
     storage_path, signal_text, sentiment, user_context="", reinforcement_results=None
 ):
@@ -690,10 +730,21 @@ def main():
     sentiment, user_context = (
         detect_feedback_signal(user_message) if user_message else (None, None)
     )
+    session_id = hook_input.get("session_id", "")
     if sentiment:
         user_context = user_context or ""
+        recurring = (
+            find_recurring_lessons(user_context, session_id=session_id)
+            if sentiment == "negative" and user_context
+            else []
+        )
+        if recurring:
+            # The lesson was right and was ignored: strengthen it, don't demote it
+            reinforce_recent_lessons("positive", session_id=session_id, only_ids=set(recurring))
+            emit_recurrence_context(storage_path_or_none(), user_context, recurring)
+            return
         # Hook-level reinforcement — no Claude involvement needed
-        reinforcement_results = reinforce_recent_lessons(sentiment)
+        reinforcement_results = reinforce_recent_lessons(sentiment, session_id=session_id)
 
         # Per-lesson Thompson attribution — the RLHF reinforcement loop
         try:
@@ -703,7 +754,7 @@ def main():
                 update_thompson_batch,
             )
 
-            last = load_last_injection()
+            last = load_last_injection(session_id)
             if last:
                 injected_for_attribution = []
                 for key, lesson_id in last.items():
@@ -832,7 +883,6 @@ def main():
         pass  # Fall back to non-Thompson ranking
 
     # Session deduplication
-    session_id = hook_input.get("session_id", "")
     already_injected = set()
     deduped_results = []
     if session_id:
@@ -853,7 +903,7 @@ def main():
 
     all_candidates = list(results) + list(deduped_results)
     if all_candidates:
-        save_last_injection(all_candidates)
+        save_last_injection(all_candidates, session_id=session_id)
 
     if not results:
         return

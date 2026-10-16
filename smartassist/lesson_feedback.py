@@ -67,22 +67,33 @@ def save_lesson_scores(data):
     save_lesson_scores_dict(get_storage_path(), data)
 
 
-def load_last_injection():
-    """Load last injection mapping. Returns dict of {"1": "L026", "2": "L094", ...}."""
+def load_last_injection(session_id=None):
+    """Load last injection mapping. Returns dict of {"1": "L026", "2": "L094", ...}.
+
+    With a session_id, an injection recorded by a different session is ignored so
+    feedback in one session never rewards or demotes lessons another session saw.
+    """
     try:
-        return load_last_injection_map(get_storage_path())
+        last = load_last_injection_map(get_storage_path())
     except Exception:
         return {}
+    recorded = last.get("_session_id") if last else None
+    if session_id and recorded and recorded != session_id:
+        return {}
+    return last
 
 
-def save_last_injection(results):
+def save_last_injection(results, session_id=None):
     """Write last injection mapping from ranked results list.
 
     Args:
         results: list of dicts with "id" keys, in display order.
+        session_id: Claude session that saw the injection.
     """
     mapping = {str(i + 1): r["id"] for i, r in enumerate(results)}
     mapping["_timestamp"] = time.time()
+    if session_id:
+        mapping["_session_id"] = session_id
     save_last_injection_map(get_storage_path(), mapping)
 
 
@@ -214,15 +225,49 @@ def _trigger_full_revectorization():
         pass
 
 
-def reinforce_recent_lessons(sentiment, max_age=900):
+def find_recurring_lessons(user_context, session_id=None, max_age=900, min_coverage=0.6):
+    """Return recently injected lesson IDs that the negative feedback restates.
+
+    "never stash, keep the changes" right after the stash lesson was shown means the
+    agent ignored a known lesson: a recurring mistake, not evidence the lesson is bad.
+    """
+    from smartassist.hooks.prompt_inject import build_idf, tokenize
+
+    feedback_tokens = set(tokenize(user_context or ""))
+    if not feedback_tokens:
+        return []
+    last = load_last_injection(session_id)
+    if not last:
+        return []
+    injection_time = last.get("_timestamp", 0)
+    if injection_time and (time.time() - injection_time) > max_age:
+        return []
+    injected = [v for k, v in last.items() if not k.startswith("_")]
+    lessons = list_lessons(get_storage_path())
+    texts = {lesson.get("id", ""): lesson.get("lesson", "") for lesson in lessons}
+    idf = build_idf(lessons)
+    max_idf = max(idf.values(), default=1.0)
+    feedback_weight = sum(idf.get(t, max_idf) for t in feedback_tokens)
+    recurring = []
+    for lesson_id in injected:
+        lesson_tokens = set(tokenize(texts.get(lesson_id, "")))
+        shared = feedback_tokens & lesson_tokens
+        # IDF weighting: sharing "stash" is evidence, sharing "keep"/"change" is not
+        coverage = sum(idf.get(t, max_idf) for t in shared) / feedback_weight
+        if coverage >= min_coverage:
+            recurring.append(lesson_id)
+    return recurring
+
+
+def reinforce_recent_lessons(sentiment, max_age=900, session_id=None, only_ids=None):
     """Auto-boost or demote all recently injected lessons.
 
     Called directly by the hook — no Claude involvement needed.
 
     Returns list of (lesson_id, old_boost, new_boost, retired) tuples.
-    Returns [] if no recent injection or stale.
+    Returns [] if no recent injection, stale, or recorded by another session.
     """
-    last = load_last_injection()
+    last = load_last_injection(session_id)
     if not last:
         return []
 
@@ -238,6 +283,8 @@ def reinforce_recent_lessons(sentiment, max_age=900):
 
     for key, lesson_id in last.items():
         if key.startswith("_"):
+            continue
+        if only_ids is not None and lesson_id not in only_ids:
             continue
 
         entry = get_or_create_score(scores, lesson_id)
@@ -621,8 +668,14 @@ def find_similar_lessons(storage_path, lesson_text, category="", *, limit=3):
 
 
 def _infer_category(reinforcement_results, storage_path, user_context=""):
-    """Infer lesson category from boosted lessons, then feedback text, then default."""
-    # 1. Majority vote from reinforced lessons
+    """Infer lesson category from the feedback text, then boosted lessons, then default."""
+    # 1. The feedback itself says what it is about
+    if user_context:
+        matched = _infer_category_from_text(user_context)
+        if matched:
+            return matched
+
+    # 2. Majority vote from reinforced lessons
     if reinforcement_results:
         curated_map = {
             lesson.get("id", ""): lesson.get("category", "")
@@ -637,12 +690,6 @@ def _infer_category(reinforcement_results, storage_path, user_context=""):
 
         if counts:
             return max(counts.items(), key=lambda item: item[1])[0]
-
-    # 2. Keyword match against the user's feedback text
-    if user_context:
-        matched = _infer_category_from_text(user_context)
-        if matched:
-            return matched
 
     return "code_edit"
 

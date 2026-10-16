@@ -2570,7 +2570,7 @@ class TestPromptInjectMainFeedback:
             hook_input = json.dumps({"prompt": ":)", "session_id": "test123"})
             with patch("sys.stdin", io.StringIO(hook_input)):
                 main()
-            mock_reinforce.assert_called_once_with("positive")
+            mock_reinforce.assert_called_once_with("positive", session_id="test123")
 
     def test_frown_calls_reinforce(self, set_data_dir, capsys):
         """:( triggers reinforce_recent_lessons("negative")."""
@@ -2584,7 +2584,7 @@ class TestPromptInjectMainFeedback:
             hook_input = json.dumps({"prompt": ":(", "session_id": "test123"})
             with patch("sys.stdin", io.StringIO(hook_input)):
                 main()
-            mock_reinforce.assert_called_once_with("negative")
+            mock_reinforce.assert_called_once_with("negative", session_id="test123")
 
     def test_reinforce_results_in_context(self, set_data_dir, capsys):
         """Reinforcement results are reflected in the injected context."""
