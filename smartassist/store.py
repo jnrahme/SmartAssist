@@ -1872,6 +1872,38 @@ def append_feedback_event(
         conn.commit()
 
 
+def remove_feedback_events_by_source(
+    storage_path: Path | str | None,
+    sources: set[str],
+) -> int:
+    """Delete events whose source is in ``sources``; return how many were removed.
+
+    Used to replace a previous seed with a fresh one without touching user events.
+    """
+    storage = _resolve_storage_path(storage_path)
+    with open_store(storage, sync=(_SYNC_EVENTS,)) as conn:
+        rows = conn.execute(
+            "SELECT event_id, context, session_id, provenance FROM feedback_events"
+        ).fetchall()
+        doomed = [
+            row["event_id"]
+            for row in rows
+            if event_source(
+                {
+                    "context": row["context"],
+                    "session_id": row["session_id"],
+                    "provenance": _parse_provenance(row["provenance"]),
+                }
+            )
+            in sources
+        ]
+        conn.executemany("DELETE FROM feedback_events WHERE event_id = ?", [(i,) for i in doomed])
+        _rebuild_search_projection(conn)
+        export_feedback_events(conn, storage)
+        conn.commit()
+    return len(doomed)
+
+
 def list_feedback_events(
     storage_path: Path | str | None = None,
 ) -> list[dict[str, Any]]:
