@@ -11,7 +11,11 @@ An empty ``expect`` means nothing relevant exists, so any injection is noise.
 
 Usage:
     python benchmarks/retrieval_eval.py --data <project>/.claude/smartassist \
-        --cases cases.json [--json out.json]
+        --cases cases.json [--repeat 3] [--json out.json]
+
+Pass ``--command`` as an absolute path (e.g. ``.venv/bin/smartassist-prompt-inject``)
+to benchmark a working tree: the hook runs with the project as cwd, so
+``uv run`` would resolve a different environment.
 """
 
 import argparse
@@ -96,13 +100,14 @@ def main(argv=None):
     parser.add_argument("--cases", required=True)
     parser.add_argument("--cwd", default=None, help="Project root passed to the hook")
     parser.add_argument("--command", default="smartassist-prompt-inject")
+    parser.add_argument("--repeat", type=int, default=1, help="Runs per case (reranking is stochastic)")
     parser.add_argument("--json", dest="json_out")
     args = parser.parse_args(argv)
 
     data_src = Path(args.data).expanduser()
     cwd = Path(args.cwd).expanduser() if args.cwd else data_src.parent.parent
     cases = json.loads(Path(args.cases).read_text())
-    results = evaluate(data_src, cases, args.command.split(), cwd)
+    results = evaluate(data_src, cases * args.repeat, args.command.split(), cwd)
     summary = summarize(results)
 
     for r in results:

@@ -173,41 +173,80 @@ STOP_WORDS = {
 }
 
 # ── Synonym expansion ────────────────────────────────────────────────────
-SYNONYMS = {
-    "test": {"testing", "tests", "mock", "mocks", "assertion"},
-    "tests": {"testing", "test", "mock"},
-    "testing": {"test", "tests", "mock"},
-    "style": {"styles", "styling", "color", "colors", "theme"},
-    "styles": {"style", "styling", "color", "theme"},
-    "color": {"colors", "theme", "hex", "style"},
-    "component": {"components", "render", "module"},
+# Concept groups for query expansion. Keys and values are raw words; both are
+# normalized with stem() at load time so inflections need no separate entries.
+_SYNONYM_GROUPS = {
+    "test": {"mock", "assertion", "jest", "spec"},
+    "style": {"color", "theme", "styling", "stylesheet"},
+    "component": {"render", "jsx"},
     "git": {"commit", "branch", "merge", "push"},
-    "commit": {"git", "message", "branch"},
-    "import": {"imports", "export", "module", "require"},
-    "type": {"types", "interface", "generics"},
-    "error": {"errors", "catch", "throw", "exception", "handling"},
-    "mock": {"mocks", "testing", "spy"},
-    "api": {"fetch", "request", "response", "endpoint", "http"},
+    "commit": {"git", "message", "lefthook", "commitlint"},
+    "import": {"export", "module", "require"},
+    "type": {"interface", "generic", "typescript"},
+    "error": {"catch", "throw", "exception"},
+    "mock": {"test", "spy", "jest"},
+    "api": {"fetch", "request", "endpoint", "backend", "server"},
+    "endpoint": {"api", "backend", "server"},
     "auth": {"authentication", "login", "token", "session"},
-    "config": {"configuration", "settings", "options", "env"},
-    "deploy": {"deployment", "release", "ci", "cd", "pipeline"},
-    "performance": {"optimize", "cache", "latency", "benchmark"},
+    "config": {"configuration", "settings", "env", "environment"},
+    "env": {"environment", "config", "dotenv"},
+    "deploy": {"deployment", "release", "pipeline"},
+    "performance": {"optimize", "cache", "latency"},
+    "analytics": {"firebase", "event", "tracking"},
+    "visible": {"visibility", "tobevisible"},
 }
+SYNONYM_WEIGHT = 0.4
 
 # ── Max age for injection staleness ──────────────────────────────────────
 MAX_INJECTION_AGE = 900  # 15 minutes
+CANDIDATE_DEPTH = 15
+MAX_INJECTED_LESSONS = 3
+INJECTION_CHAR_BUDGET = 1200
+# Seeded lessons duplicate files the agent already reads (e.g. CLAUDE.md)
+ORIGIN_WEIGHTS = {"seed": 0.6}
+
+
+STEM_LENGTH = 6
+MIN_COVERAGE = 0.35
+
+
+def stem(word):
+    """Light suffix stripping so 'events'/'adding'/'switched' match 'event'/'add'/'switch'."""
+    if "." in word or "_" in word:
+        return word
+    for suffix in ("ation", "ion", "ity", "ing", "ed", "es", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            if suffix == "es" and not word.endswith(("ches", "shes", "xes", "sses")):
+                continue
+            if suffix == "s" and word.endswith("ss"):
+                continue
+            word = word[: -len(suffix)]
+            if suffix in ("ing", "ed") and len(word) > 3 and word[-1] == word[-2]:
+                word = word[:-1]
+            break
+    if word.endswith("e") and len(word) > 4:
+        word = word[:-1]
+    # Truncation folds remaining inflections (components/componentize) onto one key
+    return word[:STEM_LENGTH]
 
 
 def tokenize(text):
     words = re.findall(r"[a-z][a-z0-9_.]+", text.lower())
-    return [w for w in words if w not in STOP_WORDS and len(w) > 2]
+    return [stem(w) for w in words if w not in STOP_WORDS and len(w) > 2]
+
+
+SYNONYMS = {
+    stem(key): {stem(v) for v in values} - {stem(key)}
+    for key, values in _SYNONYM_GROUPS.items()
+}
 
 
 def expand_query(tokens):
-    expanded = set(tokens)
+    """Map each search term to its weight: 1.0 for query terms, lower for synonyms."""
+    expanded = {t: 1.0 for t in tokens}
     for t in tokens:
-        if t in SYNONYMS:
-            expanded.update(SYNONYMS[t])
+        for synonym in SYNONYMS.get(t, ()):
+            expanded.setdefault(synonym, SYNONYM_WEIGHT)
     return expanded
 
 
@@ -222,11 +261,32 @@ def build_idf(lessons):
     return {t: 1.0 + log((n + 1) / (df + 1)) for t, df in doc_freq.items()}
 
 
+def apply_injection_budget(results, limit=MAX_INJECTED_LESSONS, char_budget=INJECTION_CHAR_BUDGET):
+    """Keep the top lessons that fit the count and character budget, in rank order."""
+    kept, used = [], 0
+    for r in results:
+        size = len(r.get("lesson", ""))
+        if kept and used + size > char_budget:
+            continue
+        kept.append(r)
+        used += size
+        if len(kept) >= limit:
+            break
+    return kept
+
+
 def search_lessons(query_tokens, lessons, idf, top_k=5, lesson_scores=None):
+    """Rank lessons by IDF coverage: the share of the query's information they match.
+
+    Terms the corpus has never seen get the maximum IDF, so a prompt that is mostly
+    about something else cannot ride on one shared common word.
+    """
     if not query_tokens:
         return []
     if lesson_scores is None:
         lesson_scores = {}
+    max_idf = max(idf.values(), default=1.0)
+    query_weight = sum(idf.get(t, max_idf) for t in set(query_tokens))
     expanded = expand_query(query_tokens)
     scored = []
     for lesson in lessons:
@@ -241,24 +301,17 @@ def search_lessons(query_tokens, lessons, idf, top_k=5, lesson_scores=None):
         lesson_tokens.add(lesson["category"])
         score = 0.0
         matched = set()
-        for qt in expanded:
+        for qt, term_weight in expanded.items():
             if qt in lesson_tokens:
-                weight = idf.get(qt, 1.0)
-                score += weight
+                score += idf.get(qt, max_idf) * term_weight
                 matched.add(qt)
-        if not matched:
-            for qt in expanded:
-                for lt in lesson_tokens:
-                    if len(qt) >= 4 and (qt in lt or lt in qt):
-                        score += 0.3
-                        matched.add(qt)
-                        break
-        if score < 0.5:
+        coverage = score / query_weight
+        if coverage < MIN_COVERAGE:
             continue
-        relevance = score / (len(expanded) * 1.5)
+        relevance = coverage
 
         boost = score_entry.get("boost", DEFAULT_BOOST)
-        relevance *= boost
+        relevance *= boost * ORIGIN_WEIGHTS.get(lesson.get("origin", ""), 1.0)
 
         scored.append(
             {
@@ -363,7 +416,7 @@ def write_to_live_log(
     if query_tokens:
         tokens_str = ", ".join(sorted(query_tokens))
         if expanded_tokens:
-            added = sorted(expanded_tokens - set(query_tokens))
+            added = sorted(set(expanded_tokens) - set(query_tokens))
             if added:
                 tokens_str += f" \033[90m-> +{', '.join(added)}\033[0m"
         lines.append(f"  \033[90mKeywords: {tokens_str}\033[0m")
@@ -758,7 +811,9 @@ def main():
 
     expanded = expand_query(query_tokens)
     idf = build_idf(lessons)
-    results = search_lessons(query_tokens, lessons, idf, lesson_scores=lesson_scores)
+    results = search_lessons(
+        query_tokens, lessons, idf, top_k=CANDIDATE_DEPTH, lesson_scores=lesson_scores
+    )
     results = [r for r in results if r["score"] >= 0.15]
 
     # Thompson Sampling reranking — the RLHF reinforcement loop
@@ -773,9 +828,6 @@ def main():
         if lesson_ids:
             thompson_data = load_thompson_batch(storage_path, lesson_ids)
             results = thompson_rerank(results, thompson_data)
-            results = [
-                r for r in results if r.get("final_score", r.get("score", 0)) >= 0.10
-            ]
     except Exception:
         pass  # Fall back to non-Thompson ranking
 
@@ -796,6 +848,8 @@ def main():
         expanded,
         deduped_results=deduped_results,
     )
+
+    results = apply_injection_budget(results)
 
     all_candidates = list(results) + list(deduped_results)
     if all_candidates:

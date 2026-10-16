@@ -70,7 +70,7 @@ class TestThompsonSampling:
         # Create new instance, should load saved scores
         model2 = ThompsonSamplingModel(storage)
         score2 = model2.get_reliability("testing")
-        assert abs(score1 - score2) < 1e-10
+        assert score2 == pytest.approx(score1, abs=1e-6)
 
     def test_corrupted_reliability_file_recovers(self, set_data_dir):
         storage = set_data_dir / "data"

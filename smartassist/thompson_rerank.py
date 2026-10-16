@@ -28,6 +28,7 @@ DEFAULT_BETA = 1.0
 DECAY_HALF_LIFE_DAYS = 30
 DECAY_LAMBDA = math.log(2) / (DECAY_HALF_LIFE_DAYS * 86400)
 DECAY_FLOOR = 0.01
+MIN_SAMPLING_EVIDENCE = 3.0
 ATTRIBUTION_HALF_LIFE = 300  # 5 minutes for within-session credit decay
 
 
@@ -52,6 +53,17 @@ def ensure_thompson_table(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_lesson_thompson_lesson
             ON lesson_thompson(lesson_id)
     """)
+
+
+def decayed_counts(state: dict[str, float] | None, now: float) -> tuple[float, float]:
+    """Return (alpha, beta) with evidence decayed toward the Beta(1, 1) prior."""
+    if not state:
+        return DEFAULT_ALPHA, DEFAULT_BETA
+    elapsed = max(0.0, now - state.get("last_updated", now))
+    decay = max(DECAY_FLOOR, math.exp(-DECAY_LAMBDA * elapsed))
+    alpha = DEFAULT_ALPHA + (state.get("alpha", DEFAULT_ALPHA) - DEFAULT_ALPHA) * decay
+    beta_val = DEFAULT_BETA + (state.get("beta", DEFAULT_BETA) - DEFAULT_BETA) * decay
+    return max(DEFAULT_ALPHA, alpha), max(DEFAULT_BETA, beta_val)
 
 
 # ── Core: Thompson Reranking ──────────────────────────────────────────────
@@ -85,59 +97,25 @@ def thompson_rerank(
     for candidate in candidates:
         lesson_id = candidate.get("id") or candidate.get("source_id", "")
         retrieval_score = candidate.get("score", 0.5)
+        alpha, beta_val = decayed_counts(thompson_data.get(lesson_id), now)
+        evidence = (alpha - DEFAULT_ALPHA) + (beta_val - DEFAULT_BETA)
+        mean = alpha / (alpha + beta_val)
 
-        state = thompson_data.get(lesson_id)
-
-        if state is None:
-            # No Thompson history — pass through at full retrieval score (no penalty)
-            # This ensures new lessons are shown based on retrieval relevance alone
-            reranked.append({
-                **candidate,
-                "thompson_sample": 1.0,
-                "thompson_alpha": DEFAULT_ALPHA,
-                "thompson_beta": DEFAULT_BETA,
-                "thompson_mean": 0.5,
-                "final_score": retrieval_score,
-            })
-            continue
-
-        if state.get("injection_count", 0) < 3:
-            # Too few observations — use mean instead of sample to avoid
-            # unlucky low samples killing a lesson before it gets a fair chance
-            elapsed = now - state.get("last_updated", now)
-            decay = max(DECAY_FLOOR, math.exp(-DECAY_LAMBDA * elapsed))
-            alpha = max(DECAY_FLOOR, state.get("alpha", DEFAULT_ALPHA) * decay)
-            beta_val = max(DECAY_FLOOR, state.get("beta", DEFAULT_BETA) * decay)
-            thompson_sample = alpha / (alpha + beta_val)  # mean, not sample
-            final_score = retrieval_score * thompson_sample
-            reranked.append({
-                **candidate,
-                "thompson_sample": thompson_sample,
-                "thompson_alpha": alpha,
-                "thompson_beta": beta_val,
-                "thompson_mean": thompson_sample,
-                "final_score": final_score,
-            })
-            continue
+        if evidence < MIN_SAMPLING_EVIDENCE:
+            # Too little feedback to explore: deterministic, neutral (1.0) with no evidence
+            sample = mean
         else:
-            elapsed = now - state.get("last_updated", now)
-            decay = max(DECAY_FLOOR, math.exp(-DECAY_LAMBDA * elapsed))
-            alpha = max(DECAY_FLOOR, state.get("alpha", DEFAULT_ALPHA) * decay)
-            beta_val = max(DECAY_FLOOR, state.get("beta", DEFAULT_BETA) * decay)
-
-        # Sample from Beta distribution — this IS the Thompson Sampling step
-        thompson_sample = random.betavariate(alpha, beta_val)
-
-        # Multiplicative: irrelevant lessons (score ~0) stay low regardless of Thompson
-        final_score = retrieval_score * thompson_sample
+            sample = random.betavariate(alpha, beta_val)
+        # Centered on 1.0 so feedback re-orders lessons without erasing relevance
+        factor = 0.5 + sample
 
         reranked.append({
             **candidate,
-            "thompson_sample": thompson_sample,
+            "thompson_sample": sample,
             "thompson_alpha": alpha,
             "thompson_beta": beta_val,
-            "thompson_mean": alpha / (alpha + beta_val),
-            "final_score": final_score,
+            "thompson_mean": mean,
+            "final_score": retrieval_score * factor,
         })
 
     reranked.sort(key=lambda x: -x["final_score"])
@@ -267,10 +245,16 @@ def update_thompson_batch(
                 )
             else:
                 # Apply decay first, then add new observation
-                elapsed = now - float(existing["last_updated"])
-                decay = max(DECAY_FLOOR, math.exp(-DECAY_LAMBDA * elapsed))
-                new_alpha = max(DECAY_FLOOR, float(existing["alpha"]) * decay) + alpha_delta
-                new_beta = max(DECAY_FLOOR, float(existing["beta"]) * decay) + beta_delta
+                decayed_alpha, decayed_beta = decayed_counts(
+                    {
+                        "alpha": float(existing["alpha"]),
+                        "beta": float(existing["beta"]),
+                        "last_updated": float(existing["last_updated"]),
+                    },
+                    now,
+                )
+                new_alpha = decayed_alpha + alpha_delta
+                new_beta = decayed_beta + beta_delta
                 conn.execute(
                     """
                     UPDATE lesson_thompson
