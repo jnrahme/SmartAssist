@@ -439,6 +439,20 @@ def _atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
+def normalize_lesson_text(text: str) -> str:
+    """Case-, whitespace- and trailing-punctuation-insensitive form for dedupe."""
+    return " ".join(str(text).casefold().split()).rstrip(".!;: ")
+
+
+def _find_active_duplicate(conn: sqlite3.Connection, lesson_text: str) -> str | None:
+    """Active lesson with the same normalized text in any category, if one exists."""
+    target = normalize_lesson_text(lesson_text)
+    for row in conn.execute("SELECT lesson_id, text FROM lessons WHERE state = 'active'"):
+        if normalize_lesson_text(row["text"]) == target:
+            return str(row["lesson_id"])
+    return None
+
+
 def _canonical_hash(text: str, category: str = "") -> str:
     payload = f"{category.strip().lower()}::{text.strip()}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
@@ -1264,10 +1278,20 @@ def add_lesson(
 ) -> tuple[str | None, str | None]:
     storage = _resolve_storage_path(storage_path)
     with open_store(storage, sync=(_SYNC_LESSONS, _SYNC_SCORES)) as conn:
+        # Take the write lock before reading max(id) so concurrent writers
+        # (hooks, MCP server) cannot allocate the same lesson ID
+        if conn.in_transaction:
+            conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        duplicate = _find_active_duplicate(conn, lesson_text)
+        if duplicate is not None:
+            conn.rollback()
+            return None, f"Duplicate of {duplicate} (same lesson text already active)"
         lesson_count = conn.execute(
             "SELECT COUNT(*) FROM lessons WHERE state = 'active'"
         ).fetchone()[0]
         if lesson_count >= 300:
+            conn.rollback()
             return None, "Corpus at capacity (300). Merge or demote lessons first."
 
         ids = [
@@ -1321,19 +1345,9 @@ def ensure_lesson(
 ) -> tuple[str | None, str | None, bool]:
     storage = _resolve_storage_path(storage_path)
     with open_store(storage, sync=(_SYNC_LESSONS, _SYNC_SCORES)) as conn:
-        existing = conn.execute(
-            """
-            SELECT lesson_id
-              FROM lessons
-             WHERE state = 'active'
-               AND text = ?
-               AND category_key = ?
-             LIMIT 1
-            """,
-            (lesson_text, category),
-        ).fetchone()
+        existing = _find_active_duplicate(conn, lesson_text)
         if existing is not None:
-            return str(existing["lesson_id"]), None, False
+            return existing, None, False
 
     lesson_id, error = add_lesson(
         storage, lesson_text, category, origin=origin, state=state

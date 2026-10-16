@@ -271,7 +271,7 @@ class TestMcpRetrievalLearningLoop:
         )
         duplicate_id, error2 = add_lesson(
             storage,
-            "Always use semantic theme tokens instead of hardcoded hex values.",
+            "Always use the semantic theme tokens instead of hardcoded hex values",
             "code_edit",
         )
         assert error1 is None and error2 is None
@@ -480,7 +480,7 @@ class TestSessionStateResolution:
         )
         duplicate_id, error2 = add_lesson(
             storage,
-            "Always use semantic colors from theme instead of hardcoded hex values.",
+            "Always use semantic colors from the theme instead of hardcoded hex values",
             "code_edit",
         )
         assert error1 is None and error2 is None
@@ -680,7 +680,7 @@ class TestReinforceRecentLessons:
         )
         duplicate_id, error2 = add_lesson(
             storage,
-            "Always use semantic colors from theme instead of hardcoded hex values.",
+            "Always use semantic colors from the theme instead of hardcoded hex values",
             "code_edit",
         )
         assert error1 is None and error2 is None
@@ -2086,13 +2086,18 @@ class TestApplyFeedbackProtocol:
     ):
         storage = set_data_dir / "data"
         survivor_id, error1 = add_lesson(storage, self.VALID_LESSON, "code_edit")
-        duplicate_id, error2 = add_lesson(
-            storage,
-            "Always use semantic colors from theme instead of hardcoded hex values.",
-            "code_edit",
-        )
+        duplicate_id, error2 = add_lesson(storage, "Placeholder lesson text for the legacy copy", "code_edit")
         assert error1 is None and error2 is None
-        assert survivor_id and duplicate_id
+        # add_lesson rejects duplicates, so recreate the legacy state directly
+        from smartassist.store import export_lessons, open_store
+
+        with open_store(storage) as conn:
+            conn.execute(
+                "UPDATE lessons SET text = ? WHERE lesson_id = ?",
+                (self.VALID_LESSON + ".", duplicate_id),
+            )
+            export_lessons(conn, storage)
+            conn.commit()
 
         result = apply_feedback_protocol(
             feedback="always use semantic colors from theme instead of hardcoded hex values",
@@ -2520,7 +2525,7 @@ class TestPromptInjectMainFeedback:
         context = output["hookSpecificOutput"]["additionalContext"]
         assert "demoted" in context.lower() or "0 lesson(s)" in context
 
-    def test_signal_with_context_creates_lesson_and_instructs_llm(
+    def test_signal_with_context_creates_one_lesson_and_reports_it(
         self, set_data_dir, capsys
     ):
         from smartassist.hooks.prompt_inject import main
@@ -2536,16 +2541,13 @@ class TestPromptInjectMainFeedback:
         output = json.loads(captured.out.strip())
         context = output["hookSpecificOutput"]["additionalContext"]
 
-        # LLM should be instructed to also create a better version
-        assert "create_lesson" in context
-        assert "MUST" in context
-
-        # Hook ALSO created its own lesson immediately (guaranteed reinforcement loop)
         from smartassist.store import list_lessons
 
         storage = set_data_dir / "data"
-        lessons = list_lessons(storage)
-        assert any("hardcode colors" in l.get("lesson", "").lower() for l in lessons)
+        created = [l for l in list_lessons(storage) if "hardcode colors" in l.get("lesson", "").lower()]
+        assert len(created) == 1
+        assert f"[{created[0]['id']}]" in context
+        assert "ACTION REQUIRED" not in context
 
     def test_normal_short_message_still_skipped(self, set_data_dir, capsys):
         from smartassist.hooks.prompt_inject import main

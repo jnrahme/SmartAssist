@@ -97,3 +97,33 @@ class TestEvidenceEvents:
         event = _event("Sync stage first", provenance={"project_root": str(set_data_dir.parent.parent.resolve())})
 
         assert evidence_events([event], storage) == [event]
+
+
+def _add_in_subprocess(args):
+    storage, index = args
+    from smartassist.store import add_lesson as add
+
+    return add(storage, f"Concurrent lesson number {index} about distinct topic {index}", "git")
+
+
+def test_concurrent_writers_get_unique_lesson_ids(set_data_dir):
+    import multiprocessing
+
+    storage = str(set_data_dir / "data")
+    add_lesson(storage, "Seed lesson so the store exists", "git")
+    with multiprocessing.get_context("spawn").Pool(8) as pool:
+        results = pool.map(_add_in_subprocess, [(storage, i) for i in range(8)])
+
+    ids = [lesson_id for lesson_id, error in results]
+    assert all(error is None for _, error in results)
+    assert len(set(ids)) == 8
+
+
+def test_duplicate_text_in_another_category_is_rejected(set_data_dir):
+    storage = set_data_dir / "data"
+    first, _ = add_lesson(storage, "Use semantic colors instead of hardcoded values", "code_edit")
+
+    second, error = add_lesson(storage, "use semantic colors instead of hardcoded values.", "testing")
+
+    assert second is None
+    assert first in error

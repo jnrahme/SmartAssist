@@ -6,7 +6,6 @@ Called by Claude Code during session end.
 
 import sys
 import json
-import subprocess
 from datetime import datetime
 
 from smartassist.boundary_packs import refresh_boundary_pack
@@ -77,13 +76,11 @@ def capture_session_learning():
 
         # Trigger vectorization of new learnings
         print("\nUpdating RAG database with new learnings...")
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "smartassist.hooks.vectorize_learnings"],
-                capture_output=True, timeout=30
-            )
-        except Exception as ve:
-            print(f"Vectorization skipped: {ve}")
+        # Detached so quitting Claude Code never waits on the embedding model
+        from smartassist.config import spawn_background_job
+
+        if spawn_background_job("smartassist.hooks.vectorize_learnings", lock_name="vectorize") is None:
+            print("Vectorization skipped: could not start background job")
 
     except Exception as e:
         print(f"# RLHF Note: Could not capture session learning ({str(e)})")

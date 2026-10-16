@@ -17,7 +17,7 @@ EXPECTED_HOOKS = {
     "SessionStart": {"command": "smartassist-session-start", "matcher": "startup"},
     "PreToolUse": {"command": "smartassist-commit-hook", "matcher": "Bash|Edit|Write"},
     "PostToolUse": {"command": "smartassist-show-lessons", "matcher": "mcp__smartassist__rag_search"},
-    "SessionEnd": {"command": "smartassist-session-end", "matcher": "other"},
+    "SessionEnd": {"command": "smartassist-session-end", "matcher": None},
 }
 
 
