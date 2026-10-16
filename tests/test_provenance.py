@@ -131,3 +131,16 @@ def test_duplicate_text_in_another_category_is_rejected(set_data_dir):
 
     assert second is None
     assert first in error
+
+
+def test_evidence_event_ids_excludes_seed_and_commit_events(set_data_dir):
+    from smartassist.store import evidence_event_ids
+
+    storage = set_data_dir / "data"
+    append_feedback_event(storage, _event("User correction"))
+    append_feedback_event(storage, _event("Seed bullet", context="From CLAUDE.md section: Testing"))
+    append_feedback_event(storage, _event("Commit heuristic", session_id="commit_abc12345"))
+    with open_store(storage) as conn:
+        ids = [str(r["event_id"]) for r in conn.execute("SELECT event_id FROM feedback_events ORDER BY event_id")]
+
+    assert evidence_event_ids(storage, ids) == {ids[0]}

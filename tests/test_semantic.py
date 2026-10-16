@@ -99,10 +99,15 @@ class TestHybridRanking:
         idf = prompt_inject.build_idf(self.LESSONS)
         return prompt_inject.semantic_search("never stash my changes", tokens, self.LESSONS, idf, scores or {}, None)
 
-    def test_below_threshold_is_dropped(self, monkeypatch):
+    def test_below_threshold_and_down_weighted_seed_copy_are_dropped(self, monkeypatch):
         ranked = self._rank(monkeypatch, {"L1": 0.8, "L2": 0.3, "L3": 0.8})
 
-        assert [r["id"] for r in ranked] == ["L1", "L3"]
+        assert [r["id"] for r in ranked] == ["L1"]
+
+    def test_candidates_far_below_best_match_are_dropped(self, monkeypatch):
+        ranked = self._rank(monkeypatch, {"L1": 0.9, "L2": 0.62, "L3": 0.0})
+
+        assert [r["id"] for r in ranked] == ["L1"]
 
     def test_large_stored_boost_cannot_outrank_relevance(self, monkeypatch):
         ranked = self._rank(
