@@ -187,23 +187,26 @@ def spawn_managed(args, **kwargs):
     return proc
 
 
-def spawn_background_job(module, *args, lock_name=None, wait=False):
+def spawn_background_job(module, *args, lock_name=None, wait=False, skip=False, lock_dir=None):
     """Start ``python -m module`` detached so the caller can exit immediately.
 
     The job runs in its own session (no SIGHUP when a hook exits; the OS reaps it)
     and behind a per-store lock, so at most one copy per ``lock_name`` runs.
-    With ``wait`` the job queues for the lock instead of being skipped.
+    With ``wait`` the job queues for the lock instead of being skipped; with
+    ``skip`` a request while it runs is dropped (long-running services).
     """
-    try:
-        lock_dir = get_storage_path()
-    except RuntimeError:
-        lock_dir = Path(os.environ.get("TMPDIR", "/tmp"))
+    if lock_dir is None:
+        try:
+            lock_dir = get_storage_path()
+        except RuntimeError:
+            lock_dir = Path(os.environ.get("TMPDIR", "/tmp"))
     lock_path = lock_dir / f".{lock_name or module.rsplit('.', 1)[-1]}.lock"
     try:
         return subprocess.Popen(
             [
                 sys.executable, "-m", "smartassist.run_exclusive",
-                *(["--wait"] if wait else []), str(lock_path), module, *args,
+                *(["--wait"] if wait else ["--skip"] if skip else []),
+                str(lock_path), module, *args,
             ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,

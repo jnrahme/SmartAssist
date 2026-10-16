@@ -1,6 +1,6 @@
 """Run a module only if no other copy holding the same lock is running.
 
-Usage: python -m smartassist.run_exclusive [--wait] <lock_path> <module> [args...]
+Usage: python -m smartassist.run_exclusive [--wait|--skip] <lock_path> <module> [args...]
 
 Background jobs (vectorization, cleanup) are spawned detached from short-lived
 hooks; this keeps at most one per store so concurrent hooks cannot pile up
@@ -8,7 +8,8 @@ writers on the same LanceDB/SQLite files.
 
 Without --wait, a request that finds the job running leaves a pending marker and
 exits; the running copy re-runs until no request is pending, so no request is
-lost. With --wait, the request queues for the lock instead.
+lost. With --wait, the request queues for the lock instead. With --skip, the
+request is dropped (for long-running services that must not restart).
 """
 
 import fcntl
@@ -37,9 +38,10 @@ def _run_until_drained(module, args, pending):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    wait = bool(argv) and argv[0] == "--wait"
-    if wait:
+    mode = argv[0] if argv and argv[0] in ("--wait", "--skip") else ""
+    if mode:
         argv = argv[1:]
+    wait = mode == "--wait"
     if len(argv) < 2:
         return 2
     lock_path, module, args = Path(argv[0]), argv[1], argv[2:]
@@ -49,6 +51,8 @@ def main(argv=None):
     code = 0
     try:
         if not _try_lock(fd, wait):
+            if mode == "--skip":
+                return 0
             pending.touch()
             # The holder may have released between our attempt and the touch
             if not _try_lock(fd, wait=False):
