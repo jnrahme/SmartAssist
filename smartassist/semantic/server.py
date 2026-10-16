@@ -19,7 +19,7 @@ import socket
 import sys
 import time
 
-from smartassist.semantic import IDLE_SECONDS, MODEL_NAME, runtime_dir, socket_path
+from smartassist.semantic import IDLE_SECONDS, MODEL_NAME, QUERY_INSTRUCTION, runtime_dir, socket_path
 
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
 
@@ -69,7 +69,7 @@ class Embedder:
         new = self.cache.missing(texts)
         if new:
             self.cache.add(new, self.encode(new))
-        q = self.encode([query])[0]
+        q = self.encode([QUERY_INSTRUCTION + query])[0]
         scores = {}
         for lesson_id, text in lessons:
             vector = self.cache.get(text)

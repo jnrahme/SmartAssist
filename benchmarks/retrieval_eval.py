@@ -64,11 +64,20 @@ def score_case(case, context):
     }
 
 
+# Project files the hook reads facts from (e.g. package manager)
+PROJECT_FACT_FILES = ("package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json", "bun.lockb")
+
+
 def evaluate(data_src, cases, command, cwd):
     results = []
     with tempfile.TemporaryDirectory() as tmp:
+        project = Path(tmp) / "project"
+        for name in PROJECT_FACT_FILES:
+            if (Path(cwd) / name).exists():
+                project.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(Path(cwd) / name, project / name)
         for case in cases:
-            data_copy = Path(tmp) / "data"
+            data_copy = project / ".claude" / "smartassist"
             if data_copy.exists():
                 shutil.rmtree(data_copy)
             shutil.copytree(data_src, data_copy)

@@ -23,7 +23,7 @@ from smartassist.store import (
 from smartassist.thompson_sampling import ThompsonSamplingModel
 from smartassist.tools.cleanup_and_vectorize import clean_correction_text, get_dedup_key
 
-BOUNDARY_PACK_VERSION = 3
+BOUNDARY_PACK_VERSION = 4
 NEGATIVE_SIGNALS = {"thumbs_down", "angry", "correction", "sad"}
 PROMOTION_THRESHOLD = 2
 MAX_PROMOTED_BOUNDARIES = 5
@@ -121,7 +121,7 @@ def build_boundary_pack(
         promotion_threshold=promotion_threshold,
     )
     recent = build_recent_mistakes(
-        events,
+        lesson_backed_events(events, storage_path),
         weak_categories=weak_categories,
         limit=max_recent,
     )
@@ -402,6 +402,30 @@ def evidence_events(events: list[dict[str, Any]], storage_path: Path) -> list[di
             continue
         kept.append(event)
     return kept
+
+
+def lesson_backed_events(events: list[dict[str, Any]], storage_path: Path) -> list[dict[str, Any]]:
+    """Events whose correction is an active lesson that still fits the project.
+
+    Session start has no prompt to judge relevance by, so only corrections that
+    passed the lesson gate (and are not contradicted by the project) are shown.
+    """
+    from smartassist.project_facts import stale_reason
+    from smartassist.store import normalize_lesson_text
+
+    root = project_root_for_storage(storage_path)
+    try:
+        active = {
+            normalize_lesson_text(lesson["lesson"])
+            for lesson in list_lessons(storage_path)
+            if not stale_reason(lesson["lesson"], root)
+        }
+    except Exception:
+        return events
+    return [
+        e for e in events
+        if normalize_lesson_text(clean_correction_text(e) or "") in active
+    ]
 
 
 def _load_feedback_events(storage_path: Path) -> list[dict[str, Any]]:

@@ -118,3 +118,27 @@ class TestHybridRanking:
 @pytest.mark.parametrize("boost,expected", [(1.0, 1.0), (3.0, 1.2), (0.0, 0.9), (2.0, 1.1)])
 def test_boost_factor_is_bounded(boost, expected):
     assert prompt_inject.boost_factor(boost) == pytest.approx(expected)
+
+
+def test_queries_get_the_retrieval_instruction_but_lessons_do_not(tmp_path):
+    from smartassist.semantic import QUERY_INSTRUCTION
+
+    seen = []
+
+    class RecordingModel:
+        def encode(self, texts, normalize_embeddings):
+            seen.extend(texts)
+
+            class Vectors(list):
+                def tolist(self):
+                    return list(self)
+
+            return Vectors([[1.0, 0.0] for _ in texts])
+
+    embedder = server.Embedder.__new__(server.Embedder)
+    embedder.model = RecordingModel()
+    embedder.cache = server.EmbeddingCache(tmp_path / "cache.json")
+
+    embedder.similarity("stash changes", [("L1", "never stash")])
+
+    assert seen == ["never stash", QUERY_INSTRUCTION + "stash changes"]

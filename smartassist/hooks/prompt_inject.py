@@ -276,6 +276,15 @@ def boost_factor(boost):
     return min(max(1.0 + BOOST_INFLUENCE * (boost - DEFAULT_BOOST), low), high)
 
 
+def current_lessons(storage_path):
+    """Active lessons minus ones the project itself contradicts (e.g. yarn in a pnpm repo)."""
+    from smartassist.project_facts import stale_reason
+    from smartassist.store import project_root_for_storage
+
+    root = project_root_for_storage(storage_path)
+    return [l for l in list_lessons(storage_path) if not stale_reason(l.get("lesson", ""), root)]
+
+
 def semantic_search(user_message, query_tokens, lessons, idf, lesson_scores, storage_path):
     """Hybrid semantic + lexical ranking, or None to keep lexical-only results.
 
@@ -909,7 +918,7 @@ def main():
         return
 
     try:
-        lessons = list_lessons(storage_path)
+        lessons = current_lessons(storage_path)
     except Exception:
         return
 
