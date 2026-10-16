@@ -785,14 +785,9 @@ def main():
             )
             if created_id:
                 # Fire-and-forget: make lesson searchable via rag_search
-                try:
-                    from smartassist.config import spawn_managed
+                from smartassist.config import spawn_background_job
 
-                    spawn_managed(
-                        [sys.executable, "-m", "smartassist.hooks.vectorize_learnings"]
-                    )
-                except Exception:
-                    pass
+                spawn_background_job("smartassist.hooks.vectorize_learnings", lock_name="vectorize")
 
         try:
             storage_path = get_storage_path()

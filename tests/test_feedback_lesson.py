@@ -203,7 +203,7 @@ class TestRagSearchMemoryLabels:
 
 
 class TestMcpRetrievalLearningLoop:
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_rag_feedback_attributes_recent_rag_search_results(
         self, mock_spawn, set_data_dir
     ):
@@ -597,7 +597,7 @@ class TestReinforceRecentLessons:
         assert "L001" not in ids
         assert "L002" in ids
 
-    @patch("smartassist.lesson_feedback.spawn_managed")
+    @patch("smartassist.lesson_feedback.spawn_background_job")
     def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text(
@@ -625,8 +625,8 @@ class TestReinforceRecentLessons:
         reinforce_recent_lessons("negative")
 
         mock_spawn.assert_called_once()
-        cmd = mock_spawn.call_args.args[0]
-        assert cmd[-1] == "smartassist.tools.cleanup_and_vectorize"
+        module = mock_spawn.call_args.args[0]
+        assert module == "smartassist.tools.cleanup_and_vectorize"
 
     def test_returns_empty_no_injection(self, set_data_dir):
         """No last_injection.json → []."""
@@ -1399,7 +1399,7 @@ class TestDemoteLessonTool:
         assert "L001" not in ids
         assert "L002" in ids
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text(
@@ -1425,8 +1425,8 @@ class TestDemoteLessonTool:
         demote_lesson("L001")
 
         mock_spawn.assert_called_once()
-        cmd = mock_spawn.call_args.args[0]
-        assert cmd[-1] == "smartassist.tools.cleanup_and_vectorize"
+        module = mock_spawn.call_args.args[0]
+        assert module == "smartassist.tools.cleanup_and_vectorize"
 
     def test_no_auto_retire_with_ups(self, set_data_dir):
         """Lesson with ups > 0 should NOT be auto-retired even at 0.0 boost."""
@@ -1544,7 +1544,7 @@ class TestMergeLessonsTool:
         (storage / "curated_lessons.json").write_text(json.dumps(lessons))
         return storage
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_two_lessons(self, mock_spawn, set_data_dir):
         curated = [
             {"id": "L001", "lesson": "Use semantic colors", "category": "code_edit"},
@@ -1561,7 +1561,7 @@ class TestMergeLessonsTool:
         assert "L001" in result
         assert "L002" in result
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_removes_sources_from_curated(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(
             set_data_dir,
@@ -1588,7 +1588,7 @@ class TestMergeLessonsTool:
         assert "L002" not in ids
         assert "L003" in ids
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_adds_new_lesson_to_curated(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(
             set_data_dir,
@@ -1611,7 +1611,7 @@ class TestMergeLessonsTool:
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert any(self.VALID_MERGED in l["lesson"] for l in curated)
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_combines_scores(self, mock_spawn, set_data_dir):
         self._seed_curated(
             set_data_dir,
@@ -1660,7 +1660,7 @@ class TestMergeLessonsTool:
         assert new_score["ups"] == 8  # 5 + 3
         assert new_score["boost"] == 2.0  # max(2.0, 1.5)
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_marks_sources_superseded(self, mock_spawn, set_data_dir):
         self._seed_curated(
             set_data_dir,
@@ -1686,7 +1686,7 @@ class TestMergeLessonsTool:
         assert "superseded_by" in scores["L001"]["retired_reason"]
         assert scores["L002"]["blocked"] is True
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_preserves_thompson_rerank_evidence(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         id1, error1 = add_lesson(storage, "Use semantic colors in styles", "code_edit")
@@ -1729,7 +1729,7 @@ class TestMergeLessonsTool:
         result = merge_lessons("L001,L001", self.VALID_MERGED, "code_edit")
         assert "unique lesson ids" in result.lower()
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_works_at_capacity(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         lessons = [
@@ -1807,7 +1807,7 @@ class TestMergeLessonsTool:
         )
         assert "action verb" in result.lower()
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_writes_to_feedback_log(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(
             set_data_dir,
@@ -1832,7 +1832,7 @@ class TestMergeLessonsTool:
         assert entry["signal"] == "merge"
         assert "Merged from" in entry["context"]
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_fires_vectorization(self, mock_spawn, set_data_dir):
         self._seed_curated(
             set_data_dir,
@@ -1851,10 +1851,10 @@ class TestMergeLessonsTool:
         )
         merge_lessons("L001,L002", self.VALID_MERGED, "code_edit")
         mock_spawn.assert_called_once()
-        cmd = mock_spawn.call_args.args[0]
-        assert cmd[-1] == "smartassist.tools.cleanup_and_vectorize"
+        module = mock_spawn.call_args.args[0]
+        assert module == "smartassist.tools.cleanup_and_vectorize"
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_updates_metrics(self, mock_spawn, set_data_dir):
         storage = self._seed_curated(
             set_data_dir,
@@ -1887,7 +1887,7 @@ class TestCreateLessonV2:
     )
     VALID_CATEGORY = "code_edit"
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_dual_path_write(self, mock_spawn, set_data_dir):
         """create_lesson should write to both feedback_log AND curated_lessons."""
         storage = set_data_dir / "data"
@@ -1905,14 +1905,14 @@ class TestCreateLessonV2:
         assert len(curated) == 1
         assert curated[0]["lesson"] == self.VALID_LESSON
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_auto_generates_id(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert curated[0]["id"] == "L001"
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_increments_id(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         (storage / "curated_lessons.json").write_text(
@@ -1926,7 +1926,7 @@ class TestCreateLessonV2:
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert curated[-1]["id"] == "L006"
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_cap_enforcement(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         # Seed with MAX_CURATED_LESSONS lessons
@@ -1941,7 +1941,7 @@ class TestCreateLessonV2:
         feedback_log = storage / "feedback_log.jsonl"
         assert not feedback_log.exists() or feedback_log.read_text().strip() == ""
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_updates_feedback_metrics(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
@@ -1983,7 +1983,7 @@ class TestCreateLessonV2:
         )
         assert "generic" in result.lower()
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_stores_to_feedback_log(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         create_lesson(
@@ -2001,12 +2001,12 @@ class TestCreateLessonV2:
         assert len(entries) == 1
         assert entries[0]["correction"] == self.VALID_LESSON
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_fires_vectorization(self, mock_spawn, set_data_dir):
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
         mock_spawn.assert_called_once()
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_updates_thompson_positive(self, mock_spawn, set_data_dir):
         with patch("smartassist.mcp_server._get_thompson") as mock_get:
             mock_thompson = MagicMock()
@@ -2019,7 +2019,7 @@ class TestCreateLessonV2:
             )
             mock_thompson.record_success.assert_called_once_with("code_edit", 4)
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_updates_thompson_negative(self, mock_spawn, set_data_dir):
         with patch("smartassist.mcp_server._get_thompson") as mock_get:
             mock_thompson = MagicMock()
@@ -2032,7 +2032,7 @@ class TestCreateLessonV2:
             )
             mock_thompson.record_failure.assert_called_once_with("testing", 5)
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_returns_existing_lesson_instead_of_creating_duplicate(
         self, mock_spawn, set_data_dir
     ):
@@ -2051,7 +2051,7 @@ class TestApplyFeedbackProtocol:
         "Always use semantic colors from theme instead of hardcoded hex values"
     )
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_creates_new_lesson_when_no_overlap(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
 
@@ -2064,7 +2064,7 @@ class TestApplyFeedbackProtocol:
         assert len(curated) == 1
         assert "create_new" in result
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_boosts_existing_duplicate(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
         create_lesson(lesson=self.VALID_LESSON, category="code_edit")
@@ -2080,7 +2080,7 @@ class TestApplyFeedbackProtocol:
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 1
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_auto_merges_high_confidence_duplicate_cluster(
         self, mock_spawn, set_data_dir
     ):
@@ -2109,7 +2109,7 @@ class TestApplyFeedbackProtocol:
         assert scores[duplicate_id]["retired"] is True
         mock_spawn.assert_called_once()
 
-    @patch("smartassist.mcp_server.spawn_managed")
+    @patch("smartassist.mcp_server.spawn_background_job")
     def test_suggests_merge_for_overlapping_lessons(self, mock_spawn, set_data_dir):
         create_lesson(
             lesson="Always use semantic colors from theme instead of hardcoded hex values in styles",

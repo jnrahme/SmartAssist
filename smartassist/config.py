@@ -10,6 +10,7 @@ import fcntl
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -159,11 +160,9 @@ def _reap_children():
 
 
 def _cleanup_children():
-    """Wait on all remaining child processes at interpreter shutdown."""
+    """Kill attached children still running at shutdown. Detached jobs are left alone."""
     for proc in _CHILD_PROCS:
-        try:
-            proc.wait(timeout=10)
-        except Exception:
+        if proc.poll() is None:
             proc.kill()
 
 
@@ -173,10 +172,8 @@ atexit.register(_cleanup_children)
 def spawn_managed(args, **kwargs):
     """Spawn a subprocess with tracking to prevent zombie accumulation (H5 fix).
 
-    Reaps finished children first, limits concurrent children to _MAX_CHILDREN,
-    and registers an atexit handler so no child is orphaned.
-
-    Returns the Popen object (or None if the limit is reached).
+    Reaps finished children first and limits concurrent attached children to
+    _MAX_CHILDREN. Returns the Popen object (or None if the limit is reached).
     """
     _reap_children()
 
@@ -188,3 +185,31 @@ def spawn_managed(args, **kwargs):
     proc = subprocess.Popen(args, **kwargs)
     _CHILD_PROCS.append(proc)
     return proc
+
+
+def spawn_background_job(module, *args, lock_name=None, wait=False):
+    """Start ``python -m module`` detached so the caller can exit immediately.
+
+    The job runs in its own session (no SIGHUP when a hook exits; the OS reaps it)
+    and behind a per-store lock, so at most one copy per ``lock_name`` runs.
+    With ``wait`` the job queues for the lock instead of being skipped.
+    """
+    try:
+        lock_dir = get_storage_path()
+    except RuntimeError:
+        lock_dir = Path(os.environ.get("TMPDIR", "/tmp"))
+    lock_path = lock_dir / f".{lock_name or module.rsplit('.', 1)[-1]}.lock"
+    try:
+        return subprocess.Popen(
+            [
+                sys.executable, "-m", "smartassist.run_exclusive",
+                *(["--wait"] if wait else []), str(lock_path), module, *args,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except OSError:
+        return None

@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 from smartassist.config import (
     get_storage_path,
     atomic_write_json,
-    spawn_managed,
+    spawn_background_job,
 )
 from smartassist.store import (
     add_lesson,
@@ -219,10 +219,7 @@ def remove_from_curated(storage_path, lesson_id):
 
 def _trigger_full_revectorization():
     """Rebuild LanceDB from the curated lesson corpus after structural changes."""
-    try:
-        spawn_managed([sys.executable, "-m", "smartassist.tools.cleanup_and_vectorize"])
-    except Exception:
-        pass
+    spawn_background_job("smartassist.tools.cleanup_and_vectorize", lock_name="vectorize", wait=True)
 
 
 def find_recurring_lessons(user_context, session_id=None, max_age=900, min_coverage=0.6):
