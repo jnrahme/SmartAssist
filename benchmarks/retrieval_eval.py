@@ -64,8 +64,13 @@ def score_case(case, context):
     }
 
 
-# Project files the hook reads facts from (e.g. package manager)
-PROJECT_FACT_FILES = ("package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json", "bun.lockb")
+# Project files the hook reads facts from (package manager, commit convention)
+PROJECT_FACT_FILES = (
+    "package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json", "bun.lockb",
+    "commitlint.config.js", "commitlint.config.cjs", "commitlint.config.mjs",
+    "commitlint.config.ts", ".commitlintrc", ".commitlintrc.json",
+    ".commitlintrc.yml", ".commitlintrc.yaml", ".commitlintrc.js",
+)
 
 
 def evaluate(data_src, cases, command, cwd):

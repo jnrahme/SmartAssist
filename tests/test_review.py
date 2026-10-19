@@ -118,3 +118,18 @@ class TestNonDestructiveLegacySync:
         (storage / "curated_lessons.json").write_text("{not json")
 
         assert [l["lesson"] for l in list_lessons(storage)] == ["Precious lesson"]
+
+
+def test_unpromoted_commit_hook_lessons_are_reported(pnpm_store):
+    from smartassist.hooks.commit_hook import DEBUG_STATEMENT_LESSON
+
+    heuristic, _ = add_lesson(
+        pnpm_store, "Consider including test updates when modifying multiple source files.",
+        "testing", origin="commit_hook",
+    )
+    promoted, _ = add_lesson(pnpm_store, DEBUG_STATEMENT_LESSON, "code_edit", origin="commit_hook")
+
+    findings = dict(review.find_findings(pnpm_store))
+
+    assert findings[heuristic] == "commit-hook heuristic, not user-verified"
+    assert promoted not in findings

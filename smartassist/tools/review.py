@@ -1,6 +1,6 @@
 """Review the lesson corpus: report, retire (reversibly) and restore.
 
-    smartassist review                       report stale lessons and duplicates (dry run)
+    smartassist review                       report stale, unverified and duplicate lessons (dry run)
     smartassist review --apply               retire the reported lessons
     smartassist review --retire L173 L175 --reason "belongs to another project"
     smartassist review --restore L173        undo a retirement
@@ -39,7 +39,9 @@ DECAY_FLOOR = 0.01
 
 
 def find_findings(storage):
-    """Return [(lesson_id, reason)] for stale lessons and exact duplicates."""
+    """Return [(lesson_id, reason)] for stale, unpromoted commit-hook and duplicate lessons."""
+    from smartassist.hooks.commit_hook import PROMOTED_LESSONS
+
     root = project_root_for_storage(storage)
     lessons = sorted(list_lessons(storage), key=lambda l: _id_number(l["id"]))
     findings = []
@@ -48,6 +50,9 @@ def find_findings(storage):
         reason = stale_reason(lesson["lesson"], root)
         if reason:
             findings.append((lesson["id"], f"stale: {reason}"))
+            continue
+        if lesson.get("origin") == "commit_hook" and lesson["lesson"] not in PROMOTED_LESSONS:
+            findings.append((lesson["id"], "commit-hook heuristic, not user-verified"))
             continue
         key = normalize_lesson_text(lesson["lesson"])
         if key in first_by_text:

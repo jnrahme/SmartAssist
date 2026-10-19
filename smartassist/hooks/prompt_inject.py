@@ -215,6 +215,10 @@ SEMANTIC_THRESHOLD = 0.60
 LEXICAL_BONUS = 0.15
 # Drop candidates far below the best match: same recall, fewer filler tokens
 RELATIVE_CUTOFF = 0.85
+# A past correction must share at least two distinct terms with the prompt and
+# score within half of the best match, so one common word never rides along.
+EPISODE_MIN_TERMS = 2
+EPISODE_RELATIVE_CUTOFF = 0.5
 
 
 STEM_LENGTH = 6
@@ -331,6 +335,24 @@ def semantic_search(user_message, query_tokens, lessons, idf, lesson_scores, sto
         floor = RELATIVE_CUTOFF * ranked[0]["score"]
         ranked = [r for r in ranked if r["score"] >= floor]
     return ranked[:CANDIDATE_DEPTH]
+
+
+def relevant_episodes(ep_results, evidence, root, stale_reason, query_tokens, limit=2):
+    """User-evidenced, non-stale past corrections that share several prompt terms.
+
+    Only words the user typed count; synonym expansion alone never qualifies.
+    """
+    if not ep_results:
+        return []
+    prompt_stems = {stem(t) for t in query_tokens}
+    floor = EPISODE_RELATIVE_CUTOFF * max(float(ep.get("score") or 0.0) for ep in ep_results)
+    return [
+        ep for ep in ep_results
+        if float(ep.get("score") or 0.0) >= floor
+        and len({stem(t) for t in ep.get("matched", ())} & prompt_stems) >= EPISODE_MIN_TERMS
+        and ep.get("source_id") in evidence
+        and not stale_reason(ep.get("text", ""), root)
+    ][:limit]
 
 
 def apply_injection_budget(results, limit=MAX_INJECTED_LESSONS, char_budget=INJECTION_CHAR_BUDGET):
@@ -1031,12 +1053,7 @@ def main():
         # Past corrections must be the user's, and still true for this project
         evidence = evidence_event_ids(storage_path, [ep.get("source_id", "") for ep in ep_results])
         root = project_root_for_storage(storage_path)
-        episodes.extend(
-            [
-                ep for ep in ep_results
-                if ep.get("source_id") in evidence and not stale_reason(ep.get("text", ""), root)
-            ][:2]
-        )
+        episodes.extend(relevant_episodes(ep_results, evidence, root, stale_reason, query_tokens))
     except Exception:
         pass
 

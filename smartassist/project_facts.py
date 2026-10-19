@@ -1,8 +1,10 @@
 """Facts read from the project itself, used to keep stale lessons out of context.
 
-A lesson that tells the agent to use a different package manager than the one
-the project declares (e.g. "Run yarn test" in a pnpm repo) predates a migration.
-It is excluded from injection and surfaced for review, never deleted.
+A lesson that contradicts what the project declares predates a change: a
+different package manager (e.g. "Run yarn test" in a pnpm repo), or a
+"[TICKET-XXX] Description" commit format in a repo that enforces Conventional
+Commits through commitlint. It is excluded from injection and surfaced for
+review, never deleted.
 """
 
 import json
@@ -22,6 +24,12 @@ _MENTIONS = {
     "npm": re.compile(r"\bnpm\b|\bnpx\b|package-lock\.json"),
     "bun": re.compile(r"\bbun\b|\bbunx\b|bun\.lockb"),
 }
+_COMMITLINT_FILES = (
+    "commitlint.config.js", "commitlint.config.cjs", "commitlint.config.mjs",
+    "commitlint.config.ts", ".commitlintrc", ".commitlintrc.json",
+    ".commitlintrc.yml", ".commitlintrc.yaml", ".commitlintrc.js",
+)
+_BRACKET_TICKET_FORMAT = re.compile(r"\[[a-z]+-x+\]")
 
 
 @lru_cache(maxsize=8)
@@ -43,15 +51,41 @@ def detect_package_manager(project_root):
     return None
 
 
+def detect_commit_convention(project_root):
+    """Return "conventional" when the project configures commitlint, else None.
+
+    Without a declared convention the hook does not guess a commit format.
+    """
+    if project_root is None:
+        return None
+    root = Path(project_root)
+    if any((root / name).exists() for name in _COMMITLINT_FILES):
+        return "conventional"
+    try:
+        if "commitlint" in json.loads((root / "package.json").read_text()):
+            return "conventional"
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def stale_reason(lesson_text, project_root):
     """Why a lesson contradicts the project, or None if it does not."""
-    manager = detect_package_manager(str(project_root) if project_root else None)
+    root = str(project_root) if project_root else None
+    text = str(lesson_text).lower()
+    if _BRACKET_TICKET_FORMAT.search(text) and _commit_convention(root) == "conventional":
+        return "uses [TICKET-XXX] commit format but this project enforces Conventional Commits"
+    manager = detect_package_manager(root)
     if manager is None:
         return None
-    text = str(lesson_text).lower()
     if _MENTIONS[manager].search(text):
         return None
     others = [m for m, pattern in _MENTIONS.items() if m != manager and pattern.search(text)]
     if others:
         return f"uses {', '.join(others)} but this project uses {manager}"
     return None
+
+
+@lru_cache(maxsize=8)
+def _commit_convention(project_root):
+    return detect_commit_convention(project_root)

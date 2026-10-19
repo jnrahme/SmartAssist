@@ -4,7 +4,12 @@ import json
 
 import pytest
 
-from smartassist.project_facts import detect_package_manager, stale_reason
+from smartassist.project_facts import (
+    _commit_convention,
+    detect_commit_convention,
+    detect_package_manager,
+    stale_reason,
+)
 
 
 @pytest.fixture
@@ -50,3 +55,26 @@ def test_non_js_project_has_no_package_manager_facts(tmp_path):
     detect_package_manager.cache_clear()
 
     assert stale_reason("Run yarn test", tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    "files,lesson,stale",
+    [
+        ({"commitlint.config.js": ""}, "Use format: [TICKET-XXX] Description", True),
+        ({"package.json": '{"commitlint": {}}'}, "Commit as [TICKET-XXX] summary", True),
+        ({"commitlint.config.js": ""}, "Format commit messages as [BTMAPP-XXX] Description", True),
+        ({}, "Use format: [TICKET-XXX] Description", False),
+        ({"commitlint.config.js": ""}, "Use feat(TICKET): message for commits", False),
+    ],
+)
+def test_bracket_ticket_format_is_stale_under_commitlint(tmp_path, files, lesson, stale):
+    for name, body in files.items():
+        (tmp_path / name).write_text(body)
+    detect_package_manager.cache_clear()
+    _commit_convention.cache_clear()
+
+    assert bool(stale_reason(lesson, tmp_path)) is stale
+
+
+def test_detect_commit_convention_without_root():
+    assert detect_commit_convention(None) is None

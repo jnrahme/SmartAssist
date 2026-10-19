@@ -6,6 +6,7 @@ from smartassist.hooks.prompt_inject import (
     apply_injection_budget,
     build_idf,
     expand_query,
+    relevant_episodes,
     search_lessons,
     stem,
     tokenize,
@@ -140,3 +141,46 @@ def test_one_shared_common_word_does_not_match(prompt):
 
     assert search_lessons(tokenize(prompt), lessons, build_idf(lessons)) == []
 
+
+
+def _episode(source_id, score, matched=("commit", "subject"), text="[git] keep subjects short"):
+    return {"source_id": source_id, "score": score, "matched": set(matched), "text": text}
+
+
+@pytest.mark.parametrize(
+    "episodes,expected",
+    [
+        ([("a", 0.96, ("fix", "backend")), ("b", 0.46, ("fix",))], ["a"]),
+        ([("a", 0.39, ("style", "use"))], ["a"]),
+        ([("a", 2.86, ("build", "red")), ("b", 0.85, ("build", "passed"))], ["a"]),
+        ([("a", 1.17, ("commit", "git")), ("b", 1.13, ("branch", "git")), ("c", 0.77, ("git", "x"))], ["a", "b"]),
+        ([("a", 0.96, ("fix", "fixing"))], []),
+    ],
+)
+def test_relevant_episodes_need_two_terms_and_relative_score(episodes, expected):
+    results = [_episode(i, score, matched) for i, score, matched in episodes]
+
+    prompt = ["fix", "fixing", "backend", "style", "use", "build", "red", "passed", "commit", "branch", "git", "x"]
+
+    kept = relevant_episodes(results, {"a", "b", "c"}, None, lambda text, root: None, prompt)
+
+    assert [ep["source_id"] for ep in kept] == expected
+
+
+def test_relevant_episodes_drop_synthetic_and_stale():
+    results = [_episode("user", 0.9), _episode("seed", 0.9), _episode("old", 0.9, text="run yarn test")]
+
+    kept = relevant_episodes(
+        results, {"user", "old"}, None, lambda text, root: "stale" if "yarn" in text else None,
+        ["commit", "subject"],
+    )
+
+    assert [ep["source_id"] for ep in kept] == ["user"]
+
+
+def test_relevant_episodes_ignore_terms_only_reached_by_synonyms():
+    results = [_episode("a", 1.17, ("commit", "git", "subject")), _episode("b", 1.13, ("branch", "commit", "git"))]
+
+    kept = relevant_episodes(results, {"a", "b"}, None, lambda text, root: None, ["commit", "subject", "long"])
+
+    assert [ep["source_id"] for ep in kept] == ["a"]

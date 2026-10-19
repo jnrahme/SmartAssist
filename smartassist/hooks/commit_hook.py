@@ -15,8 +15,13 @@ import re
 from pathlib import Path
 
 from smartassist.config import get_storage_path, get_project_root
+from smartassist.project_facts import detect_commit_convention
 from smartassist.gates import build_pretool_hook_output, evaluate_pretool_gate
 from smartassist.store import append_feedback_event, ensure_lesson
+
+DEBUG_STATEMENT_LESSON = "Remove debug statements (console.log, print, debugger) before committing."
+# Only these commit-hook findings become lessons; the rest stay events (ADR 0001).
+PROMOTED_LESSONS = frozenset({DEBUG_STATEMENT_LESSON})
 
 
 def get_last_commit_info():
@@ -116,11 +121,6 @@ def mark_captured(sha):
 CONVENTIONAL_COMMIT = re.compile(
     r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|rfc|hotfix)(\([^)]+\))?!?: \S"
 )
-_COMMITLINT_FILES = (
-    "commitlint.config.js", "commitlint.config.cjs", "commitlint.config.mjs",
-    "commitlint.config.ts", ".commitlintrc", ".commitlintrc.json",
-    ".commitlintrc.yml", ".commitlintrc.yaml", ".commitlintrc.js",
-)
 
 
 def project_root_or_none():
@@ -128,24 +128,6 @@ def project_root_or_none():
         return get_project_root()
     except Exception:
         return None
-
-
-def detect_commit_convention(project_root):
-    """Return "conventional" when the project configures commitlint, else None.
-
-    Without a declared convention the hook does not guess a commit format.
-    """
-    if project_root is None:
-        return None
-    root = Path(project_root)
-    if any((root / name).exists() for name in _COMMITLINT_FILES):
-        return "conventional"
-    try:
-        if "commitlint" in json.loads((root / "package.json").read_text()):
-            return "conventional"
-    except (OSError, ValueError):
-        pass
-    return None
 
 
 def extract_lessons_from_commit(commit_info, changed_files, diff_content):
@@ -228,7 +210,7 @@ def extract_lessons_from_commit(commit_info, changed_files, diff_content):
                 "intensity": 3,
                 "query": "Commit code changes",
                 "response": f"Committed {len(debug_stmts)} debug statement(s)",
-                "correction": "Remove debug statements (console.log, print, debugger) before committing.",
+                "correction": DEBUG_STATEMENT_LESSON,
                 "context": "Clean commits should not contain debug output.",
                 "promote": True,
             })
