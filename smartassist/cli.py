@@ -776,6 +776,22 @@ def _backup_file(path, summary, backup_dir: Path | None = None):
     summary.append(f"Backup: {path.name} → {backup.name}")
 
 
+def _hook_command(name):
+    """The command to register for a hook script.
+
+    The bare name when it resolves to this install from a normal PATH (pipx),
+    otherwise the absolute path, so hooks still run when Claude Code starts
+    without the virtualenv SmartAssist was installed into.
+    """
+    local = Path(sys.executable).parent / name
+    if not local.exists():
+        return name
+    on_path = shutil.which(name)
+    if on_path and not os.environ.get("VIRTUAL_ENV") and Path(on_path).resolve() == local.resolve():
+        return name
+    return str(local)
+
+
 def _configure_hooks(settings, summary):
     """Remove all SmartAssist hooks then add fresh. Prevents duplicates on re-run."""
     settings.setdefault("hooks", {})
@@ -798,7 +814,7 @@ def _configure_hooks(settings, summary):
 
         # Add fresh
         hook_group = {
-            "hooks": [{"type": "command", "command": hook_def["command"]}],
+            "hooks": [{"type": "command", "command": _hook_command(hook_def["command"])}],
         }
         if hook_def["matcher"]:
             hook_group["matcher"] = hook_def["matcher"]

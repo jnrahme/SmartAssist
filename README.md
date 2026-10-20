@@ -132,7 +132,7 @@ Measure retrieval on your own store with
 
 | Tool | What it does |
 |---|---|
-| `rag_search` | Search for lessons with hybrid keyword + semantic + cross-encoder reranking |
+| `rag_search` | Search lessons and past corrections with the same ranking the prompt hook uses |
 | `rag_dashboard` | View Thompson reliability scores, corpus stats, feedback metrics |
 | `rag_feedback` | Record whether a suggestion was helpful or not |
 | `apply_feedback_protocol` | Normalize feedback, dedupe against existing lessons, boost overlaps, and create only when needed |
@@ -148,9 +148,11 @@ Measure retrieval on your own store with
 
 ### Retrieval Stack
 
-- **Keyword search**: IDF-weighted token matching with synonym expansion (<50ms)
-- **Semantic search**: BAAI/bge-m3 embeddings (1024 dim) + LanceDB hybrid retrieval
-- **Reranking**: Cross-encoder (ms-marco-MiniLM-L-6-v2) + Thompson Sampling
+- **One retrieval path** for the prompt hook and `rag_search`, measured by `benchmarks/retrieval_eval.py`
+- **Keyword search**: IDF-coverage matching with stemming and weighted synonyms (<50ms)
+- **Semantic search (opt-in)**: bge-small-en-v1.5 through a shared local embedding service (ADR 0002)
+- **Reranking**: Thompson Sampling on user feedback
+- **Quality filters**: retired, stale (contradicts the repo) and synthetic entries never reach the agent
 - **Dual-memory**: MemAlign pattern — project rules (lessons) + past corrections (episodes)
 - **Storage**: SQLite canonical store (smartassist.db) with FTS5 search projection
 
@@ -170,7 +172,7 @@ Measure retrieval on your own store with
 |---|---|
 | `<project>/.claude/smartassist/data/smartassist.db` | Canonical SQLite store (lessons, scores, events, Thompson, search projection) |
 | `<project>/.claude/smartassist/data/` | Compatibility exports (curated_lessons.json, feedback_log.jsonl) |
-| `<project>/.claude/smartassist/lancedb/` | LanceDB vector cache |
+| `<project>/.claude/smartassist/lancedb/` | Optional LanceDB vector cache (off by default, ADR 0003) |
 | `<project>/.mcp.json` | Project-scoped MCP registration |
 
 ---
@@ -208,7 +210,7 @@ smartassist serve              # Start MCP server (stdio)
 smartassist health             # Run health checks
 smartassist seed               # Seed lessons from CLAUDE.md
 smartassist seed --deep        # LLM-powered codebase analysis (architect-level lessons)
-smartassist vectorize          # Rebuild vector cache
+smartassist vectorize          # Rebuild the optional vector cache
 smartassist maintenance        # Run staleness + compaction
 smartassist analyze            # Show usage analytics
 smartassist dashboard          # Generate HTML dashboard

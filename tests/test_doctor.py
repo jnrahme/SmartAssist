@@ -203,3 +203,11 @@ class TestDoctorReport:
             check["name"] == "Hook commands" and check["status"] == "fail"
             for check in report["checks"]
         )
+
+
+def test_absolute_hook_paths_count_as_registered():
+    from smartassist.tools.doctor import _is_hook_command
+
+    assert _is_hook_command("/venv/bin/smartassist-prompt-inject", "smartassist-prompt-inject")
+    assert _is_hook_command("smartassist-prompt-inject", "smartassist-prompt-inject")
+    assert not _is_hook_command("/venv/bin/other-prompt-inject", "smartassist-prompt-inject")

@@ -6,6 +6,8 @@ import json
 import os
 import time
 
+import pytest
+
 from smartassist.boundary_packs import (
     build_recent_mistakes,
     build_promoted_boundaries,
@@ -362,8 +364,9 @@ class TestSessionHookIntegration:
         assert "SMARTASSIST FEEDBACK PROTOCOL" in output
         assert "apply_feedback_protocol" in output
 
+    @pytest.mark.usefixtures("vector_cache_on")
     def test_session_end_refreshes_boundary_pack_and_logs_summary(
-        self, monkeypatch, capsys, set_data_dir
+        self, vector_cache_on, monkeypatch, capsys, set_data_dir
     ):
         storage = _storage_path(set_data_dir)
         repeated = (
@@ -396,7 +399,7 @@ class TestSessionHookIntegration:
             "Updated boundary pack: 1 promoted rule(s), 1 recent lesson(s) carried forward"
             in output
         )
-        assert "Updating RAG database with new learnings..." in output
+        assert "Updating vector cache with new learnings..." in output
         assert captured["module"] == "smartassist.hooks.vectorize_learnings"
         assert captured["kwargs"]["lock_name"] == "vectorize"
 

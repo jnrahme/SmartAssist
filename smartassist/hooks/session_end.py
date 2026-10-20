@@ -74,13 +74,13 @@ def capture_session_learning():
         except Exception as pack_exc:
             print(f"Boundary pack refresh skipped: {pack_exc}")
 
-        # Trigger vectorization of new learnings
-        print("\nUpdating RAG database with new learnings...")
-        # Detached so quitting Claude Code never waits on the embedding model
-        from smartassist.config import spawn_background_job
+        # Optional vector cache (ADR 0003); detached so quitting never waits on it
+        from smartassist.config import spawn_background_job, vector_cache_enabled
 
-        if spawn_background_job("smartassist.hooks.vectorize_learnings", lock_name="vectorize") is None:
-            print("Vectorization skipped: could not start background job")
+        if vector_cache_enabled():
+            print("\nUpdating vector cache with new learnings...")
+            if spawn_background_job("smartassist.hooks.vectorize_learnings", lock_name="vectorize") is None:
+                print("Vectorization skipped: could not start background job")
 
     except Exception as e:
         print(f"# RLHF Note: Could not capture session learning ({str(e)})")
