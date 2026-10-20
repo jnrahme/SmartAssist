@@ -40,7 +40,7 @@ Targets are the bar for calling the system "working as intended".
 | Hook latency | p50 / max of the prompt hook | < 150 ms / < 1 s |
 | Data safety | Existing events/lessons lost by any operation | 0 |
 
-### Status (2026-10-16, bt-mobile-app store, semantic retrieval on)
+### Status (2026-10-19, bt-mobile-app store, semantic retrieval on)
 
 | Metric | Before (2026-10-14) | Now | Target |
 |---|---|---|---|
@@ -48,9 +48,9 @@ Targets are the bar for calling the system "working as intended".
 | Recall, held-out set | 12% | **64%** | ≥ 90% ❌ |
 | Noise rate | 0% | **0%** | ≤ 5% ✅ |
 | Forbidden hits | 0 | **0** | 0 ✅ |
-| Tokens / prompt | ~120 (mostly irrelevant on held-out) | **~120** (relevant) | ≤ 250 ✅ |
-| Hook latency p50 / max | 108 ms / 6.9 s | **~92 ms / 216 ms** | < 150 ms / < 1 s ✅ |
-| Data lost | — | **0** (30 lessons retired, reversible) | 0 ✅ |
+| Tokens / prompt | ~120 (mostly irrelevant on held-out) | **~76–81** (relevant) | ≤ 250 ✅ |
+| Hook latency p50 / max | 108 ms / 6.9 s | **~90 ms / 102 ms** | < 150 ms / < 1 s ✅ |
+| Data lost | — | **0** (33 lessons retired, reversible) | 0 ✅ |
 
 Held-out recall is the open gap: the misses are paraphrases with weak semantic
 overlap (see ADR 0002). Next candidates: a larger embedding model, and lesson
