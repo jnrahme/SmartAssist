@@ -529,9 +529,9 @@ BAD (junior-level, useless):
 GOOD (architect-level, saves time):
 - "Use `renderWithProviders()` from `src/test-utils` instead of plain `render()` — it wraps components with Redux store, ThemeProvider, and NavigationContainer that most components need"
 - "Never import from `@testing-library/react` directly in test files — always import from `src/test-utils` which re-exports everything plus custom render"
-- "Commit messages must start with [BTMAPP-XXXX] Jira ticket — CI rejects commits without it"
+- "Commit messages must follow `type(PROJ-123): summary` with the ticket key as the scope — commitlint rejects anything else in CI"
 - "The `useAnalytics()` hook in `src/hooks/useAnalytics.ts` wraps Firebase — never call Firebase analytics directly, always go through this hook"
-- "Run `yarn test:noCoverage -- --testPathPattern=<file>` to test a single file — `yarn test` runs full suite with coverage which takes 4 minutes"
+- "Run `<pm> test -- <file>` (with the package manager the lockfile declares) to test a single file — the full suite with coverage takes minutes"
 
 ### RULES
 

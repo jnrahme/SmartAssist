@@ -85,10 +85,20 @@ def bar_chart(label: str, value: float, width: int = 30, threshold: float = 0.7)
     print(f"  {label:<15} {bar} {color}{BOLD}{pct_str:>6}{RESET}")
 
 
+def _vector_cache_off():
+    from smartassist.config import vector_cache_enabled
+
+    return not vector_cache_enabled()
+
+
 def check_database():
     """Check LanceDB health and return stats."""
     db_path = get_db_path()
     section("VECTOR DATABASE")
+
+    if _vector_cache_off():
+        ok("Vector cache is off (optional, ADR 0003); retrieval reads the SQLite store")
+        return True, {}
 
     if not db_path.exists():
         fail("LanceDB directory missing")
@@ -340,6 +350,10 @@ def check_vectorization_sync():
 
     section("VECTORIZATION STATUS")
 
+    if _vector_cache_off():
+        ok("Vector cache is off; nothing to sync")
+        return True
+
     if not vectorization_log.exists():
         warn("No vectorization_log.json (run smartassist vectorize)")
         return False
@@ -391,9 +405,50 @@ def check_mcp_registration():
 
 
 def check_search_quality():
-    """Run live search quality tests."""
-    db_path = get_db_path()
+    """Live retrieval check on the path rag_search and the prompt hook share."""
     section("LIVE SEARCH QUALITY")
+    if _vector_cache_off():
+        return _check_store_retrieval()
+    return _check_vector_search_quality()
+
+
+def _check_store_retrieval(sample_size=5):
+    """Each sampled lesson must find itself; an unrelated query must find nothing."""
+    from smartassist.hooks.prompt_inject import current_lessons
+    from smartassist.mcp_server import _ranked_lessons
+
+    storage = get_storage_path()
+    # Seeds are down-weighted on purpose, so a real lesson may outrank them
+    lessons = [l for l in current_lessons(storage) if l.get("origin") != "seed"]
+    if not lessons:
+        ok("No learned lessons yet; retrieval will be checked once lessons exist")
+        return True
+
+    step = max(1, len(lessons) // sample_size)
+    sample = lessons[::step][:sample_size]
+    misses = 0
+    for lesson in sample:
+        ranked = _ranked_lessons(lesson["lesson"], storage)[:3]
+        if lesson["id"] in [r["id"] for r in ranked]:
+            ok(f'{lesson["id"]} found by its own text')
+        else:
+            misses += 1
+            top = ranked[0]["id"] if ranked else "nothing"
+            warn(f'{lesson["id"]} not in top 3 for its own text (top: {top}; possible near-duplicate)')
+    passed = misses * 2 <= len(sample)
+
+    noise = _ranked_lessons("quantum physics dark matter theory", storage)
+    if noise:
+        warn(f"Unrelated query returned {len(noise)} lesson(s)")
+        passed = False
+    else:
+        ok("Unrelated query returned nothing")
+    return passed
+
+
+def _check_vector_search_quality():
+    """LanceDB search quality, when the optional vector cache is enabled."""
+    db_path = get_db_path()
 
     try:
         import lancedb

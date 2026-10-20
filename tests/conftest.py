@@ -25,3 +25,9 @@ def set_data_dir(tmp_path, monkeypatch):
     (data_dir / "lancedb").mkdir()
     monkeypatch.setenv("SMARTASSIST_DATA_DIR", str(data_dir))
     return data_dir
+
+
+@pytest.fixture
+def vector_cache_on(monkeypatch):
+    """Opt in to the LanceDB cache rebuilds (off by default, ADR 0003)."""
+    monkeypatch.setenv("SMARTASSIST_VECTOR_CACHE", "1")

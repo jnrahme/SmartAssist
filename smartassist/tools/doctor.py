@@ -21,6 +21,12 @@ EXPECTED_HOOKS = {
 }
 
 
+def _is_hook_command(command, expected: str) -> bool:
+    """True for the bare script name or an absolute path to it."""
+    command = str(command or "").strip()
+    return command == expected or (command.startswith("/") and Path(command).name == expected)
+
+
 def _ok(name: str, detail: str) -> dict:
     return {"name": name, "status": "ok", "detail": detail}
 
@@ -51,7 +57,7 @@ def _collect_hook_status(settings_path: Path) -> dict:
         for group in groups:
             matcher = group.get("matcher")
             has_command = any(
-                inner.get("command") == expected["command"]
+                _is_hook_command(inner.get("command"), expected["command"])
                 for inner in group.get("hooks", [])
             )
             if not has_command:
@@ -107,7 +113,7 @@ def _collect_hook_command_status(settings_path: Path) -> dict:
                 continue
             for inner in group.get("hooks", []):
                 command = str(inner.get("command") or "").strip()
-                if command == expected["command"]:
+                if _is_hook_command(command, expected["command"]):
                     matched_command = command
                     break
             if matched_command:

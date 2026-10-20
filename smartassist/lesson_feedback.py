@@ -389,6 +389,7 @@ def estimate_feedback_intensity(feedback_text):
 ACTION_VERBS = {
     # existing 31 verbs
     "use",
+    "stop",
     "never",
     "always",
     "avoid",
@@ -491,6 +492,31 @@ _CONTRACTIONS = {
 }
 
 
+MIN_LESSON_CHARS = 15
+MIN_LESSON_WORDS = 4
+_VAGUE_WORDS = {
+    "a", "an", "the", "it", "its", "this", "that", "these", "those", "them", "they",
+    "again", "going", "here", "there", "now", "then", "ok", "okay", "please", "just",
+    "like", "not", "no", "yes", "so", "and", "or", "but", "to", "of", "in", "on", "for",
+    "with", "we", "you", "i", "me", "my", "our", "your", "is", "are", "was", "be", "all",
+    "thing", "things", "way", "one", "more", "less", "good", "bad", "right", "wrong",
+}
+
+
+# Praise anywhere in the text means it describes what went well, not a rule
+_PRAISE_MARKERS = re.compile(
+    r"\bi (really )?(like|love|liked|loved) (how|that|the way)\b|\b(good|great|nice|awesome) (job|work)\b"
+    r"|\bwell done\b|\bthank(s| you)\b"
+)
+
+
+def _has_concrete_subject(text):
+    """True when the text names something beyond verbs and filler words."""
+    words = re.findall(r"[a-z0-9_.@/-]+", text.lower().replace("'", ""))
+    verbs = {v.replace("'", "") for v in ACTION_VERBS}
+    return any(len(w) >= 3 and w not in _VAGUE_WORDS and w not in verbs for w in words)
+
+
 def _context_to_lesson(user_context):
     """Convert user feedback context to an imperative lesson statement.
 
@@ -498,7 +524,7 @@ def _context_to_lesson(user_context):
       1. Strip praise/complaint prefixes (preserving verbs where possible)
       2. Normalize contractions ("dont" → "don't")
       3. Sanitize conversational wrapping + capitalize + strip emojis
-      4. Quality gate: length >= 30
+      4. Quality gate: >= 15 chars, >= 4 words, names a concrete subject
       5. Quality gate: no generic starts
       6. Quality gate: must contain action verb
 
@@ -524,8 +550,11 @@ def _context_to_lesson(user_context):
     # 3. Strip conversational wrapping + capitalize + strip emojis
     text = sanitize_to_lesson(text)
 
-    # 4. Quality gate: length
-    if len(text) < 30:
+    # 4. Quality gate: a rule needs a few words and a concrete subject, so
+    # "Never use npm here" passes and "ok do it" / "keep going" do not
+    if len(text) < MIN_LESSON_CHARS or len(text.split()) < MIN_LESSON_WORDS:
+        return None
+    if not _has_concrete_subject(text) or _PRAISE_MARKERS.search(text.lower()):
         return None
 
     # 5. Quality gate: no generic starts

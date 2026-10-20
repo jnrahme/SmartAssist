@@ -114,7 +114,7 @@ class TestCliSetupLifecycle:
 
         pretool = settings["hooks"]["PreToolUse"][0]
         assert pretool["matcher"] == "Bash|Edit|Write"
-        assert pretool["hooks"][0]["command"] == "smartassist-commit-hook"
+        assert Path(pretool["hooks"][0]["command"]).name == "smartassist-commit-hook"
 
     def test_setup_registers_project_scope_without_hardcoded_data_dir(
         self,
@@ -516,3 +516,52 @@ def test_doctor_expectations_match_installed_hook_definitions():
     installed = {h["event"]: {"command": h["command"], "matcher": h["matcher"]} for h in HOOK_DEFS}
 
     assert installed == EXPECTED_HOOKS
+
+
+class TestHookCommand:
+    def test_bare_name_when_path_resolves_to_this_install(self, tmp_path, monkeypatch):
+        from smartassist import cli
+
+        script = tmp_path / "smartassist-prompt-inject"
+        script.write_text("")
+        monkeypatch.setattr(cli.sys, "executable", str(tmp_path / "python"))
+        monkeypatch.setattr(cli.shutil, "which", lambda name: str(script))
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+        assert cli._hook_command("smartassist-prompt-inject") == "smartassist-prompt-inject"
+
+    def test_absolute_path_inside_a_virtualenv(self, tmp_path, monkeypatch):
+        from smartassist import cli
+
+        script = tmp_path / "smartassist-prompt-inject"
+        script.write_text("")
+        monkeypatch.setattr(cli.sys, "executable", str(tmp_path / "python"))
+        monkeypatch.setattr(cli.shutil, "which", lambda name: str(script))
+        monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path))
+
+        assert cli._hook_command("smartassist-prompt-inject") == str(script)
+
+    def test_absolute_path_when_not_on_path(self, tmp_path, monkeypatch):
+        from smartassist import cli
+
+        (tmp_path / "smartassist-session-end").write_text("")
+        monkeypatch.setattr(cli.sys, "executable", str(tmp_path / "python"))
+        monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+
+        assert cli._hook_command("smartassist-session-end") == str(tmp_path / "smartassist-session-end")
+
+
+def test_health_search_check_uses_store_retrieval_without_models(set_data_dir, monkeypatch):
+    from unittest.mock import patch
+
+    from smartassist.store import add_lesson
+    from smartassist.tools import health_check
+
+    monkeypatch.delenv("SMARTASSIST_VECTOR_CACHE", raising=False)
+    storage = set_data_dir / "data"
+    add_lesson(storage, "Use theme tokens instead of hardcoded hex colors in styles", "code_edit")
+    add_lesson(storage, "Keep commit subjects under 100 characters for commitlint", "git")
+
+    with patch.dict("sys.modules", {"sentence_transformers": None, "lancedb": None}):
+        assert health_check.check_search_quality() is True
+        assert health_check.check_database()[0] is True

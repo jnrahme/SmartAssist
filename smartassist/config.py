@@ -187,6 +187,23 @@ def spawn_managed(args, **kwargs):
     return proc
 
 
+def vector_cache_enabled(storage_path=None):
+    """Whether to maintain the optional LanceDB cache (ADR 0003: off by default).
+
+    Retrieval no longer reads it, so rebuilding it only costs a ~2 GB model
+    load. Enable with SMARTASSIST_VECTOR_CACHE=1 or
+    {"vector_cache": true} in data/settings.json.
+    """
+    if os.environ.get("SMARTASSIST_VECTOR_CACHE") == "1":
+        return True
+    try:
+        storage = Path(storage_path) if storage_path else get_storage_path()
+        settings = json.loads((storage / "settings.json").read_text())
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
+    return bool(isinstance(settings, dict) and settings.get("vector_cache"))
+
+
 def spawn_background_job(module, *args, lock_name=None, wait=False, skip=False, lock_dir=None):
     """Start ``python -m module`` detached so the caller can exit immediately.
 

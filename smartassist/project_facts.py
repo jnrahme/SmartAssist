@@ -29,6 +29,12 @@ _COMMITLINT_FILES = (
     "commitlint.config.ts", ".commitlintrc", ".commitlintrc.json",
     ".commitlintrc.yml", ".commitlintrc.yaml", ".commitlintrc.js",
 )
+# "never use npm", "don't run yarn", "instead of npm": a prohibition agrees with
+# the project's package manager rather than contradicting it
+_NEGATION_BEFORE = re.compile(
+    r"(\bnever|\bdon'?t|\bdo not|\bnot|\bno|\bavoid|\bstop|\binstead of|\brather than|\bwithout)"
+    r"(\s+\S+){0,3}\s*$"
+)
 _BRACKET_TICKET_FORMAT = re.compile(r"\[[a-z]+-x+\]")
 
 
@@ -80,10 +86,21 @@ def stale_reason(lesson_text, project_root):
         return None
     if _MENTIONS[manager].search(text):
         return None
-    others = [m for m, pattern in _MENTIONS.items() if m != manager and pattern.search(text)]
+    others = [
+        m for m, pattern in _MENTIONS.items()
+        if m != manager and _has_affirmative_mention(pattern, text)
+    ]
     if others:
         return f"uses {', '.join(others)} but this project uses {manager}"
     return None
+
+
+def _has_affirmative_mention(pattern, text):
+    """True when some mention of the tool is not under a nearby negation."""
+    return any(
+        not _NEGATION_BEFORE.search(text[max(0, match.start() - 40):match.start()])
+        for match in pattern.finditer(text)
+    )
 
 
 @lru_cache(maxsize=8)

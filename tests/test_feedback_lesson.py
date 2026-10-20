@@ -135,71 +135,30 @@ class TestFeedbackSignalDetectionV2:
             assert context == ""
 
 
-class _FakeSemanticTable:
-    def __init__(self, rows):
-        self.rows = rows
-
-    def search(self, vector, query_type=None):  # noqa: ARG002
-        return self
-
-    def rerank(self, reranker=None):  # noqa: ARG002
-        return self
-
-    def limit(self, count):  # noqa: ARG002
-        return self
-
-    def to_list(self):
-        return list(self.rows)
-
-
 class TestRagSearchMemoryLabels:
     def test_event_hits_stay_in_past_corrections_bucket(self, set_data_dir):
-        rows = [
-            {
-                "doc_id": "event:1",
-                "source_id": "1",
-                "source_type": "event",
-                "text": "Correction: Don't use inline styles in dashboard headers",
-                "category": "code_edit",
-                "_distance": 0.2,
-            }
-        ]
+        storage = set_data_dir / "data"
+        append_feedback_event(storage, {
+            "timestamp": time.time(), "signal": "correction", "category": "code_edit",
+            "intensity": 4, "correction": "Don't use inline styles in dashboard headers",
+            "context": "user correction on the dashboard header styling",
+        })
 
-        fake_embedder = MagicMock()
-        fake_embedder.encode.return_value = [0.1, 0.2, 0.3]
-
-        with patch(
-            "smartassist.mcp_server._get_storage", return_value=set_data_dir / "data"
-        ):
-            with patch(
-                "smartassist.mcp_server._get_embedder", return_value=fake_embedder
-            ):
-                with patch(
-                    "smartassist.mcp_server._get_table",
-                    return_value=_FakeSemanticTable(rows),
-                ):
-                    with patch(
-                        "smartassist.mcp_server.search_projection_documents",
-                        return_value=([], {}),
-                    ):
-                        with patch("smartassist.mcp_server._log_usage"):
-                            with patch(
-                                "smartassist.thompson_rerank.load_thompson_batch",
-                                return_value={},
-                            ):
-                                with patch(
-                                    "smartassist.thompson_rerank.thompson_rerank",
-                                    side_effect=lambda candidates, data, now=None: (
-                                        candidates
-                                    ),
-                                ):
-                                    result = rag_search(
-                                        "how should I style the dashboard header"
-                                    )
+        with patch("smartassist.mcp_server._log_usage"):
+            result = rag_search("should I use inline styles for the dashboard header")
 
         assert "Past Corrections (episodic memory):" in result
         assert "Project Rules (semantic memory):" not in result
         assert "Don't use inline styles in dashboard headers" in result
+
+    def test_rag_search_does_not_load_an_embedding_model(self, set_data_dir):
+        add_lesson(set_data_dir / "data", "Use theme tokens instead of hex colors", "code_edit")
+
+        with patch("smartassist.mcp_server._log_usage"), \
+             patch.dict("sys.modules", {"sentence_transformers": None, "lancedb": None}):
+            result = rag_search("which theme tokens replace hex colors")
+
+        assert "Use theme tokens instead of hex colors" in result
 
 
 class TestMcpRetrievalLearningLoop:
@@ -230,7 +189,7 @@ class TestMcpRetrievalLearningLoop:
         recent = load_last_rag_results(storage, max_age=900)
         thompson = load_thompson_batch(storage, ["L001", "L002"])
 
-        assert [item["id"] for item in recent] == ["L001", "L002"]
+        assert sorted(item["id"] for item in recent) == ["L001", "L002"]
         assert "Attributed to 2 recent lesson(s)" in feedback_result
         assert thompson["L001"]["injection_count"] == 1
         assert thompson["L002"]["injection_count"] == 1
@@ -597,6 +556,7 @@ class TestReinforceRecentLessons:
         assert "L001" not in ids
         assert "L002" in ids
 
+    @pytest.mark.usefixtures("vector_cache_on")
     @patch("smartassist.lesson_feedback.spawn_background_job")
     def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
@@ -1399,6 +1359,7 @@ class TestDemoteLessonTool:
         assert "L001" not in ids
         assert "L002" in ids
 
+    @pytest.mark.usefixtures("vector_cache_on")
     @patch("smartassist.mcp_server.spawn_background_job")
     def test_auto_retire_triggers_full_revectorization(self, mock_spawn, set_data_dir):
         storage = set_data_dir / "data"
@@ -1832,6 +1793,7 @@ class TestMergeLessonsTool:
         assert entry["signal"] == "merge"
         assert "Merged from" in entry["context"]
 
+    @pytest.mark.usefixtures("vector_cache_on")
     @patch("smartassist.mcp_server.spawn_background_job")
     def test_merge_fires_vectorization(self, mock_spawn, set_data_dir):
         self._seed_curated(
@@ -2001,6 +1963,7 @@ class TestCreateLessonV2:
         assert len(entries) == 1
         assert entries[0]["correction"] == self.VALID_LESSON
 
+    @pytest.mark.usefixtures("vector_cache_on")
     @patch("smartassist.mcp_server.spawn_background_job")
     def test_fires_vectorization(self, mock_spawn, set_data_dir):
         create_lesson(lesson=self.VALID_LESSON, category=self.VALID_CATEGORY)
@@ -2080,6 +2043,7 @@ class TestApplyFeedbackProtocol:
         curated = json.loads((storage / "curated_lessons.json").read_text())
         assert len(curated) == 1
 
+    @pytest.mark.usefixtures("vector_cache_on")
     @patch("smartassist.mcp_server.spawn_background_job")
     def test_auto_merges_high_confidence_duplicate_cluster(
         self, mock_spawn, set_data_dir
@@ -2659,3 +2623,77 @@ class TestScoreSchemaV2:
         assert entry.get("retired", False) is False
         assert entry.get("retired_reason", "") == ""
         assert entry.get("retired_at", None) is None
+
+
+@pytest.mark.parametrize(
+    "feedback,expected",
+    [
+        ("never use npm here", "Never use npm here"),
+        ("dont wrap fireEvent in act", "Don't wrap fireEvent in act"),
+        ("stop running npm install, this project uses pnpm", "Stop running npm install, this project uses pnpm"),
+        ("ok do it", None),
+        ("do that again please", None),
+        ("keep going with it", None),
+        ("that is wrong, do it again", None),
+        ("Testing bdp i like how you figured out which file to test", None),
+        ("thanks, use the theme tokens next time too", None),
+    ],
+)
+def test_short_rules_pass_and_chit_chat_or_praise_does_not(feedback, expected):
+    from smartassist.lesson_feedback import _context_to_lesson
+
+    assert _context_to_lesson(feedback) == expected
+
+
+def test_rag_search_results_drop_retired_lessons_and_synthetic_events(set_data_dir):
+    from smartassist.mcp_server import _trustworthy_results
+    from smartassist.store import open_store, retire_lesson
+
+    storage = set_data_dir / "data"
+    keep, _ = add_lesson(storage, "Use theme tokens instead of hex colors", "code_edit")
+    gone, _ = add_lesson(storage, "Use inline hex colors in headers", "code_edit")
+    retire_lesson(storage, gone, retired_reason="test")
+    append_feedback_event(storage, {"timestamp": time.time(), "signal": "correction",
+                                    "category": "code_edit", "intensity": 4,
+                                    "correction": "Use theme tokens", "context": "user said so"})
+    append_feedback_event(storage, {"timestamp": time.time(), "signal": "correction",
+                                    "category": "git", "intensity": 2,
+                                    "correction": "Use format: [TICKET-XXX] Description",
+                                    "context": "Branch: PROJ-1"})
+    with open_store(storage) as conn:
+        rows = conn.execute("SELECT event_id FROM feedback_events ORDER BY event_id").fetchall()
+    user_event, commit_event = [str(r["event_id"]) for r in rows][-2:]
+    results = [
+        {"id": keep, "source_type": "lesson"},
+        {"id": gone, "source_type": "lesson"},
+        {"source_id": user_event, "source_type": "event", "text": "Use theme tokens"},
+        {"source_id": commit_event, "source_type": "event", "text": "Use format: [TICKET-XXX]"},
+    ]
+
+    kept = _trustworthy_results(storage, results)
+
+    assert [r.get("id") or r.get("source_id") for r in kept] == [keep, user_event]
+
+
+def test_rag_search_does_not_repeat_a_lesson_as_its_own_past_correction(set_data_dir):
+    storage = set_data_dir / "data"
+    text = "Keep commit subjects under 100 characters for commitlint"
+    add_lesson(storage, text, "git")
+    append_feedback_event(storage, {"timestamp": time.time(), "signal": "correction",
+                                    "category": "git", "intensity": 4, "correction": text,
+                                    "context": text})
+
+    with patch("smartassist.mcp_server._log_usage"):
+        result = rag_search("commit subjects too long for commitlint")
+
+    assert result.count(text) == 1
+
+
+def test_vector_cache_rebuild_is_off_by_default(monkeypatch):
+    from smartassist import mcp_server
+
+    monkeypatch.delenv("SMARTASSIST_VECTOR_CACHE", raising=False)
+    with patch("smartassist.mcp_server.spawn_background_job") as spawn:
+        mcp_server._trigger_vectorization(full_rebuild=True)
+
+    spawn.assert_not_called()

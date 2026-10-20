@@ -16,9 +16,7 @@ Provides tools:
 Runs via stdio transport. Entry point: `smartassist serve`
 """
 
-import importlib
 import json
-import math
 import sys
 import time
 import subprocess
@@ -73,11 +71,6 @@ logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 
 # ── Lazy-loaded singletons ─────────────────────────────────────────────────
 _thompson = None
-_embedder = None
-_cross_encoder = None
-
-# Results above this distance are too irrelevant to return.
-MAX_DISTANCE = 1.30
 
 VALID_CATEGORIES = {
     "testing",
@@ -220,7 +213,11 @@ def _usage_log_path():
 
 
 def _trigger_vectorization(full_rebuild: bool = False):
-    """Refresh the vector store after corpus changes."""
+    """Refresh the optional vector cache after corpus changes, when enabled."""
+    from smartassist.config import vector_cache_enabled
+
+    if not vector_cache_enabled():
+        return
     module = (
         "smartassist.tools.cleanup_and_vectorize"
         if full_rebuild
@@ -238,55 +235,82 @@ def _get_db():
         raise RuntimeError("SmartAssist database not found. Run 'smartassist setup'.")
 
 
-def _get_embedder():
-    """Lazy-load the sentence transformer embedding model."""
-    global _embedder
-    if _embedder is None:
-        from smartassist.config import EMBEDDING_MODEL
+def _ranked_lessons(query, storage, depth=20):
+    """Lessons ranked exactly as the prompt hook ranks them, as rag_search rows."""
+    from smartassist.hooks import prompt_inject as hook
 
-        sentence_transformers = importlib.import_module("sentence_transformers")
-        SentenceTransformer = getattr(sentence_transformers, "SentenceTransformer")
-        _embedder = SentenceTransformer(EMBEDDING_MODEL)
-    return _embedder
+    lessons = hook.current_lessons(storage)
+    tokens = hook.tokenize(query)
+    if not lessons or not tokens:
+        return []
+    idf = hook.build_idf(lessons)
+    scores = hook.load_lesson_scores()
+    ranked = hook.semantic_search(query, tokens, lessons, idf, scores, storage)
+    if ranked is None:
+        ranked = hook.search_lessons(tokens, lessons, idf, top_k=depth, lesson_scores=scores)
+    return [
+        {
+            "doc_id": f"lesson:{r['id']}",
+            "id": r["id"],
+            "source_id": r["id"],
+            "source_type": "lesson",
+            "text": f"[{r['category']}] {r['lesson']}",
+            "category": r["category"],
+            "score": min(1.0, float(r["score"])),
+            "retrieval": r.get("retrieval", "lexical"),
+        }
+        for r in ranked[:depth]
+    ]
 
 
-def _get_table():
-    """Open the LanceDB documents table fresh for each query.
+def _relevant_events(storage, query, events):
+    """Past corrections that pass the prompt hook's episode filter."""
+    from smartassist.hooks.prompt_inject import relevant_episodes, tokenize
+    from smartassist.project_facts import stale_reason
+    from smartassist.store import evidence_event_ids, project_root_for_storage
 
-    The vector cache is rebuilt by separate subprocesses. Reopening the table
-    avoids stale-read issues from holding a long-lived handle across rebuilds.
+    if not events:
+        return []
+    evidence = evidence_event_ids(storage, [e.get("source_id", "") for e in events])
+    root = project_root_for_storage(storage)
+    return relevant_episodes(events, evidence, root, stale_reason, tokenize(query), limit=len(events))
+
+
+def _adds_context(raw_text, lesson_key):
+    """True when an event's context says more than the lesson it repeats."""
+    from smartassist.hooks.prompt_inject import _normalize_lesson
+
+    _, _, context = str(raw_text).partition(" Context: ")
+    context_key = _normalize_lesson(context)
+    return bool(context_key) and not context_key.startswith(lesson_key[:60])
+
+
+def _trustworthy_results(storage, results):
+    """Apply the prompt hook's rules: active, non-stale lessons and user-evidenced events.
+
+    The vector table can lag behind retirements, and the event log holds
+    synthetic (seed / commit-hook) entries that are not user corrections.
     """
-    lancedb = importlib.import_module("lancedb")
-    db = lancedb.connect(str(_get_db()))
-    return db.open_table("documents")
+    try:
+        from smartassist.hooks.prompt_inject import current_lessons
+        from smartassist.project_facts import stale_reason
+        from smartassist.store import evidence_event_ids, project_root_for_storage
 
-
-def _get_cross_encoder():
-    """Lazy-load the cross-encoder reranker model."""
-    global _cross_encoder
-    if _cross_encoder is None:
-        sentence_transformers = importlib.import_module("sentence_transformers")
-        CrossEncoder = getattr(sentence_transformers, "CrossEncoder")
-        _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    return _cross_encoder
-
-
-def _enhance_query(query: str) -> str:
-    """Transform a user query to better match stored document embeddings."""
-    query = query.strip()
-    if not query:
-        return query
-    return f"Correction for this project: {query}"
-
-
-def _compute_distance_relevance(distance: float) -> float:
-    """Convert L2 distance to a 0-1 relevance score using sqrt scaling."""
-    if distance <= 0:
-        return 1.0
-    if distance >= MAX_DISTANCE:
-        return 0.0
-    normalized = distance / MAX_DISTANCE
-    return math.sqrt(1 - normalized)
+        active = {l.get("id") for l in current_lessons(storage)}
+        event_ids = [r.get("source_id", "") for r in results if r.get("source_type") == "event"]
+        evidence = evidence_event_ids(storage, event_ids) if event_ids else set()
+        root = project_root_for_storage(storage)
+    except Exception:
+        return results
+    kept = []
+    for r in results:
+        rid = str(r.get("id") or r.get("source_id", ""))
+        if r.get("source_type") == "event":
+            if rid in evidence and not stale_reason(r.get("text", ""), root):
+                kept.append(r)
+        elif rid in active:
+            kept.append(r)
+    return kept
 
 
 def _extract_lesson_text(raw_text: str) -> str:
@@ -470,7 +494,14 @@ def rag_search(
     storage = _get_storage()
     search_backend = "sqlite_fts5"
 
-    # ── Stage 1: SQLite FTS5 keyword search (always available) ────────
+    # ── Stage 1: lessons, ranked by the prompt hook's retrieval ───────
+    # One benchmarked path for hook and tool (benchmarks/retrieval_eval.py):
+    # semantic via the shared embedding service when enabled, else lexical.
+    semantic_results = _ranked_lessons(query, storage)
+    if semantic_results:
+        search_backend = semantic_results[0].get("retrieval", "lexical")
+
+    # ── Stage 2: keyword projection (past corrections, lesson fallback) ─
     try:
         fts_results, search_meta = search_projection_documents(
             storage,
@@ -480,82 +511,27 @@ def rag_search(
         )
     except Exception:
         fts_results, search_meta = [], {}
+    fts_events = _relevant_events(storage, query, [r for r in fts_results if r.get("source_type") == "event"])
+    fts_lessons = [] if semantic_results else [r for r in fts_results if r.get("source_type") != "event"]
 
-    # ── Stage 2: LanceDB semantic search (if available) ───────────────
-    semantic_results = []
-    try:
-        embedder = _get_embedder()
-        table = _get_table()
-        enhanced_query = _enhance_query(query)
-        query_vector = embedder.encode(enhanced_query)
+    # ── Stage 3: merge ────────────────────────────────────────────────
+    from smartassist.hooks.prompt_inject import _normalize_lesson
 
-        RERANK_POOL = 20
-        try:
-            rerankers = importlib.import_module("lancedb.rerankers")
-            LinearCombinationReranker = getattr(rerankers, "LinearCombinationReranker")
-            reranker = LinearCombinationReranker(weight=0.7)
-            raw_results = (
-                table.search(query_vector, query_type="hybrid")
-                .rerank(reranker=reranker)
-                .limit(RERANK_POOL)
-                .to_list()
-            )
-        except Exception:
-            raw_results = table.search(query_vector).limit(RERANK_POOL).to_list()
-
-        # Distance filter
-        raw_results = [r for r in raw_results if r.get("_distance", 99) <= MAX_DISTANCE]
-
-        # Cross-encoder reranking
-        if raw_results and len(raw_results) > 1:
-            try:
-                cross_encoder = _get_cross_encoder()
-                pairs = [[query, r.get("text", "")] for r in raw_results]
-                scores = cross_encoder.predict(pairs)
-                for r, score in zip(raw_results, scores):
-                    r["_rerank_score"] = float(score)
-                raw_results.sort(key=lambda r: r.get("_rerank_score", 0), reverse=True)
-            except Exception:
-                pass
-
-        # Convert to common format
-        for r in raw_results:
-            distance = r.get("_distance", 0)
-            relevance = _compute_distance_relevance(distance)
-            if r.get("_rerank_score") is not None:
-                relevance = max(
-                    relevance, min(1.0, (float(r["_rerank_score"]) + 1) / 2)
-                )
-            semantic_results.append(
-                {
-                    "doc_id": r.get("doc_id", ""),
-                    "id": r.get("source_id", ""),
-                    "source_id": r.get("source_id", ""),
-                    "source_type": r.get("source_type", "lesson"),
-                    "text": r.get("text", ""),
-                    "category": r.get("category", "unknown"),
-                    "score": relevance,
-                }
-            )
-        if semantic_results:
-            search_backend = "hybrid_semantic+fts5"
-    except Exception:
-        pass  # Fall back to FTS5 only
-
-    # ── Stage 3: Merge FTS5 + semantic results ────────────────────────
     seen_ids = set()
+    seen_texts = set()
     merged = []
-    # Prefer semantic results (higher quality), then FTS5 for anything missed
-    for r in semantic_results:
+    for r in [*semantic_results, *fts_lessons, *fts_events]:
         rid = r.get("id") or r.get("source_id", "")
-        if rid and rid not in seen_ids:
-            seen_ids.add(rid)
-            merged.append(r)
-    for r in fts_results:
-        rid = r.get("id") or r.get("source_id", "")
-        if rid and rid not in seen_ids:
-            seen_ids.add(rid)
-            merged.append(r)
+        text_key = _normalize_lesson(_extract_lesson_text(r.get("text", "")))
+        if not rid or rid in seen_ids:
+            continue
+        if text_key and text_key in seen_texts and not _adds_context(r.get("text", ""), text_key):
+            continue
+        seen_ids.add(rid)
+        seen_texts.add(text_key)
+        merged.append(r)
+
+    merged = _trustworthy_results(storage, merged)
 
     # ── Stage 4: Thompson Sampling reranking ──────────────────────────
     record_injection = None
@@ -617,7 +593,6 @@ def rag_search(
     search_meta["fts_candidates"] = len(fts_results)
     search_meta["semantic_candidates"] = len(semantic_results)
     search_meta["merged_candidates"] = len(merged)
-    search_meta["enhanced_query"] = _enhance_query(query) if semantic_results else None
     search_meta["displayed_semantic"] = len(lessons)
     search_meta["displayed_episodic"] = len(episodes)
 
